@@ -1,0 +1,22 @@
+/mongo
+/dist
+/logs
+/node_modules
+/public/uploads
+/mongo-local-backup-*/
+/mongo-prod-restore
+/mongo-restore-tmp
+
+.env
+.env.*
+!.env.example
+mongo-init.js
+
+# Local test seed scripts
+/scripts/seed-*.js
+
+.DS_Store
+
+# parking-heartbeat-runner local artifacts
+/parking-heartbeat-runner/node_modules
+/parking-heartbeat-runner/.env

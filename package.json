@@ -1,0 +1,30 @@
+{
+  "name": "cobro-cajas-wm-refacto",
+  "version": "1.0.0",
+  "description": "Refactor de cobro-cajas-WM en TypeScript",
+  "private": true,
+  "main": "dist/app.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@types/cors": "^2.8.19",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.1",
+    "env-var": "^7.5.0",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.16.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.0.10",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^6.0.3"
+  }
+}

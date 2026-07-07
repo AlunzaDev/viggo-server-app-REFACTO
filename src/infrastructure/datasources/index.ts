@@ -1,0 +1,7 @@
+export * from "./proveedores/proveedor.datasource.mongo";
+export * from "./parking/proyecto.datasource.mongo";
+export * from "./parking/modulo.datasource.mongo";
+export * from "./parking/ticket.datasource.mongo";
+export * from "./pension/pension.datasource.mongo";
+export * from "./pension/pension-pass.datasource.mongo";
+export * from "./pension/pension-move.datasource.mongo";

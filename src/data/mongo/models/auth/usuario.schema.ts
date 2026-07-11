@@ -1,4 +1,5 @@
 import { Schema, model } from "mongoose";
+import { AUTH_ROLES, AUTH_ROLE_VALUES } from "../../../../domain/constants";
 
 const usuarioSchema = new Schema(
     {
@@ -36,8 +37,8 @@ const usuarioSchema = new Schema(
         rol: {
             type: String,
             required: true,
-            default: "CLIENT_ROLE",
-            enum: ["SUPER_ROLE", "ADMIN_ROLE", "PENSION_ROLE", "CLIENT_ROLE"],
+            default: AUTH_ROLES.CLIENT,
+            enum: AUTH_ROLE_VALUES,
         },
         nacimiento: {
             type: Number,

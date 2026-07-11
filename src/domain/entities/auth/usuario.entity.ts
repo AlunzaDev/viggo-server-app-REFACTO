@@ -1,10 +1,5 @@
 import { CustomError } from "../../errors/custom.error";
-
-export type UsuarioRol =
-    | "SUPER_ROLE"
-    | "ADMIN_ROLE"
-    | "PENSION_ROLE"
-    | "CLIENT_ROLE";
+import { isUsuarioRol, UsuarioRol } from "../../constants";
 
 export interface UsuarioEntityOptions {
     id: string;
@@ -108,7 +103,7 @@ export class UsuarioEntity {
                 ? coordinates.map((value) => Number(value))
                 : undefined,
             password: String(password),
-            rol: String(rol) as UsuarioRol,
+            rol: isUsuarioRol(rol) ? rol : (() => { throw CustomError.badRequest("Invalid rol"); })(),
             nacimiento:
                 typeof nacimiento === "number" ? nacimiento : nacimiento ? Number(nacimiento) : undefined,
             img: typeof img === "string" ? img : undefined,

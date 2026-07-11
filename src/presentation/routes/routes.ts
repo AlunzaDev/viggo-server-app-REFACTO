@@ -1,6 +1,15 @@
 import { Router } from "express";
 import { MongoDatabase } from "../../data/mongo";
+import { AuthRoutes } from "./auth/auth.routes";
+import { UsuarioRoutes } from "./auth/usuario.routes";
 import { ProveedorRoutes } from "./proveedores/proveedor.routes";
+import { ProyectoRoutes } from "./parking/proyecto.routes";
+import { ModuloRoutes } from "./parking/modulo.routes";
+import { TicketRoutes } from "./parking/ticket.routes";
+import { PensionRoutes } from "./pension/pension.routes";
+import { PensionPassRoutes } from "./pension/pension-pass.routes";
+import { PensionMoveRoutes } from "./pension/pension-move.routes";
+import { TicketPaymentRoutes } from "./payments/ticket-payment.routes";
 
 export class AppRoutes {
   static get routes(): Router {
@@ -15,7 +24,17 @@ export class AppRoutes {
       res.status(health.status === "ok" ? 200 : 503).json(health);
     });
 
+    router.use("/api/auth", AuthRoutes.routes);
+    router.use("/api/usuarios", UsuarioRoutes.routes);
+
     router.use("/api/proveedores", ProveedorRoutes.routes);
+    router.use("/api/proyectos", ProyectoRoutes.routes);
+    router.use("/api/modulos", ModuloRoutes.routes);
+    router.use("/api/tickets", TicketRoutes.routes);
+    router.use("/api/pensiones", PensionRoutes.routes);
+    router.use("/api/pension-pass", PensionPassRoutes.routes);
+    router.use("/api/pension-moves", PensionMoveRoutes.routes);
+    router.use("/api/payments", TicketPaymentRoutes.routes);
 
     return router;
   }

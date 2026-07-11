@@ -102,4 +102,8 @@ export const envs = {
         .get("AUTH_COOKIE_MAX_AGE_MS")
         .default(String(1000 * 60 * 60 * 24 * 2))
         .asIntPositive(),
+    SECRET_STRIPE_KEY: env.get("SECRET_STRIPE_KEY").default("").asString(),
+    STRIPE_CURRENCY: env.get("STRIPE_CURRENCY").default("mxn").asString(),
+    STRIPE_ENABLED: env.get("STRIPE_ENABLED").default(isProd ? "true" : "false").asBool(),
+    STRIPE_MOCK_ENABLED: env.get("STRIPE_MOCK_ENABLED").default(isProd ? "false" : "true").asBool(),
 };

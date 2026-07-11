@@ -46,11 +46,7 @@ export class ModuloMongoDatasource extends ModuloDatasource {
     }
 
     async delete(id: string): Promise<ModuloEntity | null> {
-        const moduloDocument = await ModuloModel.findByIdAndUpdate(
-            id,
-            { estado: false },
-            { new: true },
-        );
+        const moduloDocument = await ModuloModel.findByIdAndDelete(id);
 
         if (!moduloDocument) return null;
 

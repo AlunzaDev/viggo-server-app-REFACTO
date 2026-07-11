@@ -1,3 +1,4 @@
+export * from "./auth/auth.repository.impl";
 export * from "./proveedores/proveedor.repository.impl";
 export * from "./parking/proyecto.repository.impl";
 export * from "./parking/modulo.repository.impl";

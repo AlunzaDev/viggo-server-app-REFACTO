@@ -5,3 +5,4 @@ export * from "./parking/ticket.datasource.mongo";
 export * from "./pension/pension.datasource.mongo";
 export * from "./pension/pension-pass.datasource.mongo";
 export * from "./pension/pension-move.datasource.mongo";
+export * from "./auth/auth.datasource.mongo";

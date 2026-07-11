@@ -57,11 +57,7 @@ export class PensionPassMongoDatasource extends PensionPassDatasource {
     }
 
     async delete(id: string): Promise<PensionPassEntity | null> {
-        const pensionPassDocument = await PensionPassModel.findByIdAndUpdate(
-            id,
-            { estado: false },
-            { new: true },
-        );
+        const pensionPassDocument = await PensionPassModel.findByIdAndDelete(id);
 
         if (!pensionPassDocument) return null;
 

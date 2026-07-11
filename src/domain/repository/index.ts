@@ -11,3 +11,4 @@ export * from "./parking/ticket.repository";
 export * from "./pension/pension.repository";
 export * from "./pension/pension-pass.repository";
 export * from "./pension/pension-move.repository";
+export * from "./auth/auth.repository";

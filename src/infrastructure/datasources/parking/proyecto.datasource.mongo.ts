@@ -41,11 +41,7 @@ export class ProyectoMongoDatasource extends ProyectoDatasource {
     }
 
     async delete(id: string): Promise<ProyectoEntity | null> {
-        const proyectoDocument = await ProyectoModel.findByIdAndUpdate(
-            id,
-            { estado: false },
-            { new: true },
-        );
+        const proyectoDocument = await ProyectoModel.findByIdAndDelete(id);
 
         if (!proyectoDocument) return null;
 

@@ -1,9 +1,9 @@
-name: cobroCaja-backend
+name: viggo-backend
 
 services:
   mongo-db:
     image: mongo:7.0
-    container_name: cobroCaja-mongo
+    container_name: viggo-mongo
     restart: always
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
@@ -13,14 +13,14 @@ services:
     volumes:
       - ./mongo:/data/db
     healthcheck:
-      test: [ "CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok" ]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   backend:
-    container_name: cobroCaja-backend
-    image: ${BACKEND_IMAGE:-cejadali/cobrocaja-backend:latest}
+    container_name: viggo-backend
+    image: ${BACKEND_IMAGE:-viggo-server-app-refacto:local}
     build:
       context: .
       dockerfile: Dockerfile
@@ -53,4 +53,4 @@ services:
 
 secrets:
   backend_env:
-    file: ${BACKEND_ENV_FILE:-.env.prod}
+    file: ${BACKEND_ENV_FILE:-.env.docker}

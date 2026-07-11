@@ -5,3 +5,4 @@ export * from "./parking/ticket.datasource";
 export * from "./pension/pension.datasource";
 export * from "./pension/pension-pass.datasource";
 export * from "./pension/pension-move.datasource";
+export * from "./auth/auth.datasource";

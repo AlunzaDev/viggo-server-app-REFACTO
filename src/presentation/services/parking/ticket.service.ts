@@ -153,7 +153,24 @@ export class TicketService {
   async getActiveTicketByUsuario(
     usuarioId: string,
   ): Promise<TicketEntity | null> {
-    return this.ticketRepository.getActiveByUsuario(usuarioId);
+    const ticket = await this.ticketRepository.getActiveByUsuario(usuarioId);
+
+    if (!ticket || ticket.pagado) {
+      return ticket;
+    }
+
+    const horaConsulta = Date.now();
+    const duracion = this.calculateDurationInMinutes(
+      ticket.horaInicio,
+      horaConsulta,
+    );
+    const monto = this.calculateTicketAmount(duracion);
+
+    return this.updateTicket(ticket.id, {
+      horaConsulta,
+      duracion,
+      monto,
+    });
   }
 
   async updateTicket(
@@ -256,5 +273,17 @@ export class TicketService {
     ].join("");
 
     return `00${datePart}${proyectoIdentificador}${moduloIdentificador}`;
+  }
+
+  private calculateDurationInMinutes(
+    horaInicio: number,
+    horaFinal: number,
+  ): number {
+    const difference = horaFinal - horaInicio;
+    return Math.round(difference / 1000 / 60);
+  }
+
+  private calculateTicketAmount(minutes: number): number {
+    return minutes < 60 ? 10 : 20;
   }
 }

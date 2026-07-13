@@ -19,7 +19,7 @@ export class SocketServerPlugin {
         origin: "*",
         methods: ["GET", "POST"],
       },
-      transports: ["websocket"],
+      transports: ["polling", "websocket"],
     });
 
     this.io = io;
@@ -34,11 +34,22 @@ export class SocketServerPlugin {
 
         const payload = await JwtPlugin.validateToken(token);
 
-        if (!payload || typeof payload !== "object" || !("id" in payload)) {
+        if (!payload || typeof payload !== "object") {
           return next(new Error("Invalid token"));
         }
 
-        socket.data.uid = String((payload as { id: string }).id);
+        const uid =
+          "id" in payload
+            ? String(payload.id)
+            : "uid" in payload
+              ? String(payload.uid)
+              : "";
+
+        if (!uid) {
+          return next(new Error("Invalid token"));
+        }
+
+        socket.data.uid = uid;
         next();
       } catch (_error) {
         next(new Error("Unauthorized"));

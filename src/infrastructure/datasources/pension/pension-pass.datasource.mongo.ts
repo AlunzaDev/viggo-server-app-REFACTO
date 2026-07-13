@@ -22,6 +22,35 @@ export class PensionPassMongoDatasource extends PensionPassDatasource {
         return PensionPassEntity.fromObject(pensionPassDocument.toObject());
     }
 
+    async findAvailableByPension(pensionId: string): Promise<PensionPassEntity | null> {
+        const pensionPassDocument = await PensionPassModel.findOne({
+            pension: pensionId,
+            usuario: null,
+            from: -1,
+            to: -1,
+            estado: true,
+        });
+
+        if (!pensionPassDocument) return null;
+
+        return PensionPassEntity.fromObject(pensionPassDocument.toObject());
+    }
+
+    async findByUsuarioAndPension(
+        usuarioId: string,
+        pensionId: string,
+    ): Promise<PensionPassEntity | null> {
+        const pensionPassDocument = await PensionPassModel.findOne({
+            usuario: usuarioId,
+            pension: pensionId,
+            estado: true,
+        });
+
+        if (!pensionPassDocument) return null;
+
+        return PensionPassEntity.fromObject(pensionPassDocument.toObject());
+    }
+
     async getAll(): Promise<PensionPassEntity[]> {
         const pensionPasses = await PensionPassModel.find();
         return pensionPasses.map((pensionPass) =>

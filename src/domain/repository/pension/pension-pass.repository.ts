@@ -4,6 +4,11 @@ export abstract class PensionPassRepository {
     abstract create(pensionPass: Omit<PensionPassEntity, "id">): Promise<PensionPassEntity>;
     abstract findById(id: string): Promise<PensionPassEntity | null>;
     abstract findByIdPass(idPass: string): Promise<PensionPassEntity | null>;
+    abstract findAvailableByPension(pensionId: string): Promise<PensionPassEntity | null>;
+    abstract findByUsuarioAndPension(
+        usuarioId: string,
+        pensionId: string,
+    ): Promise<PensionPassEntity | null>;
     abstract getAll(): Promise<PensionPassEntity[]>;
     abstract getByPension(pensionId: string): Promise<PensionPassEntity[]>;
     abstract getByUsuario(usuarioId: string): Promise<PensionPassEntity[]>;

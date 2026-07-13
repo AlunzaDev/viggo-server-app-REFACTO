@@ -17,6 +17,17 @@ export class PensionPassRepositoryImpl implements PensionPassRepository {
         return this.pensionPassDatasource.findByIdPass(idPass);
     }
 
+    findAvailableByPension(pensionId: string): Promise<PensionPassEntity | null> {
+        return this.pensionPassDatasource.findAvailableByPension(pensionId);
+    }
+
+    findByUsuarioAndPension(
+        usuarioId: string,
+        pensionId: string,
+    ): Promise<PensionPassEntity | null> {
+        return this.pensionPassDatasource.findByUsuarioAndPension(usuarioId, pensionId);
+    }
+
     getAll(): Promise<PensionPassEntity[]> {
         return this.pensionPassDatasource.getAll();
     }

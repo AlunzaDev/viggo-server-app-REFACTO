@@ -2,7 +2,7 @@ import { CustomError } from "../../errors/custom.error";
 
 export interface PensionPassEntityOptions {
     id: string;
-    usuario?: string;
+    usuario?: string | null;
     name: string;
     pension: string;
     idPass: string;
@@ -17,7 +17,7 @@ export interface PensionPassEntityOptions {
 
 export class PensionPassEntity {
     public id: string;
-    public usuario?: string;
+    public usuario?: string | null;
     public name: string;
     public pension: string;
     public idPass: string;

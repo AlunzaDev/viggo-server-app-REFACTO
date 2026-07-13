@@ -10,6 +10,7 @@ import { PensionRoutes } from "./pension/pension.routes";
 import { PensionPassRoutes } from "./pension/pension-pass.routes";
 import { PensionMoveRoutes } from "./pension/pension-move.routes";
 import { TicketPaymentRoutes } from "./payments/ticket-payment.routes";
+import { StripePaymentRoutes } from "./payments/stripe-payment.routes";
 
 export class AppRoutes {
   static get routes(): Router {
@@ -35,6 +36,7 @@ export class AppRoutes {
     router.use("/api/pension-pass", PensionPassRoutes.routes);
     router.use("/api/pension-moves", PensionMoveRoutes.routes);
     router.use("/api/payments", TicketPaymentRoutes.routes);
+    router.use("/api/stripe", StripePaymentRoutes.routes);
 
     return router;
   }

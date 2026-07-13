@@ -44,8 +44,7 @@ export class PensionMoveRoutes {
 
     router.post(
       "/",
-      //AuthMiddleware.requireAuth,
-      //adminRoles,
+      AuthMiddleware.requireAuth,
       controller.createPensionMove,
     );
     router.get("/", controller.getPensionMoves);

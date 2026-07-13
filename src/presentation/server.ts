@@ -4,6 +4,7 @@ import { createServer, Server as HttpServer } from "http";
 import { envs } from "../config/plugins/envs.plugin";
 import { MongoDatabase } from "../data/mongo";
 import { requestLoggingMiddleware } from "./middlewares/request-logging.middleware";
+import { SocketServerPlugin } from "./sockets/socket-server";
 
 interface ServerOptions {
   host?: string;
@@ -20,7 +21,12 @@ export class Server {
   private readonly publicPath: string;
   private readonly routes: Router;
 
-  constructor({ host = "0.0.0.0", port, publicPath = "public", routes }: ServerOptions) {
+  constructor({
+    host = "0.0.0.0",
+    port,
+    publicPath = "public",
+    routes,
+  }: ServerOptions) {
     this.host = host;
     this.port = port;
     this.publicPath = publicPath;
@@ -43,13 +49,18 @@ export class Server {
         "Access-Control-Allow-Headers",
         "Authorization, X-API-KEY, Origin, X-Requested-With, Content-Type, Accept, Access-Control-Allow-Request-Method",
       );
-      res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE");
-      res.header("Allow", "GET, POST, OPTIONS, PUT, DELETE");
+      res.header(
+        "Access-Control-Allow-Methods",
+        "GET, POST, OPTIONS, PUT, PATCH, DELETE",
+      );
+      res.header("Allow", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
 
       next();
     });
     this.app.use(requestLoggingMiddleware);
     this.app.use(this.routes);
+
+    SocketServerPlugin.init(this.httpServer);
 
     this.httpServer.listen(this.port, this.host, () => {
       console.log(`Server running on ${this.host}:${this.port}`);

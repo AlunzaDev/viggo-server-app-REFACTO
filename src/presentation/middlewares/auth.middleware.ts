@@ -12,20 +12,19 @@ export class AuthMiddleware {
   ) => {
     try {
       const authorization = req.header("Authorization");
+      const legacyToken = req.header("x-token");
 
-      if (!authorization) {
+      let token = legacyToken;
+
+      if (authorization?.startsWith("Bearer ")) {
+        token = authorization.split(" ")[1];
+      }
+
+      if (!token) {
         return res.status(401).json({
           error: "No token provided",
         });
       }
-
-      if (!authorization.startsWith("Bearer ")) {
-        return res.status(401).json({
-          error: "Invalid bearer token format",
-        });
-      }
-
-      const token = authorization.split(" ")[1];
 
       const payload = await JwtPlugin.validateToken(token);
 

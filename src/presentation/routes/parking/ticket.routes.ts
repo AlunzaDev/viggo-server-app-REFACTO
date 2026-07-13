@@ -33,25 +33,40 @@ export class TicketRoutes {
       AUTH_ROLES.SUPER,
     );
 
+    router.post("/", AuthMiddleware.requireAuth, controller.createTicket);
     router.post(
-      "/",
-      //AuthMiddleware.requireAuth,
-      //adminRoles,
-      controller.createTicket,
+      "/createTicket",
+      AuthMiddleware.requireAuth,
+      controller.createTicketLegacy,
     );
     router.get("/", controller.getTickets);
     router.get(
       "/usuario/:usuarioId/activo",
       controller.getActiveTicketByUsuario,
     );
-    router.get("/usuario/:usuarioId", controller.getTicketsByUsuario);
-    router.get("/:id", controller.getTicketById);
-    router.patch(
-      "/:id",
-      //AuthMiddleware.requireAuth,
-      //adminRoles,
-      controller.updateTicket,
+    router.get(
+      "/userHistoryTickets",
+      AuthMiddleware.requireAuth,
+      controller.getMyHistoryTickets,
     );
+    router.get(
+      "/currentTicket",
+      AuthMiddleware.requireAuth,
+      controller.getMyCurrentTicket,
+    );
+    router.get("/usuario/:usuarioId", controller.getTicketsByUsuario);
+    router.post(
+      "/payTicket",
+      AuthMiddleware.requireAuth,
+      controller.payTicketLegacy,
+    );
+    router.post(
+      "/killTicket",
+      AuthMiddleware.requireAuth,
+      controller.killTicketLegacy,
+    );
+    router.get("/:id", controller.getTicketById);
+    router.patch("/:id", AuthMiddleware.requireAuth, controller.updateTicket);
     router.delete(
       "/:id",
       AuthMiddleware.requireAuth,

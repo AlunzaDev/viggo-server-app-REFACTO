@@ -111,10 +111,12 @@ export class TicketController {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const tickets = await this.ticketService.getTicketsByUsuario(usuarioId);
-      const legacyTickets =
-        await this.ticketService.toLegacyTicketsResponse(tickets);
-      return res.status(200).json({ tickets: legacyTickets });
+      const response = await this.ticketService.getHistoryTicketsByUsuario(
+        usuarioId,
+        req.query,
+      );
+
+      return res.status(200).json(response);
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

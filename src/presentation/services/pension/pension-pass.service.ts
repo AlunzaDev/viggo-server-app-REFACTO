@@ -7,6 +7,12 @@ import { PensionPassRepository } from "../../../domain/repository/pension/pensio
 import { PensionMoveRepository } from "../../../domain/repository/pension/pension-move.repository";
 import { PensionRepository } from "../../../domain/repository/pension/pension.repository";
 import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
+import {
+  buildPaginatedResponse,
+  paginateArray,
+  parsePaginationDateQuery,
+  PaginationDateQuery,
+} from "../shared/pagination-query";
 import { SocketServerPlugin } from "../../sockets/socket-server";
 
 interface PensionPassCardResponse {
@@ -127,19 +133,30 @@ export class PensionPassService {
 
   async getPensionMovesByPensionPass(
     pensionPassId: string,
-  ): Promise<{ total: number; pensionMoves: PensionMoveResponse[] }> {
+    query: PaginationDateQuery = {},
+  ) {
     await this.getPensionPassById(pensionPassId);
+    const { page, limit, from, to } = parsePaginationDateQuery(query);
 
     const pensionMoves =
       await this.pensionMoveRepository.getByPensionPass(pensionPassId);
+    const filteredMoves = pensionMoves
+      .filter((pensionMove) => this.isInDateRange(pensionMove.fecha, from, to))
+      .sort((a, b) => b.fecha - a.fecha);
+    const paginatedMoves = paginateArray(filteredMoves, page, limit);
     const response = await Promise.all(
-      pensionMoves.map((pensionMove) => this.toPensionMoveResponse(pensionMove)),
+      paginatedMoves.map((pensionMove) =>
+        this.toPensionMoveResponse(pensionMove),
+      ),
     );
 
-    return {
-      total: response.length,
-      pensionMoves: response,
-    };
+    return buildPaginatedResponse(
+      "pensionMoves",
+      response,
+      filteredMoves.length,
+      page,
+      limit,
+    );
   }
 
   async precontractPensionPass(
@@ -489,5 +506,12 @@ export class PensionPassService {
         to: -1,
       });
     }, PRECONTRACT_RELEASE_MS);
+  }
+
+  private isInDateRange(value: number, from?: number, to?: number): boolean {
+    if (from !== undefined && value < from) return false;
+    if (to !== undefined && value > to) return false;
+
+    return true;
   }
 }

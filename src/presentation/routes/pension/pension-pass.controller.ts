@@ -121,7 +121,10 @@ export class PensionPassController {
     try {
       const id = String(req.params.id);
       const response =
-        await this.pensionPassService.getPensionMovesByPensionPass(id);
+        await this.pensionPassService.getPensionMovesByPensionPass(
+          id,
+          req.query,
+        );
 
       return res.status(200).json(response);
     } catch (error) {

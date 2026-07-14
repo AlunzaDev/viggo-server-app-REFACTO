@@ -1,5 +1,7 @@
 import Stripe from "stripe";
 import { envs } from "../../../config";
+import { PaymentModel } from "../../../data/mongo/models/payments/payment.schema";
+import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import { StripePlugin } from "../../../config/plugins/stripe.plugin";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { TicketRepository } from "../../../domain/repository/parking/ticket.repository";
@@ -64,6 +66,16 @@ export class TicketPaymentService {
         throw CustomError.notFound("Ticket no encontrado");
       }
 
+      await this.recordTicketPayment({
+        ticketId: ticket.id,
+        userId: ticket.usuario,
+        projectId: ticket.proyecto,
+        amount: ticket.monto,
+        paidAt: ticketUpdated.horaCobro,
+        paymentIntentId,
+        providerStatus: "succeeded",
+      });
+
       return {
         paymentIntent: {
           id: paymentIntentId,
@@ -97,6 +109,17 @@ export class TicketPaymentService {
     if (!ticketUpdated) {
       throw CustomError.notFound("Ticket no encontrado");
     }
+
+    await this.recordTicketPayment({
+      ticketId: ticket.id,
+      userId: ticket.usuario,
+      projectId: ticket.proyecto,
+      amount: ticket.monto,
+      paidAt: ticketUpdated.horaCobro,
+      paymentIntentId: paymentIntent.id,
+      providerStatus: paymentIntent.status,
+      paymentMethod: await this.resolvePaymentMethod(paymentIntent),
+    });
 
     return {
       paymentIntent: this.toPaymentIntentResponse(paymentIntent),
@@ -132,6 +155,76 @@ export class TicketPaymentService {
       amount: paymentIntent.amount,
       currency: paymentIntent.currency,
       status: paymentIntent.status,
+    };
+  }
+
+  private async recordTicketPayment(options: {
+    ticketId: string;
+    userId: string;
+    projectId: string;
+    amount: number;
+    paidAt: number;
+    paymentIntentId: string;
+    providerStatus: string;
+    paymentMethod?: {
+      brand?: string;
+      last4?: string;
+    };
+  }) {
+    const project = await ProyectoModel.findById(options.projectId);
+
+    await PaymentModel.findOneAndUpdate(
+      { stripePaymentIntentId: options.paymentIntentId },
+      {
+        $setOnInsert: {
+          user: options.userId,
+          type: "ticket",
+          concept: "Pago de ticket",
+          amount: options.amount,
+          currency: envs.STRIPE_CURRENCY.toUpperCase(),
+          status: "succeeded",
+          paidAt: options.paidAt,
+          stripePaymentIntentId: options.paymentIntentId,
+          paymentMethod: options.paymentMethod,
+          reference: {
+            type: "ticket",
+            id: options.ticketId,
+          },
+          parking: project
+            ? {
+                id: String(project._id),
+                name: String(project.get("nombre") ?? ""),
+                city: String(project.get("ciudad") ?? ""),
+              }
+            : undefined,
+          rawProviderStatus: options.providerStatus,
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+      },
+    );
+  }
+
+  private async resolvePaymentMethod(
+    paymentIntent: Stripe.PaymentIntent,
+  ): Promise<{ brand?: string; last4?: string } | undefined> {
+    const latestCharge = paymentIntent.latest_charge;
+
+    if (!latestCharge || typeof latestCharge !== "string") {
+      return undefined;
+    }
+
+    const charge = await StripePlugin.client.charges.retrieve(latestCharge);
+    const card = charge.payment_method_details?.card;
+
+    if (!card) return undefined;
+
+    return {
+      brand: card.brand ?? undefined,
+      last4: card.last4 ?? undefined,
     };
   }
 }

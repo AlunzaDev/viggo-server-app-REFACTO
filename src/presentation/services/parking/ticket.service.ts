@@ -4,6 +4,12 @@ import { CustomError } from "../../../domain/errors/custom.error";
 import { ModuloRepository } from "../../../domain/repository/parking/modulo.repository";
 import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
 import { TicketRepository } from "../../../domain/repository/parking/ticket.repository";
+import {
+  buildPaginatedResponse,
+  paginateArray,
+  parsePaginationDateQuery,
+  PaginationDateQuery,
+} from "../shared/pagination-query";
 import { SocketServerPlugin } from "../../sockets/socket-server";
 
 interface LegacyTicketResponse {
@@ -150,6 +156,27 @@ export class TicketService {
     return this.ticketRepository.getByUsuario(usuarioId);
   }
 
+  async getHistoryTicketsByUsuario(
+    usuarioId: string,
+    query: PaginationDateQuery,
+  ) {
+    const { page, limit, from, to } = parsePaginationDateQuery(query);
+    const tickets = await this.ticketRepository.getByUsuario(usuarioId);
+    const filteredTickets = tickets
+      .filter((ticket) => this.isInDateRange(ticket.horaInicio, from, to))
+      .sort((a, b) => b.horaInicio - a.horaInicio);
+    const paginatedTickets = paginateArray(filteredTickets, page, limit);
+    const legacyTickets = await this.toLegacyTicketsResponse(paginatedTickets);
+
+    return buildPaginatedResponse(
+      "tickets",
+      legacyTickets,
+      filteredTickets.length,
+      page,
+      limit,
+    );
+  }
+
   async getActiveTicketByUsuario(
     usuarioId: string,
   ): Promise<TicketEntity | null> {
@@ -285,5 +312,12 @@ export class TicketService {
 
   private calculateTicketAmount(minutes: number): number {
     return minutes < 60 ? 10 : 20;
+  }
+
+  private isInDateRange(value: number, from?: number, to?: number): boolean {
+    if (from !== undefined && value < from) return false;
+    if (to !== undefined && value > to) return false;
+
+    return true;
   }
 }

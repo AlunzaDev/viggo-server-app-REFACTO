@@ -53,4 +53,4 @@ services:
 
 secrets:
   backend_env:
-    file: ${BACKEND_ENV_FILE:-.env.docker}
+    file: ${BACKEND_ENV_FILE:-.env.dev}

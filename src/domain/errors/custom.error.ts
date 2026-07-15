@@ -43,7 +43,7 @@ export class CustomError extends Error {
                 }));
 
                 return CustomError.badRequest(
-                    "Hay datos invalidos en la solicitud",
+                    "Hay datos inválidos en la solicitud",
                     details,
                     "VALIDATION_ERROR",
                 );
@@ -51,7 +51,7 @@ export class CustomError extends Error {
 
             if (candidate.name === "CastError") {
                 return CustomError.badRequest(
-                    `El valor enviado para '${candidate.path}' no es valido`,
+                    `El valor enviado para '${candidate.path}' no es válido`,
                     {
                         field: candidate.path,
                         value: candidate.value,
@@ -86,7 +86,7 @@ export class CustomError extends Error {
 
             if (candidate.name === "JsonWebTokenError") {
                 return CustomError.unauthorized(
-                    "El token no es valido",
+                    "El token no es válido",
                     undefined,
                     "INVALID_TOKEN",
                 );

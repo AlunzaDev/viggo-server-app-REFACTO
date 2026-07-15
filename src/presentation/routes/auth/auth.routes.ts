@@ -1,31 +1,37 @@
 import { Router } from "express";
-import { envs } from "../../../config";
-import { AuthMongoDatasource } from "../../../infrastructure/datasources/auth/auth.datasource.mongo";
-import { AuthRepositoryImpl } from "../../../infrastructure/repositories/auth/auth.repository.impl";
-import { AuthController } from "./auth.controller";
-import { AuthService } from "../../services/auth/auth.service";
-import { EmailService } from "../../services/email/email.service";
+import { buildAuthController } from "../../dependencies";
+import { rateLimitMiddleware } from "../../middlewares";
 
 export class AuthRoutes {
   static get routes(): Router {
     const router = Router();
 
-    const datasource = new AuthMongoDatasource();
-    const repository = new AuthRepositoryImpl(datasource);
-    const emailService = new EmailService();
-    const service = new AuthService(
-      repository,
-      emailService,
-      envs.WEB_SERVICE_URL,
-    );
-    const controller = new AuthController(service);
+    const controller = buildAuthController();
+    const strictAuthRateLimit = rateLimitMiddleware({
+      windowMs: 15 * 60 * 1000,
+      maxRequests: 8,
+    });
+    const emailRateLimit = rateLimitMiddleware({
+      windowMs: 15 * 60 * 1000,
+      maxRequests: 4,
+    });
 
-    router.post("/register-user", controller.registerUser);
-    router.post("/login-correo", controller.loginCorreo);
-    router.post("/login-telefono", controller.loginTelefono);
-    router.post("/forgot-password", controller.forgotPassword);
+    router.post("/register-user", strictAuthRateLimit, controller.registerUser);
+    router.post("/login-correo", strictAuthRateLimit, controller.loginCorreo);
+    router.post(
+      "/login-telefono",
+      strictAuthRateLimit,
+      controller.loginTelefono,
+    );
+    router.post("/forgot-password", emailRateLimit, controller.forgotPassword);
+    router.post(
+      "/resend-validation-email",
+      emailRateLimit,
+      controller.resendValidationEmail,
+    );
     router.get("/reset-password/:token", controller.renderResetPasswordPage);
-    router.post("/reset-password", controller.resetPassword);
+    router.post("/reset-password", strictAuthRateLimit, controller.resetPassword);
+    router.get("/validate-email/:token", controller.validateEmail);
     router.get("/renew/:id", controller.renewToken);
 
     return router;

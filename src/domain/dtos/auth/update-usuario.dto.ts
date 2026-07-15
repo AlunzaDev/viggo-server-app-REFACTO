@@ -47,23 +47,23 @@ export class UpdateUsuarioDto {
 
     const google = typeof body.google === "boolean" ? body.google : undefined;
 
-    if (nombre !== undefined && !nombre) return ["'nombre' no puede ir vacio"];
+    if (nombre !== undefined && !nombre) return ["'nombre' no puede ir vacío"];
     if (apellido !== undefined && !apellido) {
-      return ["'apellido' no puede ir vacio"];
+      return ["'apellido' no puede ir vacío"];
     }
-    if (correo !== undefined && !correo) return ["'correo' no puede ir vacio"];
+    if (correo !== undefined && !correo) return ["'correo' no puede ir vacío"];
     if (telefono !== undefined && !telefono) {
-      return ["'telefono' no puede ir vacio"];
+      return ["'telefono' no puede ir vacío"];
     }
     if (password !== undefined && password.length < 6) {
       return ["'password' debe tener al menos 6 caracteres"];
     }
-    if (rol === null) return ["'rol' no es valido"];
+    if (rol === null) return ["'rol' no es válido"];
     if (coordinates?.some((value) => Number.isNaN(value))) {
-      return ["'coordinates' debe contener solo numeros"];
+      return ["'coordinates' debe contener solo números"];
     }
     if (nacimiento !== undefined && Number.isNaN(nacimiento)) {
-      return ["'nacimiento' debe ser numerico"];
+      return ["'nacimiento' debe ser numérico"];
     }
 
     return [

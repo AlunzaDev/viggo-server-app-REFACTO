@@ -20,4 +20,16 @@ export abstract class AuthDatasource {
   ): Promise<UsuarioEntity | null>;
 
   abstract resetPassword(userId: string, passwordHash: string): Promise<void>;
+
+  abstract saveEmailValidationToken(
+    userId: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ): Promise<void>;
+
+  abstract getUserByEmailValidationToken(
+    tokenHash: string,
+  ): Promise<UsuarioEntity | null>;
+
+  abstract consumeEmailValidationToken(userId: string): Promise<UsuarioEntity>;
 }

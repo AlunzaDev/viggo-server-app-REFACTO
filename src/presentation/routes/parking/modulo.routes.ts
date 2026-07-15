@@ -1,10 +1,5 @@
 import { Router } from "express";
-import { ModuloMongoDatasource } from "../../../infrastructure/datasources/parking/modulo.datasource.mongo";
-import { ProyectoMongoDatasource } from "../../../infrastructure/datasources/parking/proyecto.datasource.mongo";
-import { ModuloRepositoryImpl } from "../../../infrastructure/repositories/parking/modulo.repository.impl";
-import { ProyectoRepositoryImpl } from "../../../infrastructure/repositories/parking/proyecto.repository.impl";
-import { ModuloController } from "./modulo.controller";
-import { ModuloService } from "../../services/parking/modulo.service";
+import { buildModuloController } from "../../dependencies";
 import { AuthMiddleware } from "../../middlewares";
 import { AUTH_ROLES } from "../../../domain/constants";
 
@@ -12,14 +7,7 @@ export class ModuloRoutes {
   static get routes(): Router {
     const router = Router();
 
-    const moduloDatasource = new ModuloMongoDatasource();
-    const proyectoDatasource = new ProyectoMongoDatasource();
-
-    const moduloRepository = new ModuloRepositoryImpl(moduloDatasource);
-    const proyectoRepository = new ProyectoRepositoryImpl(proyectoDatasource);
-
-    const service = new ModuloService(moduloRepository, proyectoRepository);
-    const controller = new ModuloController(service);
+    const controller = buildModuloController();
     const adminRoles = AuthMiddleware.requireRoles(
       AUTH_ROLES.ADMIN,
       AUTH_ROLES.SUPER,

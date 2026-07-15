@@ -3,6 +3,7 @@ export * from "./auth/login-correo.dto";
 export * from "./auth/login-telefono.dto";
 export * from "./auth/create-usuario.dto";
 export * from "./auth/forgot-password.dto";
+export * from "./auth/resend-validation-email.dto";
 export * from "./auth/reset-password.dto";
 export * from "./auth/update-usuario.dto";
 export * from "./parking/create-proyecto.dto";

@@ -7,3 +7,5 @@ export * from "./plugins/password-policy.plugin";
 export * from "./html/resetPasswordEmailHtml";
 export * from "./html/resetPasswordExpiredHtml";
 export * from "./html/resetPasswordPageHtml";
+export * from "./html/validateEmailHtml";
+export * from "./html/emailValidationSuccessHtml";

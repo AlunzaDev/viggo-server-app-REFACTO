@@ -45,4 +45,26 @@ export class AuthRepositoryImpl implements AuthRepository {
   resetPassword(userId: string, passwordHash: string): Promise<void> {
     return this.authDatasource.resetPassword(userId, passwordHash);
   }
+
+  saveEmailValidationToken(
+    userId: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    return this.authDatasource.saveEmailValidationToken(
+      userId,
+      tokenHash,
+      expiresAt,
+    );
+  }
+
+  getUserByEmailValidationToken(
+    tokenHash: string,
+  ): Promise<UsuarioEntity | null> {
+    return this.authDatasource.getUserByEmailValidationToken(tokenHash);
+  }
+
+  consumeEmailValidationToken(userId: string): Promise<UsuarioEntity> {
+    return this.authDatasource.consumeEmailValidationToken(userId);
+  }
 }

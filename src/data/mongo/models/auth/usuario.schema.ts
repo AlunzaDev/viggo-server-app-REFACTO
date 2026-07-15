@@ -20,9 +20,21 @@ const usuarioSchema = new Schema(
       trim: true,
       lowercase: true,
     },
+    emailValidated: {
+      type: Boolean,
+      default: false,
+    },
+    emailValidationToken: {
+      type: String,
+      default: undefined,
+    },
+    emailValidationExpiresAt: {
+      type: Date,
+      default: undefined,
+    },
     telefono: {
       type: String,
-      required: [true, "El telefono es obligatorio"],
+      required: [true, "El teléfono es obligatorio"],
       unique: true,
       trim: true,
     },
@@ -32,7 +44,7 @@ const usuarioSchema = new Schema(
     },
     password: {
       type: String,
-      required: [true, "La contrasena es obligatoria"],
+      required: [true, "La contraseña es obligatoria"],
     },
     passwordResetToken: {
       type: String,
@@ -73,6 +85,8 @@ const usuarioSchema = new Schema(
         serialized.id = String(serialized._id);
         delete serialized._id;
         delete serialized.password;
+        delete serialized.emailValidationToken;
+        delete serialized.emailValidationExpiresAt;
         delete serialized.passwordResetToken;
         delete serialized.passwordResetExpiresAt;
         return serialized;

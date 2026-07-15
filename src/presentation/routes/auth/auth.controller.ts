@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import {
   ForgotPasswordDto,
+  ResendValidationEmailDto,
   ResetPasswordDto,
 } from "../../../domain/dtos";
 import { LoginCorreoDto } from "../../../domain/dtos/auth/login-correo.dto";
@@ -8,7 +9,7 @@ import { LoginTelefonoDto } from "../../../domain/dtos/auth/login-telefono.dto";
 import { RegisterUserDto } from "../../../domain/dtos/auth/register-user.dto";
 import { ErrorService } from "../../services/error.service";
 import { AuthService } from "../../services/auth/auth.service";
-
+import { emailValidationSuccessHtml } from "../../../config";
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -92,6 +93,31 @@ export class AuthController {
     try {
       const id = String(req.params.id);
       const result = await this.authService.renewToken(id);
+      return res.status(200).json(result);
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  validateEmail = async (req: Request, res: Response) => {
+    try {
+      const token = String(req.params.token ?? "").trim();
+      await this.authService.validateEmail(token);
+      return res.status(200).type("html").send(emailValidationSuccessHtml());
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  resendValidationEmail = async (req: Request, res: Response) => {
+    try {
+      const [error, resendValidationEmailDto] =
+        ResendValidationEmailDto.create(req.body);
+      if (error) return res.status(400).json({ error });
+
+      const result = await this.authService.resendValidationEmail(
+        resendValidationEmailDto!,
+      );
       return res.status(200).json(result);
     } catch (error) {
       return ErrorService.handleApiError(error, res);

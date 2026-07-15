@@ -13,6 +13,7 @@ export class CreateUsuarioDto {
     public readonly img?: string,
     public readonly estado: boolean = true,
     public readonly google: boolean = false,
+    public readonly emailValidated: boolean = false,
   ) {}
 
   static create(body: Record<string, unknown>): [string?, CreateUsuarioDto?] {
@@ -49,6 +50,8 @@ export class CreateUsuarioDto {
 
     const estado = typeof body.estado === "boolean" ? body.estado : true;
     const google = typeof body.google === "boolean" ? body.google : false;
+    const emailValidated =
+      typeof body.emailValidated === "boolean" ? body.emailValidated : false;
 
     if (!nombre) return ["'nombre' es requerido"];
     if (!apellido) return ["'apellido' es requerido"];
@@ -58,12 +61,12 @@ export class CreateUsuarioDto {
     if (password.length < 6) {
       return ["'password' debe tener al menos 6 caracteres"];
     }
-    if (rol === null) return ["'rol' no es valido"];
+    if (rol === null) return ["'rol' no es válido"];
     if (coordinates?.some((value) => Number.isNaN(value))) {
-      return ["'coordinates' debe contener solo numeros"];
+      return ["'coordinates' debe contener solo números"];
     }
     if (nacimiento !== undefined && Number.isNaN(nacimiento)) {
-      return ["'nacimiento' debe ser numerico"];
+      return ["'nacimiento' debe ser numérico"];
     }
 
     return [
@@ -80,6 +83,7 @@ export class CreateUsuarioDto {
         img,
         estado,
         google,
+        emailValidated,
       ),
     ];
   }

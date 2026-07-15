@@ -9,7 +9,9 @@ export class UsuarioService {
   constructor(private readonly usuarioRepository: UsuarioRepository) {}
 
   async createUsuario(
-    usuario: Omit<UsuarioEntity, "id">,
+    usuario: Omit<UsuarioEntity, "id" | "emailValidated"> & {
+      emailValidated?: boolean;
+    },
   ): Promise<SafeUsuario> {
     await this.validateUniqueFields(undefined, usuario);
 
@@ -17,6 +19,7 @@ export class UsuarioService {
 
     const usuarioCreated = await this.usuarioRepository.create({
       ...usuario,
+      emailValidated: usuario.emailValidated ?? false,
       password: hashedPassword,
     });
 
@@ -97,7 +100,7 @@ export class UsuarioService {
       );
 
       if (userByCorreo && userByCorreo.id !== id) {
-        throw CustomError.badRequest("El correo ya esta registrado");
+        throw CustomError.badRequest("El correo ya está registrado");
       }
     }
 
@@ -107,7 +110,7 @@ export class UsuarioService {
       );
 
       if (userByTelefono && userByTelefono.id !== id) {
-        throw CustomError.badRequest("El telefono ya esta registrado");
+        throw CustomError.badRequest("El teléfono ya está registrado");
       }
     }
   }

@@ -93,4 +93,62 @@ export class AuthMongoDatasource extends AuthDatasource {
       throw CustomError.notFound("Usuario no encontrado");
     }
   }
+
+  async saveEmailValidationToken(
+    userId: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    const result = await UsuarioModel.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          emailValidationToken: tokenHash,
+          emailValidationExpiresAt: expiresAt,
+          emailValidated: false,
+        },
+      },
+    );
+
+    if (!result.matchedCount) {
+      throw CustomError.notFound("Usuario no encontrado");
+    }
+  }
+
+  async getUserByEmailValidationToken(
+    tokenHash: string,
+  ): Promise<UsuarioEntity | null> {
+    const userDocument = await UsuarioModel.findOne({
+      emailValidationToken: tokenHash,
+      emailValidationExpiresAt: { $gt: new Date() },
+      emailValidated: false,
+    });
+
+    if (!userDocument) return null;
+
+    return UsuarioEntity.fromObject(userDocument.toObject());
+  }
+
+  async consumeEmailValidationToken(userId: string): Promise<UsuarioEntity> {
+    const userDocument = await UsuarioModel.findOneAndUpdate(
+      {
+        _id: userId,
+        emailValidated: false,
+      },
+      {
+        $set: { emailValidated: true },
+        $unset: {
+          emailValidationToken: 1,
+          emailValidationExpiresAt: 1,
+        },
+      },
+      { new: true },
+    );
+
+    if (!userDocument) {
+      throw CustomError.unauthorized("Token inválido, expirado o ya utilizado");
+    }
+
+    return UsuarioEntity.fromObject(userDocument.toObject());
+  }
 }

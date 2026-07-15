@@ -27,7 +27,7 @@ export const resetPasswordPageHtml = (
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Nueva contrasena - COTIZA</title>
+  <title>Nueva contraseña - Viggo</title>
   <style>
     :root {
       color-scheme: dark;
@@ -257,21 +257,21 @@ export const resetPasswordPageHtml = (
 <body>
   <section class="card">
     <div class="brand">COTIZA</div>
-    <h1>Crea tu nueva contrasena</h1>
-    <p id="intro-copy">Ingresa una nueva contrasena para completar la recuperacion de tu cuenta.</p>
+    <h1>Crea tu nueva contraseña</h1>
+    <p id="intro-copy">Ingresa una nueva contraseña para completar la recuperación de tu cuenta.</p>
 
     <form id="reset-form">
       <input type="hidden" id="token" name="token" value="${hiddenToken}" />
 
       <div class="field">
-        <label for="newPassword">Nueva contrasena</label>
+        <label for="newPassword">Nueva contraseña</label>
         <div class="password-shell">
           <input id="newPassword" name="newPassword" type="password" minlength="8" required autocomplete="new-password" />
           <button
             type="button"
             class="toggle-password"
             data-toggle-password="newPassword"
-            aria-label="Mostrar contrasena"
+            aria-label="Mostrar contraseña"
             aria-pressed="false"
           >
             <svg class="icon-show" viewBox="0 0 24 24" aria-hidden="true">
@@ -289,14 +289,14 @@ export const resetPasswordPageHtml = (
       </div>
 
       <div class="field">
-        <label for="confirmPassword">Confirmar contrasena</label>
+        <label for="confirmPassword">Confirmar contraseña</label>
         <div class="password-shell">
           <input id="confirmPassword" name="confirmPassword" type="password" minlength="8" required autocomplete="new-password" />
           <button
             type="button"
             class="toggle-password"
             data-toggle-password="confirmPassword"
-            aria-label="Mostrar contrasena"
+            aria-label="Mostrar contraseña"
             aria-pressed="false"
           >
             <svg class="icon-show" viewBox="0 0 24 24" aria-hidden="true">
@@ -315,7 +315,7 @@ export const resetPasswordPageHtml = (
 
       <div class="policy">Usa al menos 8 caracteres, una mayuscula, una minuscula y un numero.</div>
 
-      <button class="submit" id="submit" type="submit">Guardar nueva contrasena</button>
+      <button class="submit" id="submit" type="submit">Guardar nueva contraseña</button>
       <div id="message" class="message"></div>
 
       <div id="success-panel" class="success-panel" aria-live="polite">
@@ -376,7 +376,7 @@ export const resetPasswordPageHtml = (
       button.setAttribute("aria-pressed", String(visible));
       button.setAttribute(
         "aria-label",
-        visible ? "Ocultar contrasena" : "Mostrar contrasena"
+        visible ? "Ocultar contraseña" : "Mostrar contraseña"
       );
     };
 
@@ -443,12 +443,12 @@ export const resetPasswordPageHtml = (
       }
 
       if (newPassword !== confirmPassword) {
-        setMessage("Las contrasenas no coinciden.", "error");
+        setMessage("Las contraseñas no coinciden.", "error");
         return;
       }
 
       submitButton.disabled = true;
-      setMessage("Guardando tu nueva contrasena...", "success");
+      setMessage("Guardando tu nueva contraseña...", "success");
 
       try {
         const response = await fetch(submitUrl, {
@@ -465,14 +465,14 @@ export const resetPasswordPageHtml = (
 
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(data.error || data.message || "No fue posible restablecer la contrasena.");
+          throw new Error(data.error || data.message || "No fue posible restablecer la contraseña.");
         }
 
         showSuccessState(
-          data.message || "Tu contrasena se actualizo correctamente. Ya puedes iniciar sesion."
+          data.message || "Tu contraseña se actualizó correctamente. Ya puedes iniciar sesión."
         );
       } catch (error) {
-        setMessage(error.message || "No fue posible restablecer la contrasena.", "error");
+        setMessage(error.message || "No fue posible restablecer la contraseña.", "error");
       } finally {
         submitButton.disabled = false;
       }

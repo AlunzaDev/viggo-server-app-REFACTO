@@ -1,6 +1,7 @@
 import { UsuarioEntity } from "../../entities/auth/usuario.entity";
 
 export abstract class UsuarioRepository {
+  abstract create(usuario: Omit<UsuarioEntity, "id">): Promise<UsuarioEntity>;
   abstract findById(id: string): Promise<UsuarioEntity | null>;
   abstract findByCorreo(correo: string): Promise<UsuarioEntity | null>;
   abstract findByTelefono(telefono: string): Promise<UsuarioEntity | null>;

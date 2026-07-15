@@ -1,4 +1,7 @@
-import { ModuloDatasource } from "../../../domain/datasources/parking/modulo.datasource";
+import {
+    ModuloDatasource,
+    ModuloFilters,
+} from "../../../domain/datasources/parking/modulo.datasource";
 import { ModuloEntity } from "../../../domain/entities/parking/modulo.entity";
 import { ModuloRepository } from "../../../domain/repository/parking/modulo.repository";
 
@@ -19,6 +22,10 @@ export class ModuloRepositoryImpl implements ModuloRepository {
 
     getAll(): Promise<ModuloEntity[]> {
         return this.moduloDatasource.getAll();
+    }
+
+    getFiltered(filters: ModuloFilters): Promise<ModuloEntity[]> {
+        return this.moduloDatasource.getFiltered(filters);
     }
 
     getByProyecto(proyectoId: string): Promise<ModuloEntity[]> {

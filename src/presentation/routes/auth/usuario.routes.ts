@@ -21,6 +21,7 @@ export class UsuarioRoutes {
 
     router.use(AuthMiddleware.requireAuth, adminRoles);
 
+    router.post("/", controller.createUsuario);
     router.get("/", controller.getUsuarios);
     router.get("/:id", controller.getUsuarioById);
     router.patch("/:id/status", controller.updateUsuarioStatus);

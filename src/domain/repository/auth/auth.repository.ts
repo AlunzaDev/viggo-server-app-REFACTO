@@ -5,4 +5,19 @@ export abstract class AuthRepository {
   abstract findByCorreo(correo: string): Promise<UsuarioEntity | null>;
   abstract findByTelefono(telefono: string): Promise<UsuarioEntity | null>;
   abstract findById(id: string): Promise<UsuarioEntity | null>;
+  abstract updatePassword(
+    id: string,
+    password: string,
+  ): Promise<UsuarioEntity | null>;
+  abstract savePasswordResetToken(
+    userId: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ): Promise<void>;
+
+  abstract getUserByPasswordResetToken(
+    tokenHash: string,
+  ): Promise<UsuarioEntity | null>;
+
+  abstract resetPassword(userId: string, passwordHash: string): Promise<void>;
 }

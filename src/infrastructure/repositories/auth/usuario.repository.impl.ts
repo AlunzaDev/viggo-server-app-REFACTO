@@ -5,6 +5,10 @@ import { UsuarioRepository } from "../../../domain/repository/auth/usuario.repos
 export class UsuarioRepositoryImpl implements UsuarioRepository {
   constructor(private readonly usuarioDatasource: UsuarioDatasource) {}
 
+  create(usuario: Omit<UsuarioEntity, "id">): Promise<UsuarioEntity> {
+    return this.usuarioDatasource.create(usuario);
+  }
+
   findById(id: string): Promise<UsuarioEntity | null> {
     return this.usuarioDatasource.findById(id);
   }

@@ -1,10 +1,23 @@
 import { Request, Response } from "express";
+import { CreateUsuarioDto } from "../../../domain/dtos/auth/create-usuario.dto";
 import { UpdateUsuarioDto } from "../../../domain/dtos/auth/update-usuario.dto";
 import { ErrorService } from "../../services/error.service";
 import { UsuarioService } from "../../services/auth/usuario.service";
 
 export class UsuarioController {
   constructor(private readonly usuarioService: UsuarioService) {}
+
+  createUsuario = async (req: Request, res: Response) => {
+    try {
+      const [error, createUsuarioDto] = CreateUsuarioDto.create(req.body);
+      if (error) return res.status(400).json({ error });
+
+      const usuario = await this.usuarioService.createUsuario(createUsuarioDto!);
+      return res.status(201).json({ usuario });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
 
   getUsuarios = async (_req: Request, res: Response) => {
     try {

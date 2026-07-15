@@ -8,6 +8,21 @@ type SafeUsuario = Omit<UsuarioEntity, "password">;
 export class UsuarioService {
   constructor(private readonly usuarioRepository: UsuarioRepository) {}
 
+  async createUsuario(
+    usuario: Omit<UsuarioEntity, "id">,
+  ): Promise<SafeUsuario> {
+    await this.validateUniqueFields(undefined, usuario);
+
+    const hashedPassword = bcryptPlugin.hash(usuario.password);
+
+    const usuarioCreated = await this.usuarioRepository.create({
+      ...usuario,
+      password: hashedPassword,
+    });
+
+    return this.toSafeUsuario(usuarioCreated);
+  }
+
   async getUsuarios(): Promise<SafeUsuario[]> {
     const usuarios = await this.usuarioRepository.getAll();
     return usuarios.map((usuario) => this.toSafeUsuario(usuario));
@@ -73,7 +88,7 @@ export class UsuarioService {
   }
 
   private async validateUniqueFields(
-    id: string,
+    id: string | undefined,
     usuario: Partial<Omit<UsuarioEntity, "id">>,
   ) {
     if (usuario.correo) {

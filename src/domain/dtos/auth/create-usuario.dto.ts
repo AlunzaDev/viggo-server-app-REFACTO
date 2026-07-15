@@ -1,6 +1,6 @@
-import { AUTH_ROLES, UsuarioRol } from "../../constants";
+import { AUTH_ROLES, isUsuarioRol, UsuarioRol } from "../../constants";
 
-export class RegisterUserDto {
+export class CreateUsuarioDto {
   private constructor(
     public readonly nombre: string,
     public readonly apellido: string,
@@ -15,7 +15,7 @@ export class RegisterUserDto {
     public readonly google: boolean = false,
   ) {}
 
-  static create(body: Record<string, unknown>): [string?, RegisterUserDto?] {
+  static create(body: Record<string, unknown>): [string?, CreateUsuarioDto?] {
     const nombre = typeof body.nombre === "string" ? body.nombre.trim() : "";
     const apellido =
       typeof body.apellido === "string" ? body.apellido.trim() : "";
@@ -24,9 +24,12 @@ export class RegisterUserDto {
     const telefono =
       typeof body.telefono === "string" ? body.telefono.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
-    // El registro publico siempre crea clientes finales.
-    // Los roles administrativos solo deben asignarse desde flujos protegidos.
-    const rol = AUTH_ROLES.CLIENT;
+    const rol =
+      body.rol === undefined
+        ? AUTH_ROLES.CLIENT
+        : isUsuarioRol(body.rol)
+          ? body.rol
+          : null;
 
     const coordinates = Array.isArray(body.coordinates)
       ? body.coordinates.map((value) => Number(value))
@@ -45,7 +48,6 @@ export class RegisterUserDto {
         : undefined;
 
     const estado = typeof body.estado === "boolean" ? body.estado : true;
-
     const google = typeof body.google === "boolean" ? body.google : false;
 
     if (!nombre) return ["'nombre' es requerido"];
@@ -56,10 +58,17 @@ export class RegisterUserDto {
     if (password.length < 6) {
       return ["'password' debe tener al menos 6 caracteres"];
     }
+    if (rol === null) return ["'rol' no es valido"];
+    if (coordinates?.some((value) => Number.isNaN(value))) {
+      return ["'coordinates' debe contener solo numeros"];
+    }
+    if (nacimiento !== undefined && Number.isNaN(nacimiento)) {
+      return ["'nacimiento' debe ser numerico"];
+    }
 
     return [
       undefined,
-      new RegisterUserDto(
+      new CreateUsuarioDto(
         nombre,
         apellido,
         correo,

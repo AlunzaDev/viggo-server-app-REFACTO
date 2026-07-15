@@ -3,6 +3,11 @@ import { UsuarioDatasource } from "../../../domain/datasources/auth/usuario.data
 import { UsuarioEntity } from "../../../domain/entities/auth/usuario.entity";
 
 export class UsuarioMongoDatasource extends UsuarioDatasource {
+  async create(usuario: Omit<UsuarioEntity, "id">): Promise<UsuarioEntity> {
+    const usuarioDocument = await UsuarioModel.create(usuario);
+    return UsuarioEntity.fromObject(usuarioDocument.toObject());
+  }
+
   async findById(id: string): Promise<UsuarioEntity | null> {
     const usuarioDocument = await UsuarioModel.findById(id);
     if (!usuarioDocument) return null;

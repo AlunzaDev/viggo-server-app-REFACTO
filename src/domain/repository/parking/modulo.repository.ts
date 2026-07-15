@@ -1,3 +1,4 @@
+import { ModuloFilters } from "../../datasources/parking/modulo.datasource";
 import { ModuloEntity } from "../../entities/parking/modulo.entity";
 
 export abstract class ModuloRepository {
@@ -5,6 +6,7 @@ export abstract class ModuloRepository {
     abstract findById(id: string): Promise<ModuloEntity | null>;
     abstract findByIdentificador(identificador: string): Promise<ModuloEntity | null>;
     abstract getAll(): Promise<ModuloEntity[]>;
+    abstract getFiltered(filters: ModuloFilters): Promise<ModuloEntity[]>;
     abstract getByProyecto(proyectoId: string): Promise<ModuloEntity[]>;
     abstract update(
         id: string,

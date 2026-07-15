@@ -20,4 +20,29 @@ export class AuthRepositoryImpl implements AuthRepository {
   findById(id: string): Promise<UsuarioEntity | null> {
     return this.authDatasource.findById(id);
   }
+
+  updatePassword(id: string, password: string): Promise<UsuarioEntity | null> {
+    return this.authDatasource.updatePassword(id, password);
+  }
+  savePasswordResetToken(
+    userId: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    return this.authDatasource.savePasswordResetToken(
+      userId,
+      tokenHash,
+      expiresAt,
+    );
+  }
+
+  getUserByPasswordResetToken(
+    tokenHash: string,
+  ): Promise<UsuarioEntity | null> {
+    return this.authDatasource.getUserByPasswordResetToken(tokenHash);
+  }
+
+  resetPassword(userId: string, passwordHash: string): Promise<void> {
+    return this.authDatasource.resetPassword(userId, passwordHash);
+  }
 }

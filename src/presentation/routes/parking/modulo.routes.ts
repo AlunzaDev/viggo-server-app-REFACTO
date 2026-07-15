@@ -33,6 +33,10 @@ export class ModuloRoutes {
     );
     router.get("/", controller.getModulos);
     router.get("/proyecto/:proyectoId", controller.getModulosByProyecto);
+    router.get(
+      "/identificador/:identificador",
+      controller.getModuloByIdentificador,
+    );
     router.get("/:id", controller.getModuloById);
     router.patch(
       "/:id/status",

@@ -1,5 +1,8 @@
 import { ModuloModel } from "../../../data/mongo/models/parking/modulo.schema";
-import { ModuloDatasource } from "../../../domain/datasources/parking/modulo.datasource";
+import {
+    ModuloDatasource,
+    ModuloFilters,
+} from "../../../domain/datasources/parking/modulo.datasource";
 import { ModuloEntity } from "../../../domain/entities/parking/modulo.entity";
 
 export class ModuloMongoDatasource extends ModuloDatasource {
@@ -24,6 +27,17 @@ export class ModuloMongoDatasource extends ModuloDatasource {
 
     async getAll(): Promise<ModuloEntity[]> {
         const modulos = await ModuloModel.find();
+        return modulos.map((modulo) => ModuloEntity.fromObject(modulo.toObject()));
+    }
+
+    async getFiltered(filters: ModuloFilters): Promise<ModuloEntity[]> {
+        const query: Record<string, unknown> = {};
+
+        if (filters.proyecto) query.proyecto = filters.proyecto;
+        if (filters.tipo) query.tipo = filters.tipo;
+        if (typeof filters.estado === "boolean") query.estado = filters.estado;
+
+        const modulos = await ModuloModel.find(query);
         return modulos.map((modulo) => ModuloEntity.fromObject(modulo.toObject()));
     }
 

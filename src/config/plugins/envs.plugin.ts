@@ -95,6 +95,10 @@ export const envs = {
   MAILER_EMAIL: env.get("MAILER_EMAIL").default("").asString(),
   MAILER_SECRET_KEY: env.get("MAILER_SECRET_KEY").default("").asString(),
   MAILER_SERVICE: env.get("MAILER_SERVICE").default("").asString(),
+  MAILER_HOST: env.get("MAILER_HOST").default("").asString(),
+  MAILER_PORT: env.get("MAILER_PORT").default("465").asPortNumber(),
+  MAILER_SECURE: env.get("MAILER_SECURE").default("true").asBool(),
+  MAILER_FROM_NAME: env.get("MAILER_FROM_NAME").default("").asString(),
 
   HOST: env.get("HOST").default("0.0.0.0").asString(),
   PORT: env.get("PORT").required().asPortNumber() ?? 8080,

@@ -7,6 +7,17 @@ import { ModuloService } from "../../services/parking/modulo.service";
 export class ModuloController {
   constructor(private readonly moduloService: ModuloService) {}
 
+  private parseResolveDeviceBindingRequestBody(body: Record<string, unknown>): {
+    fingerprint?: string;
+    notes?: string;
+  } {
+    return {
+      fingerprint:
+        typeof body.fingerprint === "string" ? body.fingerprint.trim() : undefined,
+      notes: typeof body.notes === "string" ? body.notes.trim() : undefined,
+    };
+  }
+
   private parseEstado(value: unknown): boolean | undefined | null {
     if (value === undefined) return undefined;
     if (typeof value === "boolean") return value;
@@ -24,7 +35,11 @@ export class ModuloController {
       const [error, createModuloDto] = CreateModuloDto.create(req.body);
       if (error) return res.status(400).json({ error });
 
-      const modulo = await this.moduloService.createModulo(createModuloDto!);
+      const modulo = await this.moduloService.createModulo({
+        ...createModuloDto!,
+        deviceBinding: null,
+        deviceBindingRequests: [],
+      });
       return res.status(201).json({ modulo });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -53,6 +68,19 @@ export class ModuloController {
           })
         : await this.moduloService.getModulos();
 
+      return res.status(200).json({ modulos });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  getModulosWithPendingDeviceBindingRequests = async (
+    _req: Request,
+    res: Response,
+  ) => {
+    try {
+      const modulos =
+        await this.moduloService.getModulosWithPendingDeviceBindingRequests();
       return res.status(200).json({ modulos });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -113,6 +141,42 @@ export class ModuloController {
       }
 
       const modulo = await this.moduloService.updateModuloStatus(id, estado);
+      return res.status(200).json({ modulo });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  resetDeviceBinding = async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.id);
+      const modulo = await this.moduloService.resetDeviceBinding(id);
+      return res.status(200).json({ modulo });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  approveDeviceBindingRequest = async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.id);
+      const modulo = await this.moduloService.approveDeviceBindingRequest(
+        id,
+        this.parseResolveDeviceBindingRequestBody(req.body as Record<string, unknown>),
+      );
+      return res.status(200).json({ modulo });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  rejectDeviceBindingRequest = async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.id);
+      const modulo = await this.moduloService.rejectDeviceBindingRequest(
+        id,
+        this.parseResolveDeviceBindingRequestBody(req.body as Record<string, unknown>),
+      );
       return res.status(200).json({ modulo });
     } catch (error) {
       return ErrorService.handleApiError(error, res);

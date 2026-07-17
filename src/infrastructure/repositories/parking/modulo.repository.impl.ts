@@ -24,6 +24,10 @@ export class ModuloRepositoryImpl implements ModuloRepository {
         return this.moduloDatasource.getAll();
     }
 
+    getWithPendingDeviceBindingRequests(): Promise<ModuloEntity[]> {
+        return this.moduloDatasource.getWithPendingDeviceBindingRequests();
+    }
+
     getFiltered(filters: ModuloFilters): Promise<ModuloEntity[]> {
         return this.moduloDatasource.getFiltered(filters);
     }
@@ -37,6 +41,10 @@ export class ModuloRepositoryImpl implements ModuloRepository {
         modulo: Partial<Omit<ModuloEntity, "id">>,
     ): Promise<ModuloEntity | null> {
         return this.moduloDatasource.update(id, modulo);
+    }
+
+    resetDeviceBinding(id: string): Promise<ModuloEntity | null> {
+        return this.moduloDatasource.resetDeviceBinding(id);
     }
 
     delete(id: string): Promise<ModuloEntity | null> {

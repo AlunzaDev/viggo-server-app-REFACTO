@@ -30,6 +30,13 @@ export class ModuloMongoDatasource extends ModuloDatasource {
         return modulos.map((modulo) => ModuloEntity.fromObject(modulo.toObject()));
     }
 
+    async getWithPendingDeviceBindingRequests(): Promise<ModuloEntity[]> {
+        const modulos = await ModuloModel.find({
+            "deviceBindingRequests.status": "PENDING",
+        });
+        return modulos.map((modulo) => ModuloEntity.fromObject(modulo.toObject()));
+    }
+
     async getFiltered(filters: ModuloFilters): Promise<ModuloEntity[]> {
         const query: Record<string, unknown> = {};
 
@@ -53,6 +60,18 @@ export class ModuloMongoDatasource extends ModuloDatasource {
         const moduloDocument = await ModuloModel.findByIdAndUpdate(id, modulo, {
             new: true,
         });
+
+        if (!moduloDocument) return null;
+
+        return ModuloEntity.fromObject(moduloDocument.toObject());
+    }
+
+    async resetDeviceBinding(id: string): Promise<ModuloEntity | null> {
+        const moduloDocument = await ModuloModel.findByIdAndUpdate(
+            id,
+            { $set: { deviceBinding: null } },
+            { new: true },
+        );
 
         if (!moduloDocument) return null;
 

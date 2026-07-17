@@ -19,6 +19,12 @@ export class ModuloRoutes {
       adminRoles,
       controller.createModulo,
     );
+    router.get(
+      "/pending-device-bindings",
+      AuthMiddleware.requireAuth,
+      adminRoles,
+      controller.getModulosWithPendingDeviceBindingRequests,
+    );
     router.get("/", controller.getModulos);
     router.get("/proyecto/:proyectoId", controller.getModulosByProyecto);
     router.get(
@@ -31,6 +37,24 @@ export class ModuloRoutes {
       AuthMiddleware.requireAuth,
       adminRoles,
       controller.updateModuloStatus,
+    );
+    router.patch(
+      "/:id/device-binding/reset",
+      AuthMiddleware.requireAuth,
+      adminRoles,
+      controller.resetDeviceBinding,
+    );
+    router.patch(
+      "/:id/device-binding/approve",
+      AuthMiddleware.requireAuth,
+      adminRoles,
+      controller.approveDeviceBindingRequest,
+    );
+    router.patch(
+      "/:id/device-binding/reject",
+      AuthMiddleware.requireAuth,
+      adminRoles,
+      controller.rejectDeviceBindingRequest,
     );
     router.patch(
       "/:id",

@@ -20,11 +20,11 @@ const buildProyectoRepository = () =>
 const buildTicketRepository = () =>
   new TicketRepositoryImpl(new TicketMongoDatasource());
 
+export const buildModuloService = (): ModuloService =>
+  new ModuloService(buildModuloRepository(), buildProyectoRepository());
+
 export const buildModuloController = (): ModuloController => {
-  const service = new ModuloService(
-    buildModuloRepository(),
-    buildProyectoRepository(),
-  );
+  const service = buildModuloService();
 
   return new ModuloController(service);
 };

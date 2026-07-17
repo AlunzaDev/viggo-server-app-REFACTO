@@ -3,15 +3,28 @@ import { Server as SocketServer, Socket } from "socket.io";
 import { envs } from "../../config";
 import { JwtPlugin } from "../../config/plugins/jwt.plugin";
 import { CustomError } from "../../domain/errors/custom.error";
+import { ModuloMongoDatasource } from "../../infrastructure/datasources/parking/modulo.datasource.mongo";
+import { ProyectoMongoDatasource } from "../../infrastructure/datasources/parking/proyecto.datasource.mongo";
+import { ModuloRepositoryImpl } from "../../infrastructure/repositories/parking/modulo.repository.impl";
+import { ProyectoRepositoryImpl } from "../../infrastructure/repositories/parking/proyecto.repository.impl";
+import { ModuloService } from "../services/parking/modulo.service";
 
 interface OpenBarrierResponse {
   ok?: boolean;
   error?: string;
+  code?: string;
+}
+
+interface DeviceIdentityPayload {
+  cpu_serial?: string;
+  machine_id?: string;
+  primary_mac?: string;
 }
 
 export class SocketServerPlugin {
   private static io?: SocketServer;
   private static connectedDevices = new Map<string, string>();
+  private static moduloService = createModuloService();
 
   static init(httpServer: HttpServer) {
     const io = new SocketServer(httpServer, {
@@ -68,7 +81,17 @@ export class SocketServerPlugin {
       socket.on(
         "registrarDispositivo",
         async (
-          { moduleToken }: { moduleToken?: string },
+          {
+            moduleToken,
+            moduleId,
+            deviceFingerprint,
+            deviceIdentity,
+          }: {
+            moduleToken?: string;
+            moduleId?: string;
+            deviceFingerprint?: string;
+            deviceIdentity?: DeviceIdentityPayload;
+          },
           callback?: (response: OpenBarrierResponse) => void,
         ) => {
           try {
@@ -78,12 +101,48 @@ export class SocketServerPlugin {
             }
 
             const moduloId = await this.getModuloIdFromToken(moduleToken);
+            const normalizedModuleId = String(moduleId ?? "").trim();
+
+            if (normalizedModuleId && normalizedModuleId !== moduloId) {
+              callback?.({ ok: false, error: "moduleId does not match token" });
+              return;
+            }
+
+            console.log("Device registration payload received:", {
+              socketId: socket.id,
+              moduloIdFromToken: moduloId,
+              moduleIdFromClient: normalizedModuleId || null,
+              deviceFingerprint: String(deviceFingerprint ?? "").trim() || null,
+              cpuSerial:
+                String(deviceIdentity?.cpu_serial ?? "").trim() || null,
+              machineId:
+                String(deviceIdentity?.machine_id ?? "").trim() || null,
+              primaryMac:
+                String(deviceIdentity?.primary_mac ?? "").trim() || null,
+            });
+
+            await this.moduloService.validateDeviceRegistration(moduloId, {
+              fingerprint: String(deviceFingerprint ?? "").trim(),
+              cpuSerial: String(deviceIdentity?.cpu_serial ?? "").trim(),
+              machineId: String(deviceIdentity?.machine_id ?? "").trim(),
+              primaryMac: String(deviceIdentity?.primary_mac ?? "").trim(),
+            });
+
             this.connectedDevices.set(moduloId, socket.id);
             socket.data.moduloId = moduloId;
 
             console.log(`Modulo ${moduloId} registered on socket ${socket.id}`);
             callback?.({ ok: true });
           } catch (error) {
+            if (error instanceof CustomError) {
+              callback?.({
+                ok: false,
+                error: error.message,
+                code: error.code,
+              });
+              return;
+            }
+
             const message =
               error instanceof Error ? error.message : "Invalid moduleToken";
             callback?.({ ok: false, error: message });
@@ -206,4 +265,11 @@ export class SocketServerPlugin {
 
     return moduloId;
   }
+}
+
+function createModuloService(): ModuloService {
+  return new ModuloService(
+    new ModuloRepositoryImpl(new ModuloMongoDatasource()),
+    new ProyectoRepositoryImpl(new ProyectoMongoDatasource()),
+  );
 }

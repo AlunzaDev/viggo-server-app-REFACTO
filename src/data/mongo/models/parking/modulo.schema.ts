@@ -22,6 +22,15 @@ const deviceBindingSchema = new Schema(
             default: "",
             trim: true,
         },
+        deviceSecretHash: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        deviceSecretIssuedAt: {
+            type: Date,
+            default: null,
+        },
         boundAt: {
             type: Date,
             required: [true, "La fecha de vinculacion es obligatoria"],
@@ -59,20 +68,147 @@ const deviceBindingRequestSchema = new Schema(
             default: "",
             trim: true,
         },
+        ipAddress: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        locationLabel: {
+            type: String,
+            default: "",
+            trim: true,
+        },
         status: {
             type: String,
             enum: ["PENDING", "APPROVED", "REJECTED"],
             required: [true, "El status es obligatorio"],
         },
         requestedAt: {
-            type: Date,
+            type: Number,
             required: [true, "La fecha de solicitud es obligatoria"],
         },
         resolvedAt: {
-            type: Date,
+            type: Number,
             default: null,
         },
         notes: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+    },
+    {
+        _id: false,
+        versionKey: false,
+    },
+);
+
+const deviceConnectionAuditSchema = new Schema(
+    {
+        fingerprint: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        cpuSerial: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        machineId: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        primaryMac: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        ipAddress: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        locationLabel: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        socketId: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        status: {
+            type: String,
+            enum: ["APPROVED", "PENDING", "REJECTED"],
+            default: "PENDING",
+        },
+        reason: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        attemptedAt: {
+            type: Number,
+            default: null,
+        },
+    },
+    {
+        _id: false,
+        versionKey: false,
+    },
+);
+
+const deviceRuntimeSchema = new Schema(
+    {
+        fingerprint: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        socketId: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        ipAddress: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        locationLabel: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        connectionStatus: {
+            type: String,
+            enum: ["CONNECTED", "DISCONNECTED", "PENDING", "REJECTED", "MISMATCH"],
+            default: "DISCONNECTED",
+        },
+        isConnected: {
+            type: Boolean,
+            default: false,
+        },
+        isAuthorized: {
+            type: Boolean,
+            default: false,
+        },
+        connectedAt: {
+            type: Date,
+            default: null,
+        },
+        lastHeartbeatAt: {
+            type: Date,
+            default: null,
+        },
+        lastDisconnectAt: {
+            type: Date,
+            default: null,
+        },
+        message: {
             type: String,
             default: "",
             trim: true,
@@ -125,6 +261,16 @@ const moduloSchema = new Schema(
             required: false,
             default: [],
         },
+        deviceConnectionAudit: {
+            type: deviceConnectionAuditSchema,
+            required: false,
+            default: null,
+        },
+        deviceRuntime: {
+            type: deviceRuntimeSchema,
+            required: false,
+            default: null,
+        },
     },
     {
         versionKey: false,
@@ -140,3 +286,12 @@ const moduloSchema = new Schema(
 );
 
 export const ModuloModel = model("Modulo", moduloSchema);
+
+/** FINGEER PRINT GENERATION
+cpu_serial = _read_cpu_serial()
+machine_id = _read_machine_id()
+primary_mac = _read_primary_mac()
+
+raw_identity = f"{cpu_serial}|{machine_id}|{primary_mac}"
+fingerprint = hashlib.sha256(raw_identity.encode("utf-8")).hexdigest()
+ */

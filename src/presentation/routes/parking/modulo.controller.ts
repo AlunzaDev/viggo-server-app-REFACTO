@@ -3,6 +3,7 @@ import { CreateModuloDto } from "../../../domain/dtos/parking/create-modulo.dto"
 import { UpdateModuloDto } from "../../../domain/dtos/parking/update-modulo.dto";
 import { ErrorService } from "../../services/error.service";
 import { ModuloService } from "../../services/parking/modulo.service";
+import { SocketServerPlugin } from "../../sockets/socket-server";
 
 export class ModuloController {
   constructor(private readonly moduloService: ModuloService) {}
@@ -151,6 +152,12 @@ export class ModuloController {
     try {
       const id = String(req.params.id);
       const modulo = await this.moduloService.resetDeviceBinding(id);
+      SocketServerPlugin.emitDeviceBindingUpdated({
+        moduleId: modulo.id,
+        status: "RESET",
+        reason: "RESET_DEVICE_BINDING",
+        timestamp: new Date().toISOString(),
+      });
       return res.status(200).json({ modulo });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -160,10 +167,20 @@ export class ModuloController {
   approveDeviceBindingRequest = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const payload = this.parseResolveDeviceBindingRequestBody(
+        req.body as Record<string, unknown>,
+      );
       const modulo = await this.moduloService.approveDeviceBindingRequest(
         id,
-        this.parseResolveDeviceBindingRequestBody(req.body as Record<string, unknown>),
+        payload,
       );
+      SocketServerPlugin.emitDeviceBindingUpdated({
+        moduleId: modulo.id,
+        fingerprint: payload.fingerprint,
+        status: "APPROVED",
+        reason: "APPROVE_DEVICE_BINDING_REQUEST",
+        timestamp: new Date().toISOString(),
+      });
       return res.status(200).json({ modulo });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -173,10 +190,43 @@ export class ModuloController {
   rejectDeviceBindingRequest = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const payload = this.parseResolveDeviceBindingRequestBody(
+        req.body as Record<string, unknown>,
+      );
       const modulo = await this.moduloService.rejectDeviceBindingRequest(
         id,
-        this.parseResolveDeviceBindingRequestBody(req.body as Record<string, unknown>),
+        payload,
       );
+      SocketServerPlugin.emitDeviceBindingUpdated({
+        moduleId: modulo.id,
+        fingerprint: payload.fingerprint,
+        status: "REJECTED",
+        reason: "REJECT_DEVICE_BINDING_REQUEST",
+        timestamp: new Date().toISOString(),
+      });
+      return res.status(200).json({ modulo });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  reopenDeviceBindingRequest = async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.id);
+      const payload = this.parseResolveDeviceBindingRequestBody(
+        req.body as Record<string, unknown>,
+      );
+      const modulo = await this.moduloService.reopenDeviceBindingRequest(
+        id,
+        payload,
+      );
+      SocketServerPlugin.emitDeviceBindingUpdated({
+        moduleId: modulo.id,
+        fingerprint: payload.fingerprint,
+        status: "PENDING",
+        reason: "REOPEN_DEVICE_BINDING_REQUEST",
+        timestamp: new Date().toISOString(),
+      });
       return res.status(200).json({ modulo });
     } catch (error) {
       return ErrorService.handleApiError(error, res);

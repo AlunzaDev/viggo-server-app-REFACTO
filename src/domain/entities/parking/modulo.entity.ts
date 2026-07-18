@@ -7,6 +7,8 @@ export interface ModuloDeviceBinding {
     cpuSerial?: string;
     machineId?: string;
     primaryMac?: string;
+    deviceSecretHash?: string;
+    deviceSecretIssuedAt?: Date;
     boundAt: Date;
     lastSeenAt: Date;
 }
@@ -21,10 +23,51 @@ export interface ModuloDeviceBindingRequest {
     cpuSerial?: string;
     machineId?: string;
     primaryMac?: string;
+    ipAddress?: string;
+    locationLabel?: string;
     status: ModuloDeviceBindingRequestStatus;
     requestedAt: Date;
     resolvedAt?: Date;
     notes?: string;
+}
+
+export type ModuloDeviceConnectionAuditStatus =
+    | "APPROVED"
+    | "PENDING"
+    | "REJECTED";
+
+export type ModuloDeviceRuntimeConnectionStatus =
+    | "CONNECTED"
+    | "DISCONNECTED"
+    | "PENDING"
+    | "REJECTED"
+    | "MISMATCH";
+
+export interface ModuloDeviceConnectionAudit {
+    fingerprint?: string;
+    cpuSerial?: string;
+    machineId?: string;
+    primaryMac?: string;
+    ipAddress?: string;
+    locationLabel?: string;
+    socketId?: string;
+    status: ModuloDeviceConnectionAuditStatus;
+    reason?: string;
+    attemptedAt: Date;
+}
+
+export interface ModuloDeviceRuntime {
+    fingerprint?: string;
+    socketId?: string;
+    ipAddress?: string;
+    locationLabel?: string;
+    connectionStatus: ModuloDeviceRuntimeConnectionStatus;
+    isConnected: boolean;
+    isAuthorized: boolean;
+    connectedAt?: Date;
+    lastHeartbeatAt?: Date;
+    lastDisconnectAt?: Date;
+    message?: string;
 }
 
 export interface ModuloEntityOptions {
@@ -37,6 +80,8 @@ export interface ModuloEntityOptions {
     descripcion?: string;
     deviceBinding?: ModuloDeviceBinding | null;
     deviceBindingRequests?: ModuloDeviceBindingRequest[];
+    deviceConnectionAudit?: ModuloDeviceConnectionAudit | null;
+    deviceRuntime?: ModuloDeviceRuntime | null;
 }
 
 export class ModuloEntity {
@@ -49,6 +94,8 @@ export class ModuloEntity {
     public descripcion?: string;
     public deviceBinding?: ModuloDeviceBinding | null;
     public deviceBindingRequests: ModuloDeviceBindingRequest[];
+    public deviceConnectionAudit?: ModuloDeviceConnectionAudit | null;
+    public deviceRuntime?: ModuloDeviceRuntime | null;
 
     constructor(options: ModuloEntityOptions) {
         const {
@@ -61,6 +108,8 @@ export class ModuloEntity {
             descripcion,
             deviceBinding,
             deviceBindingRequests,
+            deviceConnectionAudit,
+            deviceRuntime,
         } = options;
 
         this.id = id;
@@ -72,6 +121,8 @@ export class ModuloEntity {
         this.descripcion = descripcion;
         this.deviceBinding = deviceBinding ?? null;
         this.deviceBindingRequests = deviceBindingRequests ?? [];
+        this.deviceConnectionAudit = deviceConnectionAudit ?? null;
+        this.deviceRuntime = deviceRuntime ?? null;
     }
 
     static fromObject(object: { [key: string]: unknown }): ModuloEntity {
@@ -86,6 +137,8 @@ export class ModuloEntity {
             descripcion,
             deviceBinding,
             deviceBindingRequests,
+            deviceConnectionAudit,
+            deviceRuntime,
         } = object;
 
         const moduloId = id || (_id ? String(_id) : undefined);
@@ -109,6 +162,8 @@ export class ModuloEntity {
             descripcion: typeof descripcion === "string" ? descripcion : undefined,
             deviceBinding: parseDeviceBinding(deviceBinding),
             deviceBindingRequests: parseDeviceBindingRequests(deviceBindingRequests),
+            deviceConnectionAudit: parseDeviceConnectionAudit(deviceConnectionAudit),
+            deviceRuntime: parseDeviceRuntime(deviceRuntime),
         });
     }
 }
@@ -130,13 +185,27 @@ function parseDeviceBinding(value: unknown): ModuloDeviceBinding | null {
         cpuSerial: String(binding.cpuSerial ?? "").trim() || undefined,
         machineId: String(binding.machineId ?? "").trim() || undefined,
         primaryMac: String(binding.primaryMac ?? "").trim() || undefined,
+        deviceSecretHash: String(binding.deviceSecretHash ?? "").trim() || undefined,
+        deviceSecretIssuedAt:
+            binding.deviceSecretIssuedAt === undefined ||
+            binding.deviceSecretIssuedAt === null
+                ? undefined
+                : toDate(
+                      binding.deviceSecretIssuedAt,
+                      "deviceBinding.deviceSecretIssuedAt",
+                  ),
         boundAt: toDate(binding.boundAt, "deviceBinding.boundAt"),
         lastSeenAt: toDate(binding.lastSeenAt, "deviceBinding.lastSeenAt"),
     };
 }
 
 function toDate(value: unknown, fieldName: string): Date {
-    const date = value instanceof Date ? value : new Date(String(value ?? ""));
+    const date =
+        value instanceof Date
+            ? value
+            : typeof value === "number"
+              ? new Date(value)
+              : new Date(String(value ?? ""));
 
     if (Number.isNaN(date.getTime())) {
         throw CustomError.badRequest(`Invalid ${fieldName}`);
@@ -179,6 +248,8 @@ function parseDeviceBindingRequest(
         cpuSerial: String(request.cpuSerial ?? "").trim() || undefined,
         machineId: String(request.machineId ?? "").trim() || undefined,
         primaryMac: String(request.primaryMac ?? "").trim() || undefined,
+        ipAddress: String(request.ipAddress ?? "").trim() || undefined,
+        locationLabel: String(request.locationLabel ?? "").trim() || undefined,
         status,
         requestedAt: toDate(request.requestedAt, "deviceBindingRequests.requestedAt"),
         resolvedAt:
@@ -194,3 +265,102 @@ function isValidRequestStatus(
 ): value is ModuloDeviceBindingRequestStatus {
     return value === "PENDING" || value === "APPROVED" || value === "REJECTED";
 }
+
+function parseDeviceConnectionAudit(
+    value: unknown,
+): ModuloDeviceConnectionAudit | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    const audit = value as Record<string, unknown>;
+    const status = String(audit.status ?? "").trim().toUpperCase();
+
+    if (!isValidConnectionAuditStatus(status)) {
+        return null;
+    }
+
+    return {
+        fingerprint: String(audit.fingerprint ?? "").trim() || undefined,
+        cpuSerial: String(audit.cpuSerial ?? "").trim() || undefined,
+        machineId: String(audit.machineId ?? "").trim() || undefined,
+        primaryMac: String(audit.primaryMac ?? "").trim() || undefined,
+        ipAddress: String(audit.ipAddress ?? "").trim() || undefined,
+        locationLabel: String(audit.locationLabel ?? "").trim() || undefined,
+        socketId: String(audit.socketId ?? "").trim() || undefined,
+        status,
+        reason: String(audit.reason ?? "").trim() || undefined,
+        attemptedAt: toDate(audit.attemptedAt, "deviceConnectionAudit.attemptedAt"),
+    };
+}
+
+function parseDeviceRuntime(value: unknown): ModuloDeviceRuntime | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    const runtime = value as Record<string, unknown>;
+    const connectionStatus = String(runtime.connectionStatus ?? "")
+        .trim()
+        .toUpperCase();
+
+    if (!isValidRuntimeConnectionStatus(connectionStatus)) {
+        return null;
+    }
+
+    return {
+        fingerprint: String(runtime.fingerprint ?? "").trim() || undefined,
+        socketId: String(runtime.socketId ?? "").trim() || undefined,
+        ipAddress: String(runtime.ipAddress ?? "").trim() || undefined,
+        locationLabel: String(runtime.locationLabel ?? "").trim() || undefined,
+        connectionStatus,
+        isConnected: Boolean(runtime.isConnected),
+        isAuthorized: Boolean(runtime.isAuthorized),
+        connectedAt:
+            runtime.connectedAt === undefined || runtime.connectedAt === null
+                ? undefined
+                : toDate(runtime.connectedAt, "deviceRuntime.connectedAt"),
+        lastHeartbeatAt:
+            runtime.lastHeartbeatAt === undefined || runtime.lastHeartbeatAt === null
+                ? undefined
+                : toDate(
+                      runtime.lastHeartbeatAt,
+                      "deviceRuntime.lastHeartbeatAt",
+                  ),
+        lastDisconnectAt:
+            runtime.lastDisconnectAt === undefined || runtime.lastDisconnectAt === null
+                ? undefined
+                : toDate(
+                      runtime.lastDisconnectAt,
+                      "deviceRuntime.lastDisconnectAt",
+                  ),
+        message: String(runtime.message ?? "").trim() || undefined,
+    };
+}
+
+function isValidConnectionAuditStatus(
+    value: string,
+): value is ModuloDeviceConnectionAuditStatus {
+    return value === "APPROVED" || value === "PENDING" || value === "REJECTED";
+}
+
+function isValidRuntimeConnectionStatus(
+    value: string,
+): value is ModuloDeviceRuntimeConnectionStatus {
+    return (
+        value === "CONNECTED" ||
+        value === "DISCONNECTED" ||
+        value === "PENDING" ||
+        value === "REJECTED" ||
+        value === "MISMATCH"
+    );
+}
+
+/** FINGER PRINT GENERATION
+cpu_serial = _read_cpu_serial()
+machine_id = _read_machine_id()
+primary_mac = _read_primary_mac()
+
+raw_identity = f"{cpu_serial}|{machine_id}|{primary_mac}"
+fingerprint = hashlib.sha256(raw_identity.encode("utf-8")).hexdigest()
+ */

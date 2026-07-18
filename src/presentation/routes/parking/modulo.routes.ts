@@ -57,6 +57,12 @@ export class ModuloRoutes {
       controller.rejectDeviceBindingRequest,
     );
     router.patch(
+      "/:id/device-binding/pending",
+      AuthMiddleware.requireAuth,
+      adminRoles,
+      controller.reopenDeviceBindingRequest,
+    );
+    router.patch(
       "/:id",
       AuthMiddleware.requireAuth,
       adminRoles,

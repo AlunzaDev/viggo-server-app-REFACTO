@@ -26,9 +26,10 @@ export class TicketRoutes {
       ticketModuleAccess,
       controller.createTicketLegacy,
     );
-    router.get("/", controller.getTickets);
+    router.get("/", AuthMiddleware.requireAuth, controller.getTickets);
     router.get(
       "/usuario/:usuarioId/activo",
+      AuthMiddleware.requireAuth,
       controller.getActiveTicketByUsuario,
     );
     router.get(
@@ -43,7 +44,11 @@ export class TicketRoutes {
       ticketModuleAccess,
       controller.getMyCurrentTicket,
     );
-    router.get("/usuario/:usuarioId", controller.getTicketsByUsuario);
+    router.get(
+      "/usuario/:usuarioId",
+      AuthMiddleware.requireAuth,
+      controller.getTicketsByUsuario,
+    );
     router.post(
       "/payTicket",
       AuthMiddleware.requireAuth,
@@ -56,7 +61,7 @@ export class TicketRoutes {
       ticketModuleAccess,
       controller.killTicketLegacy,
     );
-    router.get("/:id", controller.getTicketById);
+    router.get("/:id", AuthMiddleware.requireAuth, controller.getTicketById);
     router.patch(
       "/:id",
       AuthMiddleware.requireAuth,

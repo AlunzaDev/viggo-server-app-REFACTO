@@ -1,4 +1,5 @@
 import { envs } from "../../../config";
+import { ModuloModel } from "../../../data/mongo/models/parking/modulo.schema";
 import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { TicketRepository } from "../../../domain/repository/parking/ticket.repository";
@@ -20,7 +21,8 @@ export class CashTicketPaymentService {
     }
 
     const ticket =
-      await this.ticketRepository.findByIdBoleto(normalizedQrValue);
+      (await this.ticketRepository.findByIdBoleto(normalizedQrValue)) ||
+      (await this.ticketRepository.findById(normalizedQrValue));
 
     if (!ticket) {
       throw CustomError.notFound("Ticket no encontrado");
@@ -29,7 +31,7 @@ export class CashTicketPaymentService {
     this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
 
     if (ticket.pagado) {
-      throw CustomError.badRequest("El ticket ya esta pagado");
+      throw CustomError.badRequest("El ticket ya fue pagado");
     }
 
     let currentTicket = ticket;
@@ -66,7 +68,7 @@ export class CashTicketPaymentService {
 
   async startCashSession(
     ticketId: string,
-    deviceId?: string,
+    moduloId: string,
     allowedProjectIds: string[] = [],
   ) {
     const ticket = await this.ticketRepository.findById(ticketId);
@@ -78,11 +80,32 @@ export class CashTicketPaymentService {
     this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
 
     if (ticket.pagado) {
-      throw CustomError.badRequest("El ticket ya esta pagado");
+      throw CustomError.badRequest("El ticket ya fue pagado");
     }
 
     if (ticket.monto <= 0) {
       throw CustomError.badRequest("El ticket no tiene monto por cobrar");
+    }
+
+    const modulo = await ModuloModel.findById(moduloId);
+    if (!modulo) {
+      throw CustomError.notFound("Caja no encontrada");
+    }
+
+    const moduloProjectId = String(modulo.get("proyecto") ?? "");
+    if (!moduloProjectId || moduloProjectId !== ticket.proyecto) {
+      throw CustomError.badRequest(
+        "La caja seleccionada no pertenece al proyecto del ticket",
+      );
+    }
+
+    const moduloTipo = String(modulo.get("tipo") ?? "").trim().toUpperCase();
+    if (moduloTipo !== "POS") {
+      throw CustomError.badRequest("El modulo seleccionado no es un POS");
+    }
+
+    if (modulo.get("estado") === false) {
+      throw CustomError.badRequest("La caja seleccionada esta inactiva");
     }
 
     const existingSession =
@@ -99,7 +122,10 @@ export class CashTicketPaymentService {
       amountExpected: ticket.monto,
       amountReceived: 0,
       changeAmount: 0,
-      deviceId: deviceId?.trim() || undefined,
+      moduloId: String(modulo._id),
+      moduloIdentificador: String(modulo.get("identificador") ?? "").trim() || undefined,
+      moduloNombre: String(modulo.get("nombre") ?? "").trim() || undefined,
+      deviceId: String(modulo.get("identificador") ?? "").trim() || undefined,
       startedAt: Date.now(),
       completedAt: undefined,
       cancelledAt: undefined,
@@ -110,7 +136,12 @@ export class CashTicketPaymentService {
           payload: {
             ticketId: ticket.id,
             idBoleto: ticket.idBoleto,
-            deviceId: deviceId?.trim() || undefined,
+            moduloId: String(modulo._id),
+            moduloIdentificador:
+              String(modulo.get("identificador") ?? "").trim() || undefined,
+            moduloNombre: String(modulo.get("nombre") ?? "").trim() || undefined,
+            deviceId:
+              String(modulo.get("identificador") ?? "").trim() || undefined,
           },
         },
       ],
@@ -320,7 +351,9 @@ export class CashTicketPaymentService {
     if (allowedProjectIds.length === 0) return;
 
     if (!allowedProjectIds.includes(projectId)) {
-      throw CustomError.forbidden("No tienes acceso al proyecto del ticket");
+      throw CustomError.forbidden(
+        "El ticket pertenece a otro proyecto y no puedes cobrarlo con este acceso",
+      );
     }
   }
 

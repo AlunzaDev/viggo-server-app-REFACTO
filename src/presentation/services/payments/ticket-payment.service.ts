@@ -12,12 +12,14 @@ export class TicketPaymentService {
     private readonly paymentRepository: PaymentRepository,
   ) {}
 
-  async createPaymentIntent(ticketId: string) {
+  async createPaymentIntent(ticketId: string, allowedProjectIds: string[] = []) {
     const ticket = await this.ticketRepository.findById(ticketId);
 
     if (!ticket) {
       throw CustomError.notFound("Ticket no encontrado");
     }
+
+    this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
 
     if (ticket.pagado) {
       throw CustomError.badRequest("El ticket ya esta pagado");
@@ -48,12 +50,18 @@ export class TicketPaymentService {
     return this.toPaymentIntentResponse(paymentIntent);
   }
 
-  async confirmTicketPayment(ticketId: string, paymentIntentId: string) {
+  async confirmTicketPayment(
+    ticketId: string,
+    paymentIntentId: string,
+    allowedProjectIds: string[] = [],
+  ) {
     const ticket = await this.ticketRepository.findById(ticketId);
 
     if (!ticket) {
       throw CustomError.notFound("Ticket no encontrado");
     }
+
+    this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
 
     if (this.useMockStripe()) {
       if (!paymentIntentId.startsWith("pi_mock_")) {
@@ -228,5 +236,13 @@ export class TicketPaymentService {
       brand: card.brand ?? undefined,
       last4: card.last4 ?? undefined,
     };
+  }
+
+  private ensureProjectAccess(projectId: string, allowedProjectIds: string[]) {
+    if (allowedProjectIds.length === 0) return;
+
+    if (!allowedProjectIds.includes(projectId)) {
+      throw CustomError.forbidden("No tienes acceso al proyecto del ticket");
+    }
   }
 }

@@ -21,8 +21,8 @@ export class ProyectoRoutes {
       projectModuleAccess,
       controller.createProyecto,
     );
-    router.get("/", controller.getProyectos);
-    router.get("/:id", controller.getProyectoById);
+    router.get("/", AuthMiddleware.requireAuth, controller.getProyectos);
+    router.get("/:id", AuthMiddleware.requireAuth, controller.getProyectoById);
     router.patch(
       "/:id/status",
       AuthMiddleware.requireAuth,

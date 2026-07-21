@@ -13,6 +13,8 @@ import { SocketServerPlugin } from "../../sockets/socket-server";
 export class ModuloController {
   constructor(private readonly moduloService: ModuloService) {}
 
+  private readonly moduloTipos = ["ENTRADA", "SALIDA", "POS"] as const;
+
   private parseResolveDeviceBindingRequestBody(body: Record<string, unknown>): {
     fingerprint?: string;
     notes?: string;
@@ -34,6 +36,32 @@ export class ModuloController {
     }
 
     return null;
+  }
+
+  private parseTipoList(value: unknown): Array<"ENTRADA" | "SALIDA" | "POS"> | null {
+    if (value === undefined) return [];
+
+    const rawValues = Array.isArray(value)
+      ? value
+      : String(value)
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+
+    const normalized = rawValues.map((item) => String(item).trim().toUpperCase());
+
+    if (
+      normalized.some(
+        (item) =>
+          !this.moduloTipos.includes(
+            item as (typeof this.moduloTipos)[number],
+          ),
+      )
+    ) {
+      return null;
+    }
+
+    return normalized as Array<"ENTRADA" | "SALIDA" | "POS">;
   }
 
   createModulo = async (req: Request, res: Response) => {
@@ -60,12 +88,15 @@ export class ModuloController {
       const allowedProjectIds = getAllowedProjectIdsFromRequest(req);
       const proyecto =
         typeof req.query.proyecto === "string" ? req.query.proyecto.trim() : "";
-      const tipo =
-        typeof req.query.tipo === "string" ? req.query.tipo.trim().toUpperCase() : "";
+      const tipos = this.parseTipoList(req.query.tipos ?? req.query.tipo);
       const estado = this.parseEstado(req.query.estado);
 
       if (estado === null) {
         return res.status(400).json({ error: "'estado' debe ser boolean" });
+      }
+
+      if (tipos === null) {
+        return res.status(400).json({ error: "'tipo' o 'tipos' no es valido" });
       }
 
       if (proyecto && !canAccessProjectFromRequest(req, proyecto)) {
@@ -78,15 +109,21 @@ export class ModuloController {
           ? allowedProjectIds[0]
           : "");
 
-      const hasFilters = Boolean(effectiveProject || tipo || estado !== undefined);
+      const hasBaseFilters = Boolean(
+        effectiveProject || tipos.length > 0 || estado !== undefined,
+      );
 
-      const modulos = hasFilters
+      let modulos = hasBaseFilters
         ? await this.moduloService.getModulosFiltered({
             proyecto: effectiveProject || undefined,
-            tipo: (tipo || undefined) as "ENTRADA" | "SALIDA" | "POS" | undefined,
+            tipo: tipos[0],
             estado,
           })
         : await this.moduloService.getModulos();
+
+      if (tipos.length > 1) {
+        modulos = modulos.filter((modulo) => tipos.includes(modulo.tipo));
+      }
 
       return res.status(200).json({ modulos });
     } catch (error) {
@@ -123,11 +160,32 @@ export class ModuloController {
   getModulosByProyecto = async (req: Request, res: Response) => {
     try {
       const proyectoId = String(req.params.proyectoId);
+      const tipos = this.parseTipoList(req.query.tipos ?? req.query.tipo);
+
+      if (tipos === null) {
+        return res.status(400).json({ error: "'tipo' o 'tipos' no es valido" });
+      }
+
       if (!canAccessProjectFromRequest(req, proyectoId)) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const modulos = await this.moduloService.getModulosByProyecto(proyectoId);
-      return res.status(200).json({ modulos });
+
+      const effectiveTipos =
+        tipos.length > 0
+          ? tipos
+          : (["ENTRADA", "SALIDA", "POS"] as Array<"ENTRADA" | "SALIDA" | "POS">);
+
+      const modulos = await this.moduloService.getModulosFiltered({
+        proyecto: proyectoId,
+        tipo: effectiveTipos[0],
+      });
+
+      const filteredModules =
+        effectiveTipos.length > 1
+          ? modulos.filter((modulo) => effectiveTipos.includes(modulo.tipo))
+          : modulos;
+
+      return res.status(200).json({ modulos: filteredModules });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

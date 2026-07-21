@@ -42,6 +42,9 @@ export interface CashPaymentSessionEntityOptions {
   amountExpected: number;
   amountReceived: number;
   changeAmount: number;
+  moduloId: string;
+  moduloIdentificador?: string;
+  moduloNombre?: string;
   deviceId?: string;
   startedAt: number;
   completedAt?: number;
@@ -57,6 +60,9 @@ export class CashPaymentSessionEntity {
   public amountExpected: number;
   public amountReceived: number;
   public changeAmount: number;
+  public moduloId: string;
+  public moduloIdentificador?: string;
+  public moduloNombre?: string;
   public deviceId?: string;
   public startedAt: number;
   public completedAt?: number;
@@ -71,6 +77,9 @@ export class CashPaymentSessionEntity {
     this.amountExpected = options.amountExpected;
     this.amountReceived = options.amountReceived;
     this.changeAmount = options.changeAmount;
+    this.moduloId = options.moduloId;
+    this.moduloIdentificador = options.moduloIdentificador;
+    this.moduloNombre = options.moduloNombre;
     this.deviceId = options.deviceId;
     this.startedAt = options.startedAt;
     this.completedAt = options.completedAt;
@@ -90,6 +99,9 @@ export class CashPaymentSessionEntity {
       amountExpected,
       amountReceived,
       changeAmount,
+      moduloId,
+      moduloIdentificador,
+      moduloNombre,
       deviceId,
       startedAt,
       completedAt,
@@ -112,6 +124,7 @@ export class CashPaymentSessionEntity {
     if (changeAmount === undefined || changeAmount === null) {
       throw CustomError.badRequest("Missing changeAmount");
     }
+    if (!moduloId) throw CustomError.badRequest("Missing moduloId");
     if (startedAt === undefined || startedAt === null) {
       throw CustomError.badRequest("Missing startedAt");
     }
@@ -137,6 +150,11 @@ export class CashPaymentSessionEntity {
       amountExpected: Number(amountExpected),
       amountReceived: Number(amountReceived),
       changeAmount: Number(changeAmount),
+      moduloId: String(moduloId),
+      moduloIdentificador: moduloIdentificador
+        ? String(moduloIdentificador)
+        : undefined,
+      moduloNombre: moduloNombre ? String(moduloNombre) : undefined,
       deviceId: deviceId ? String(deviceId) : undefined,
       startedAt: Number(startedAt),
       completedAt:

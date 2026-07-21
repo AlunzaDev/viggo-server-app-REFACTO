@@ -21,9 +21,13 @@ export class PensionRoutes {
       pensionModuleAccess,
       controller.createPension,
     );
-    router.get("/", controller.getPensiones);
-    router.get("/proyecto/:proyectoId", controller.getPensionesByProyecto);
-    router.get("/:id", controller.getPensionById);
+    router.get("/", AuthMiddleware.requireAuth, controller.getPensiones);
+    router.get(
+      "/proyecto/:proyectoId",
+      AuthMiddleware.requireAuth,
+      controller.getPensionesByProyecto,
+    );
+    router.get("/:id", AuthMiddleware.requireAuth, controller.getPensionById);
     router.patch(
       "/:id/status",
       AuthMiddleware.requireAuth,

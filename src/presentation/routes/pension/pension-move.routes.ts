@@ -21,13 +21,18 @@ export class PensionMoveRoutes {
       pensionMoveModuleAccess,
       controller.createPensionMove,
     );
-    router.get("/", controller.getPensionMoves);
+    router.get("/", AuthMiddleware.requireAuth, controller.getPensionMoves);
     router.get(
       "/pension-pass/:pensionPassId",
+      AuthMiddleware.requireAuth,
       controller.getPensionMovesByPensionPass,
     );
-    router.get("/proyecto/:proyectoId", controller.getPensionMovesByProyecto);
-    router.get("/:id", controller.getPensionMoveById);
+    router.get(
+      "/proyecto/:proyectoId",
+      AuthMiddleware.requireAuth,
+      controller.getPensionMovesByProyecto,
+    );
+    router.get("/:id", AuthMiddleware.requireAuth, controller.getPensionMoveById);
     router.patch(
       "/:id",
       AuthMiddleware.requireAuth,

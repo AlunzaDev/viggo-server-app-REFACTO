@@ -30,11 +30,15 @@ export class CashTicketPaymentController {
   startCashSession = async (req: Request, res: Response) => {
     try {
       const ticketId = String(req.params.ticketId);
-      const { deviceId } = req.body as { deviceId?: unknown };
+      const { moduloId } = req.body as { moduloId?: unknown };
+
+      if (typeof moduloId !== "string" || moduloId.trim().length === 0) {
+        return res.status(400).json({ error: "'moduloId' es requerido" });
+      }
 
       const session = await this.cashTicketPaymentService.startCashSession(
         ticketId,
-        typeof deviceId === "string" ? deviceId : undefined,
+        moduloId.trim(),
         getAllowedProjectIdsFromRequest(req),
       );
 

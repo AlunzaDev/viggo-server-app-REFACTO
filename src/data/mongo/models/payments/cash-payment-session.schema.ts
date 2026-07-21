@@ -81,6 +81,22 @@ const cashPaymentSessionSchema = new Schema(
       default: 0,
       min: [0, "El cambio no puede ser negativo"],
     },
+    moduloId: {
+      type: String,
+      required: [true, "El moduloId es obligatorio"],
+      trim: true,
+      index: true,
+    },
+    moduloIdentificador: {
+      type: String,
+      default: undefined,
+      trim: true,
+    },
+    moduloNombre: {
+      type: String,
+      default: undefined,
+      trim: true,
+    },
     deviceId: {
       type: String,
       default: undefined,

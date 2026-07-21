@@ -28,13 +28,18 @@ export class ModuloRoutes {
       moduleAccess,
       controller.getModulosWithPendingDeviceBindingRequests,
     );
-    router.get("/", controller.getModulos);
-    router.get("/proyecto/:proyectoId", controller.getModulosByProyecto);
+    router.get("/", AuthMiddleware.requireAuth, controller.getModulos);
+    router.get(
+      "/proyecto/:proyectoId",
+      AuthMiddleware.requireAuth,
+      controller.getModulosByProyecto,
+    );
     router.get(
       "/identificador/:identificador",
+      AuthMiddleware.requireAuth,
       controller.getModuloByIdentificador,
     );
-    router.get("/:id", controller.getModuloById);
+    router.get("/:id", AuthMiddleware.requireAuth, controller.getModuloById);
     router.patch(
       "/:id/status",
       AuthMiddleware.requireAuth,

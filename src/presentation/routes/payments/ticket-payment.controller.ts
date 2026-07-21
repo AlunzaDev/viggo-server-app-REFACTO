@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { ConfirmTicketPaymentDto } from "../../../domain/dtos/payments/confirm-ticket-payment.dto";
+import { getAllowedProjectIdsFromRequest } from "../../middlewares";
 import { ErrorService } from "../../services/error.service";
 import { TicketPaymentService } from "../../services/payments/ticket-payment.service";
 
@@ -10,7 +11,10 @@ export class TicketPaymentController {
     try {
       const ticketId = String(req.params.ticketId);
       const paymentIntent =
-        await this.ticketPaymentService.createPaymentIntent(ticketId);
+        await this.ticketPaymentService.createPaymentIntent(
+          ticketId,
+          getAllowedProjectIdsFromRequest(req),
+        );
 
       return res.status(201).json({ paymentIntent });
     } catch (error) {
@@ -29,6 +33,7 @@ export class TicketPaymentController {
       const result = await this.ticketPaymentService.confirmTicketPayment(
         ticketId,
         confirmTicketPaymentDto!.paymentIntentId,
+        getAllowedProjectIdsFromRequest(req),
       );
 
       return res.status(200).json(result);

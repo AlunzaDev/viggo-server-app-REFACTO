@@ -22,9 +22,17 @@ export class PensionPassRoutes {
       pensionPassModuleAccess,
       controller.createPensionPass,
     );
-    router.get("/", controller.getPensionPasses);
-    router.get("/pension/:pensionId", controller.getPensionPassesByPension);
-    router.get("/usuario/:usuarioId", controller.getPensionPassesByUsuario);
+    router.get("/", AuthMiddleware.requireAuth, controller.getPensionPasses);
+    router.get(
+      "/pension/:pensionId",
+      AuthMiddleware.requireAuth,
+      controller.getPensionPassesByPension,
+    );
+    router.get(
+      "/usuario/:usuarioId",
+      AuthMiddleware.requireAuth,
+      controller.getPensionPassesByUsuario,
+    );
     router.get(
       "/getPensionsPassByUser",
       AuthMiddleware.requireAuth,
@@ -39,6 +47,7 @@ export class PensionPassRoutes {
     );
     router.get(
       "/pensionMovesByPensionPass/:id",
+      AuthMiddleware.requireAuth,
       controller.getPensionMovesByPensionPass,
     );
     router.post(
@@ -59,7 +68,7 @@ export class PensionPassRoutes {
       pensionPassModuleAccess,
       controller.contractPensionPass,
     );
-    router.get("/:id", controller.getPensionPassById);
+    router.get("/:id", AuthMiddleware.requireAuth, controller.getPensionPassById);
     router.patch(
       "/:id/status",
       AuthMiddleware.requireAuth,

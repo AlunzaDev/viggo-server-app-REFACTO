@@ -13,3 +13,5 @@ export * from "./pension/pension-pass.repository";
 export * from "./pension/pension-move.repository";
 export * from "./auth/auth.repository";
 export * from "./auth/usuario.repository";
+export * from "./payments/payment.repository";
+export * from "./payments/cash-payment-session.repository";

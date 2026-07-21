@@ -1,13 +1,16 @@
 import Stripe from "stripe";
 import { envs } from "../../../config";
-import { PaymentModel } from "../../../data/mongo/models/payments/payment.schema";
 import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import { StripePlugin } from "../../../config/plugins/stripe.plugin";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { TicketRepository } from "../../../domain/repository/parking/ticket.repository";
+import { PaymentRepository } from "../../../domain/repository/payments/payment.repository";
 
 export class TicketPaymentService {
-  constructor(private readonly ticketRepository: TicketRepository) {}
+  constructor(
+    private readonly ticketRepository: TicketRepository,
+    private readonly paymentRepository: PaymentRepository,
+  ) {}
 
   async createPaymentIntent(ticketId: string) {
     const ticket = await this.ticketRepository.findById(ticketId);
@@ -171,41 +174,40 @@ export class TicketPaymentService {
       last4?: string;
     };
   }) {
+    const existingPayment =
+      await this.paymentRepository.findByStripePaymentIntentId(
+        options.paymentIntentId,
+      );
+
+    if (existingPayment) {
+      return existingPayment;
+    }
+
     const project = await ProyectoModel.findById(options.projectId);
 
-    await PaymentModel.findOneAndUpdate(
-      { stripePaymentIntentId: options.paymentIntentId },
-      {
-        $setOnInsert: {
-          user: options.userId,
-          type: "ticket",
-          concept: "Pago de ticket",
-          amount: options.amount,
-          currency: envs.STRIPE_CURRENCY.toUpperCase(),
-          status: "succeeded",
-          paidAt: options.paidAt,
-          stripePaymentIntentId: options.paymentIntentId,
-          paymentMethod: options.paymentMethod,
-          reference: {
-            type: "ticket",
-            id: options.ticketId,
-          },
-          parking: project
-            ? {
-                id: String(project._id),
-                name: String(project.get("nombre") ?? ""),
-                city: String(project.get("ciudad") ?? ""),
-              }
-            : undefined,
-          rawProviderStatus: options.providerStatus,
-        },
+    return this.paymentRepository.create({
+      user: options.userId,
+      type: "ticket",
+      concept: "Pago de ticket",
+      amount: options.amount,
+      currency: envs.STRIPE_CURRENCY.toUpperCase(),
+      status: "succeeded",
+      paidAt: options.paidAt,
+      stripePaymentIntentId: options.paymentIntentId,
+      paymentMethod: options.paymentMethod,
+      reference: {
+        type: "ticket",
+        id: options.ticketId,
       },
-      {
-        new: true,
-        upsert: true,
-        setDefaultsOnInsert: true,
-      },
-    );
+      parking: project
+        ? {
+            id: String(project._id),
+            name: String(project.get("nombre") ?? ""),
+            city: String(project.get("ciudad") ?? ""),
+          }
+        : undefined,
+      rawProviderStatus: options.providerStatus,
+    });
   }
 
   private async resolvePaymentMethod(

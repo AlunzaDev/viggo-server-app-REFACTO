@@ -7,3 +7,5 @@ export * from "./pension/pension-pass.datasource.mongo";
 export * from "./pension/pension-move.datasource.mongo";
 export * from "./auth/auth.datasource.mongo";
 export * from "./auth/usuario.datasource.mongo";
+export * from "./payments/payment.datasource.mongo";
+export * from "./payments/cash-payment-session.datasource.mongo";

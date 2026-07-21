@@ -7,3 +7,5 @@ export * from "./parking/ticket.repository.impl";
 export * from "./pension/pension.repository.impl";
 export * from "./pension/pension-pass.repository.impl";
 export * from "./pension/pension-move.repository.impl";
+export * from "./payments/payment.repository.impl";
+export * from "./payments/cash-payment-session.repository.impl";

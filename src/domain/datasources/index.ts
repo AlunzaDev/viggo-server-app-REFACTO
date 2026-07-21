@@ -7,3 +7,5 @@ export * from "./pension/pension-pass.datasource";
 export * from "./pension/pension-move.datasource";
 export * from "./auth/auth.datasource";
 export * from "./auth/usuario.datasource";
+export * from "./payments/payment.datasource";
+export * from "./payments/cash-payment-session.datasource";

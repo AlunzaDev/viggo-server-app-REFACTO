@@ -14,3 +14,5 @@ export * from "./parking/ticket.entity";
 export * from "./pension/pension.entity";
 export * from "./pension/pension-pass.entity";
 export * from "./pension/pension-move.entity";
+export * from "./payments/cash-payment-session.entity";
+export * from "./payments/payment.entity";

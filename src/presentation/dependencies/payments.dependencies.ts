@@ -6,6 +6,12 @@ import { TicketPaymentController } from "../routes/payments/ticket-payment.contr
 import { PaymentHistoryService } from "../services/payments/payment-history.service";
 import { StripePaymentService } from "../services/payments/stripe-payment.service";
 import { TicketPaymentService } from "../services/payments/ticket-payment.service";
+import { PaymentMongoDatasource } from "../../infrastructure/datasources/payments/payment.datasource.mongo";
+import { PaymentRepositoryImpl } from "../../infrastructure/repositories/payments/payment.repository.impl";
+import { CashPaymentSessionMongoDatasource } from "../../infrastructure/datasources/payments/cash-payment-session.datasource.mongo";
+import { CashPaymentSessionRepositoryImpl } from "../../infrastructure/repositories/payments/cash-payment-session.repository.impl";
+import { CashTicketPaymentController } from "../routes/payments/cash-ticket-payment.controller";
+import { CashTicketPaymentService } from "../services/payments/cash-ticket-payment.service";
 
 export const buildStripePaymentController = (): StripePaymentController => {
   const service = new StripePaymentService();
@@ -14,14 +20,43 @@ export const buildStripePaymentController = (): StripePaymentController => {
 };
 
 export const buildTicketPaymentController = (): TicketPaymentController => {
-  const ticketRepository = new TicketRepositoryImpl(new TicketMongoDatasource());
-  const service = new TicketPaymentService(ticketRepository);
+  const ticketRepository = new TicketRepositoryImpl(
+    new TicketMongoDatasource(),
+  );
+  const paymentRepository = new PaymentRepositoryImpl(
+    new PaymentMongoDatasource(),
+  );
+  const service = new TicketPaymentService(ticketRepository, paymentRepository);
 
   return new TicketPaymentController(service);
 };
 
 export const buildPaymentHistoryController = (): PaymentHistoryController => {
-  const service = new PaymentHistoryService();
+  const paymentRepository = new PaymentRepositoryImpl(
+    new PaymentMongoDatasource(),
+  );
+  const service = new PaymentHistoryService(paymentRepository);
 
   return new PaymentHistoryController(service);
 };
+
+export const buildCashTicketPaymentController =
+  (): CashTicketPaymentController => {
+    const ticketRepository = new TicketRepositoryImpl(
+      new TicketMongoDatasource(),
+    );
+    const paymentRepository = new PaymentRepositoryImpl(
+      new PaymentMongoDatasource(),
+    );
+    const cashPaymentSessionRepository = new CashPaymentSessionRepositoryImpl(
+      new CashPaymentSessionMongoDatasource(),
+    );
+
+    const service = new CashTicketPaymentService(
+      ticketRepository,
+      cashPaymentSessionRepository,
+      paymentRepository,
+    );
+
+    return new CashTicketPaymentController(service);
+  };

@@ -10,3 +10,7 @@ export * from "./pension/pension-pass.service";
 export * from "./pension/pension-move.service";
 
 export * from "./email/email.service";
+
+export * from "./payments/cash-ticket-payment.service";
+export * from "./payments/ticket-payment.service";
+

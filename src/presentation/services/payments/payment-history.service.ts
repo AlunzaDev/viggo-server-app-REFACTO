@@ -1,6 +1,5 @@
-import { FilterQuery } from "mongoose";
-import { PaymentModel } from "../../../data/mongo/models/payments/payment.schema";
 import { CustomError } from "../../../domain/errors/custom.error";
+import { PaymentRepository } from "../../../domain/repository/payments/payment.repository";
 import {
   buildPaginatedResponse,
   parsePaginationDateQuery,
@@ -18,16 +17,6 @@ interface PaymentHistoryFilters {
   to?: unknown;
 }
 
-interface PaymentQuery {
-  user: string;
-  type?: PaymentType;
-  status?: PaymentStatus;
-  paidAt?: {
-    $gte?: number;
-    $lte?: number;
-  };
-}
-
 const paymentTypes = new Set<PaymentType>(["ticket", "pension", "renewal"]);
 const paymentStatuses = new Set<PaymentStatus>([
   "succeeded",
@@ -37,60 +26,43 @@ const paymentStatuses = new Set<PaymentStatus>([
 ]);
 
 export class PaymentHistoryService {
+  constructor(private readonly paymentRepository: PaymentRepository) {}
+
   async getHistory(userId: string, filters: PaymentHistoryFilters) {
-    const { page, limit } = parsePaginationDateQuery(filters);
-    const query = this.buildQuery(userId, filters);
+    const { page, limit, from, to } = parsePaginationDateQuery(filters);
+    const type = this.parseEnum(filters.type, paymentTypes, "type");
+    const status = this.parseEnum(filters.status, paymentStatuses, "status");
 
     const [total, payments] = await Promise.all([
-      PaymentModel.countDocuments(query),
-      PaymentModel.find(query)
-        .sort({ paidAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      this.paymentRepository.countByUser(userId, {
+        type,
+        status,
+        from,
+        to,
+      }),
+      this.paymentRepository.getByUser(userId, {
+        page,
+        limit,
+        type,
+        status,
+        from,
+        to,
+      }),
     ]);
 
-    return buildPaginatedResponse(
-      "payments",
-      payments.map((payment) => payment.toJSON()),
-      total,
-      page,
-      limit,
-    );
+    return buildPaginatedResponse("payments", payments, total, page, limit);
   }
 
   async getPaymentDetail(userId: string, paymentId: string) {
-    const payment = await PaymentModel.findOne({
-      _id: paymentId,
-      user: userId,
-    });
+    const payment = await this.paymentRepository.findById(paymentId);
 
-    if (!payment) {
+    if (!payment || payment.user !== userId) {
       throw CustomError.notFound("Pago no encontrado");
     }
 
-    return payment.toJSON();
+    return payment;
   }
 
-  private buildQuery(
-    userId: string,
-    filters: PaymentHistoryFilters,
-  ): FilterQuery<PaymentQuery> {
-    const query: FilterQuery<PaymentQuery> = { user: userId };
-    const type = this.parseEnum(filters.type, paymentTypes, "type");
-    const status = this.parseEnum(filters.status, paymentStatuses, "status");
-    const { from, to } = parsePaginationDateQuery(filters);
-
-    if (type) query.type = type;
-    if (status) query.status = status;
-
-    if (from || to) {
-      query.paidAt = {};
-      if (from) query.paidAt.$gte = from;
-      if (to) query.paidAt.$lte = to;
-    }
-
-    return query;
-  }
   private parseEnum<T extends string>(
     value: unknown,
     allowedValues: Set<T>,

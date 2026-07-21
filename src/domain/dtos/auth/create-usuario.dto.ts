@@ -1,4 +1,11 @@
-import { AUTH_ROLES, isUsuarioRol, UsuarioRol } from "../../constants";
+import {
+  AUTH_ROLES,
+  isUsuarioRol,
+  normalizeUserParkings,
+  normalizeUserModules,
+  type UserModuleAccess,
+  UsuarioRol,
+} from "../../constants";
 
 export class CreateUsuarioDto {
   private constructor(
@@ -8,6 +15,8 @@ export class CreateUsuarioDto {
     public readonly telefono: string,
     public readonly password: string,
     public readonly rol: UsuarioRol,
+    public readonly parkings: string[],
+    public readonly modules: UserModuleAccess[],
     public readonly coordinates?: number[],
     public readonly nacimiento?: number,
     public readonly img?: string,
@@ -35,6 +44,8 @@ export class CreateUsuarioDto {
     const coordinates = Array.isArray(body.coordinates)
       ? body.coordinates.map((value) => Number(value))
       : undefined;
+    const parkings = normalizeUserParkings(body.parkings);
+    const modules = normalizeUserModules(body.modules);
 
     const nacimiento =
       typeof body.nacimiento === "number"
@@ -78,6 +89,8 @@ export class CreateUsuarioDto {
         telefono,
         password,
         rol,
+        parkings,
+        modules,
         coordinates,
         nacimiento,
         img,

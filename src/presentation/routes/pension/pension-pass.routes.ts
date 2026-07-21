@@ -12,11 +12,14 @@ export class PensionPassRoutes {
       AUTH_ROLES.ADMIN,
       AUTH_ROLES.SUPER,
     );
+    const pensionPassModuleAccess =
+      AuthMiddleware.requireModules("pensionPasses");
 
     router.post(
       "/",
       AuthMiddleware.requireAuth,
       adminRoles,
+      pensionPassModuleAccess,
       controller.createPensionPass,
     );
     router.get("/", controller.getPensionPasses);
@@ -25,11 +28,13 @@ export class PensionPassRoutes {
     router.get(
       "/getPensionsPassByUser",
       AuthMiddleware.requireAuth,
+      pensionPassModuleAccess,
       controller.getMyPensionPasses,
     );
     router.post(
       "/open-barrier-with-pension-pass",
       AuthMiddleware.requireAuth,
+      pensionPassModuleAccess,
       controller.openBarrierWithPensionPass,
     );
     router.get(
@@ -39,16 +44,19 @@ export class PensionPassRoutes {
     router.post(
       "/precontract-pension-pass",
       AuthMiddleware.requireAuth,
+      pensionPassModuleAccess,
       controller.precontractPensionPass,
     );
     router.patch(
       "/renew-pension-pass/:id",
       AuthMiddleware.requireAuth,
+      pensionPassModuleAccess,
       controller.renewPensionPass,
     );
     router.patch(
       "/contract-pension-pass/:id",
       AuthMiddleware.requireAuth,
+      pensionPassModuleAccess,
       controller.contractPensionPass,
     );
     router.get("/:id", controller.getPensionPassById);
@@ -56,18 +64,21 @@ export class PensionPassRoutes {
       "/:id/status",
       AuthMiddleware.requireAuth,
       adminRoles,
+      pensionPassModuleAccess,
       controller.updatePensionPassStatus,
     );
     router.patch(
       "/:id",
       AuthMiddleware.requireAuth,
       adminRoles,
+      pensionPassModuleAccess,
       controller.updatePensionPass,
     );
     router.delete(
       "/:id",
       AuthMiddleware.requireAuth,
       adminRoles,
+      pensionPassModuleAccess,
       controller.deletePensionPass,
     );
 

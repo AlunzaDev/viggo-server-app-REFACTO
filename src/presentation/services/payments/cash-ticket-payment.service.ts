@@ -12,7 +12,7 @@ export class CashTicketPaymentService {
     private readonly paymentRepository: PaymentRepository,
   ) {}
 
-  async resolveTicketFromQr(qrValue: string) {
+  async resolveTicketFromQr(qrValue: string, allowedProjectIds: string[] = []) {
     const normalizedQrValue = String(qrValue ?? "").trim();
 
     if (!normalizedQrValue) {
@@ -25,6 +25,8 @@ export class CashTicketPaymentService {
     if (!ticket) {
       throw CustomError.notFound("Ticket no encontrado");
     }
+
+    this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
 
     if (ticket.pagado) {
       throw CustomError.badRequest("El ticket ya esta pagado");
@@ -62,12 +64,18 @@ export class CashTicketPaymentService {
     };
   }
 
-  async startCashSession(ticketId: string, deviceId?: string) {
+  async startCashSession(
+    ticketId: string,
+    deviceId?: string,
+    allowedProjectIds: string[] = [],
+  ) {
     const ticket = await this.ticketRepository.findById(ticketId);
 
     if (!ticket) {
       throw CustomError.notFound("Ticket no encontrado");
     }
+
+    this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
 
     if (ticket.pagado) {
       throw CustomError.badRequest("El ticket ya esta pagado");
@@ -113,12 +121,20 @@ export class CashTicketPaymentService {
     sessionId: string,
     amount: number,
     rawEvent?: Record<string, unknown>,
+    allowedProjectIds: string[] = [],
   ) {
     const session = await this.cashPaymentSessionRepository.findById(sessionId);
 
     if (!session) {
       throw CustomError.notFound("Sesion de cobro no encontrada");
     }
+
+    const ticket = await this.ticketRepository.findById(session.ticketId);
+    if (!ticket) {
+      throw CustomError.notFound("Ticket no encontrado");
+    }
+
+    this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
 
     if (!this.isSessionActive(session.status)) {
       throw CustomError.badRequest("La sesion ya no esta activa");
@@ -224,12 +240,19 @@ export class CashTicketPaymentService {
     return finalSession;
   }
 
-  async cancelSession(sessionId: string) {
+  async cancelSession(sessionId: string, allowedProjectIds: string[] = []) {
     const session = await this.cashPaymentSessionRepository.findById(sessionId);
 
     if (!session) {
       throw CustomError.notFound("Sesion de cobro no encontrada");
     }
+
+    const ticket = await this.ticketRepository.findById(session.ticketId);
+    if (!ticket) {
+      throw CustomError.notFound("Ticket no encontrado");
+    }
+
+    this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
 
     if (!this.isSessionActive(session.status)) {
       return session;
@@ -268,12 +291,19 @@ export class CashTicketPaymentService {
     return finalSession;
   }
 
-  async getSessionById(sessionId: string) {
+  async getSessionById(sessionId: string, allowedProjectIds: string[] = []) {
     const session = await this.cashPaymentSessionRepository.findById(sessionId);
 
     if (!session) {
       throw CustomError.notFound("Sesion de cobro no encontrada");
     }
+
+    const ticket = await this.ticketRepository.findById(session.ticketId);
+    if (!ticket) {
+      throw CustomError.notFound("Ticket no encontrado");
+    }
+
+    this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
 
     return session;
   }
@@ -284,6 +314,14 @@ export class CashTicketPaymentService {
       status === "pending_cash" ||
       status === "partially_paid"
     );
+  }
+
+  private ensureProjectAccess(projectId: string, allowedProjectIds: string[]) {
+    if (allowedProjectIds.length === 0) return;
+
+    if (!allowedProjectIds.includes(projectId)) {
+      throw CustomError.forbidden("No tienes acceso al proyecto del ticket");
+    }
   }
 
   private async recordCashTicketPayment(options: {

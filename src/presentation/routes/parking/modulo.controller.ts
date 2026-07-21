@@ -2,6 +2,11 @@ import { Request, Response } from "express";
 import { CreateModuloDto } from "../../../domain/dtos/parking/create-modulo.dto";
 import { UpdateModuloDto } from "../../../domain/dtos/parking/update-modulo.dto";
 import { ErrorService } from "../../services/error.service";
+import {
+  canAccessProjectFromRequest,
+  getAllowedProjectIdsFromRequest,
+  isSuperAdminRequest,
+} from "../../middlewares";
 import { ModuloService } from "../../services/parking/modulo.service";
 import { SocketServerPlugin } from "../../sockets/socket-server";
 
@@ -35,6 +40,9 @@ export class ModuloController {
     try {
       const [error, createModuloDto] = CreateModuloDto.create(req.body);
       if (error) return res.status(400).json({ error });
+      if (!canAccessProjectFromRequest(req, createModuloDto!.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
 
       const modulo = await this.moduloService.createModulo({
         ...createModuloDto!,
@@ -49,6 +57,7 @@ export class ModuloController {
 
   getModulos = async (req: Request, res: Response) => {
     try {
+      const allowedProjectIds = getAllowedProjectIdsFromRequest(req);
       const proyecto =
         typeof req.query.proyecto === "string" ? req.query.proyecto.trim() : "";
       const tipo =
@@ -59,11 +68,21 @@ export class ModuloController {
         return res.status(400).json({ error: "'estado' debe ser boolean" });
       }
 
-      const hasFilters = Boolean(proyecto || tipo || estado !== undefined);
+      if (proyecto && !canAccessProjectFromRequest(req, proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      const effectiveProject =
+        proyecto ||
+        (!isSuperAdminRequest(req) && allowedProjectIds.length === 1
+          ? allowedProjectIds[0]
+          : "");
+
+      const hasFilters = Boolean(effectiveProject || tipo || estado !== undefined);
 
       const modulos = hasFilters
         ? await this.moduloService.getModulosFiltered({
-            proyecto: proyecto || undefined,
+            proyecto: effectiveProject || undefined,
             tipo: (tipo || undefined) as "ENTRADA" | "SALIDA" | "POS" | undefined,
             estado,
           })
@@ -92,6 +111,9 @@ export class ModuloController {
     try {
       const id = String(req.params.id);
       const modulo = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, modulo.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       return res.status(200).json({ modulo });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -101,6 +123,9 @@ export class ModuloController {
   getModulosByProyecto = async (req: Request, res: Response) => {
     try {
       const proyectoId = String(req.params.proyectoId);
+      if (!canAccessProjectFromRequest(req, proyectoId)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const modulos = await this.moduloService.getModulosByProyecto(proyectoId);
       return res.status(200).json({ modulos });
     } catch (error) {
@@ -111,8 +136,18 @@ export class ModuloController {
   updateModulo = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const currentModulo = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, currentModulo.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const [error, updateModuloDto] = UpdateModuloDto.create(req.body);
       if (error) return res.status(400).json({ error });
+      if (
+        updateModuloDto?.proyecto &&
+        !canAccessProjectFromRequest(req, updateModuloDto.proyecto)
+      ) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
 
       const modulo = await this.moduloService.updateModulo(id, updateModuloDto!);
       return res.status(200).json({ modulo });
@@ -135,6 +170,10 @@ export class ModuloController {
   updateModuloStatus = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const currentModulo = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, currentModulo.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const { estado } = req.body as { estado?: unknown };
 
       if (typeof estado !== "boolean") {
@@ -151,6 +190,10 @@ export class ModuloController {
   resetDeviceBinding = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const currentModulo = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, currentModulo.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const modulo = await this.moduloService.resetDeviceBinding(id);
       SocketServerPlugin.emitDeviceBindingUpdated({
         moduleId: modulo.id,
@@ -167,6 +210,10 @@ export class ModuloController {
   approveDeviceBindingRequest = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const currentModulo = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, currentModulo.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const payload = this.parseResolveDeviceBindingRequestBody(
         req.body as Record<string, unknown>,
       );
@@ -190,6 +237,10 @@ export class ModuloController {
   rejectDeviceBindingRequest = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const currentModulo = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, currentModulo.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const payload = this.parseResolveDeviceBindingRequestBody(
         req.body as Record<string, unknown>,
       );
@@ -213,6 +264,10 @@ export class ModuloController {
   reopenDeviceBindingRequest = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const currentModulo = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, currentModulo.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const payload = this.parseResolveDeviceBindingRequestBody(
         req.body as Record<string, unknown>,
       );
@@ -236,6 +291,10 @@ export class ModuloController {
   deleteModulo = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const currentModulo = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, currentModulo.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const modulo = await this.moduloService.deleteModulo(id);
       return res.status(200).json({ modulo });
     } catch (error) {

@@ -12,11 +12,13 @@ export class ProyectoRoutes {
       AUTH_ROLES.ADMIN,
       AUTH_ROLES.SUPER,
     );
+    const projectModuleAccess = AuthMiddleware.requireModules("projects");
 
     router.post(
       "/",
       AuthMiddleware.requireAuth,
       adminRoles,
+      projectModuleAccess,
       controller.createProyecto,
     );
     router.get("/", controller.getProyectos);
@@ -25,18 +27,21 @@ export class ProyectoRoutes {
       "/:id/status",
       AuthMiddleware.requireAuth,
       adminRoles,
+      projectModuleAccess,
       controller.updateProyectoStatus,
     );
     router.patch(
       "/:id",
       AuthMiddleware.requireAuth,
       adminRoles,
+      projectModuleAccess,
       controller.updateProyecto,
     );
     router.delete(
       "/:id",
       AuthMiddleware.requireAuth,
       adminRoles,
+      projectModuleAccess,
       controller.deleteProyecto,
     );
 

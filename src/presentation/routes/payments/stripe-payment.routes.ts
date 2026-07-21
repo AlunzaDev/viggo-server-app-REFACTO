@@ -7,10 +7,12 @@ export class StripePaymentRoutes {
     const router = Router();
 
     const controller = buildStripePaymentController();
+    const paymentModuleAccess = AuthMiddleware.requireModules("payments");
 
     router.get(
       "/getPaymentIntent",
       AuthMiddleware.requireAuth,
+      paymentModuleAccess,
       controller.createPaymentIntent,
     );
 

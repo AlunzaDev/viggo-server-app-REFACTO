@@ -1,5 +1,6 @@
 import { bcryptPlugin } from "../../../config/plugins/bcrypt.plugin";
 import { UsuarioEntity } from "../../../domain/entities/auth/usuario.entity";
+import { AUTH_ROLES } from "../../../domain/constants";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { UsuarioRepository } from "../../../domain/repository/auth/usuario.repository";
 
@@ -14,6 +15,7 @@ export class UsuarioService {
     },
   ): Promise<SafeUsuario> {
     await this.validateUniqueFields(undefined, usuario);
+    this.validateProjectAssignments(usuario);
 
     const hashedPassword = bcryptPlugin.hash(usuario.password);
 
@@ -46,6 +48,7 @@ export class UsuarioService {
     usuario: Partial<Omit<UsuarioEntity, "id">>,
   ): Promise<SafeUsuario> {
     await this.validateUniqueFields(id, usuario);
+    this.validateProjectAssignments(usuario);
 
     const usuarioToUpdate = {
       ...usuario,
@@ -112,6 +115,21 @@ export class UsuarioService {
       if (userByTelefono && userByTelefono.id !== id) {
         throw CustomError.badRequest("El teléfono ya está registrado");
       }
+    }
+  }
+
+  private validateProjectAssignments(
+    usuario: Partial<Omit<UsuarioEntity, "id">>,
+  ) {
+    if (!usuario.parkings) return;
+
+    const assignedProjects = usuario.parkings.filter(Boolean);
+    const role = usuario.rol;
+
+    if (role && role !== AUTH_ROLES.SUPER && assignedProjects.length > 1) {
+      throw CustomError.badRequest(
+        "Por ahora solo se permite un proyecto asignado para usuarios que no son super administrador",
+      );
     }
   }
 

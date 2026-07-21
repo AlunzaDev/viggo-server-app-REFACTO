@@ -12,11 +12,18 @@ export class TicketRoutes {
       AUTH_ROLES.ADMIN,
       AUTH_ROLES.SUPER,
     );
+    const ticketModuleAccess = AuthMiddleware.requireModules("tickets");
 
-    router.post("/", AuthMiddleware.requireAuth, controller.createTicket);
+    router.post(
+      "/",
+      AuthMiddleware.requireAuth,
+      ticketModuleAccess,
+      controller.createTicket,
+    );
     router.post(
       "/createTicket",
       AuthMiddleware.requireAuth,
+      ticketModuleAccess,
       controller.createTicketLegacy,
     );
     router.get("/", controller.getTickets);
@@ -27,30 +34,40 @@ export class TicketRoutes {
     router.get(
       "/userHistoryTickets",
       AuthMiddleware.requireAuth,
+      ticketModuleAccess,
       controller.getMyHistoryTickets,
     );
     router.get(
       "/currentTicket",
       AuthMiddleware.requireAuth,
+      ticketModuleAccess,
       controller.getMyCurrentTicket,
     );
     router.get("/usuario/:usuarioId", controller.getTicketsByUsuario);
     router.post(
       "/payTicket",
       AuthMiddleware.requireAuth,
+      ticketModuleAccess,
       controller.payTicketLegacy,
     );
     router.post(
       "/killTicket",
       AuthMiddleware.requireAuth,
+      ticketModuleAccess,
       controller.killTicketLegacy,
     );
     router.get("/:id", controller.getTicketById);
-    router.patch("/:id", AuthMiddleware.requireAuth, controller.updateTicket);
+    router.patch(
+      "/:id",
+      AuthMiddleware.requireAuth,
+      ticketModuleAccess,
+      controller.updateTicket,
+    );
     router.delete(
       "/:id",
       AuthMiddleware.requireAuth,
       adminRoles,
+      ticketModuleAccess,
       controller.deleteTicket,
     );
 

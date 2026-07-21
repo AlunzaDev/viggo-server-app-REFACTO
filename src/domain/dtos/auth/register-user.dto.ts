@@ -1,4 +1,10 @@
-import { AUTH_ROLES, UsuarioRol } from "../../constants";
+import {
+  AUTH_ROLES,
+  normalizeUserParkings,
+  normalizeUserModules,
+  type UserModuleAccess,
+  UsuarioRol,
+} from "../../constants";
 
 export class RegisterUserDto {
   private constructor(
@@ -8,6 +14,8 @@ export class RegisterUserDto {
     public readonly telefono: string,
     public readonly password: string,
     public readonly rol: UsuarioRol,
+    public readonly parkings: string[],
+    public readonly modules: UserModuleAccess[],
     public readonly coordinates?: number[],
     public readonly nacimiento?: number,
     public readonly img?: string,
@@ -27,6 +35,8 @@ export class RegisterUserDto {
     // El registro publico siempre crea clientes finales.
     // Los roles administrativos solo deben asignarse desde flujos protegidos.
     const rol = AUTH_ROLES.CLIENT;
+    const parkings = normalizeUserParkings(body.parkings);
+    const modules = normalizeUserModules(body.modules);
 
     const coordinates = Array.isArray(body.coordinates)
       ? body.coordinates.map((value) => Number(value))
@@ -66,6 +76,8 @@ export class RegisterUserDto {
         telefono,
         password,
         rol,
+        parkings,
+        modules,
         coordinates,
         nacimiento,
         img,

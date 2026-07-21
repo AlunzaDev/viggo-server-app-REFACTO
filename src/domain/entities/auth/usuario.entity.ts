@@ -1,5 +1,11 @@
 import { CustomError } from "../../errors/custom.error";
-import { isUsuarioRol, UsuarioRol } from "../../constants";
+import {
+  isUsuarioRol,
+  normalizeUserParkings,
+  normalizeUserModules,
+  type UserModuleAccess,
+  UsuarioRol,
+} from "../../constants";
 
 export interface UsuarioEntityOptions {
   id: string;
@@ -11,6 +17,8 @@ export interface UsuarioEntityOptions {
   password: string;
   emailValidated: boolean;
   rol: UsuarioRol;
+  parkings: string[];
+  modules: UserModuleAccess[];
   nacimiento?: number;
   img?: string;
   estado: boolean;
@@ -27,6 +35,8 @@ export class UsuarioEntity {
   public password: string;
   public emailValidated: boolean;
   public rol: UsuarioRol;
+  public parkings: string[];
+  public modules: UserModuleAccess[];
   public nacimiento?: number;
   public img?: string;
   public estado: boolean;
@@ -43,6 +53,8 @@ export class UsuarioEntity {
       password,
       emailValidated,
       rol,
+      parkings,
+      modules,
       nacimiento,
       img,
       estado,
@@ -58,6 +70,8 @@ export class UsuarioEntity {
     this.password = password;
     this.emailValidated = emailValidated;
     this.rol = rol;
+    this.parkings = parkings;
+    this.modules = modules;
     this.nacimiento = nacimiento;
     this.img = img;
     this.estado = estado;
@@ -76,6 +90,8 @@ export class UsuarioEntity {
       password,
       emailValidated,
       rol,
+      parkings,
+      modules,
       nacimiento,
       img,
       estado,
@@ -114,6 +130,8 @@ export class UsuarioEntity {
         : (() => {
             throw CustomError.badRequest("Invalid rol");
           })(),
+      parkings: normalizeUserParkings(parkings),
+      modules: normalizeUserModules(modules),
       nacimiento:
         typeof nacimiento === "number"
           ? nacimiento

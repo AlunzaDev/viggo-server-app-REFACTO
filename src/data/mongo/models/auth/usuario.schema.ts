@@ -1,5 +1,9 @@
 import { Schema, model } from "mongoose";
-import { AUTH_ROLES, AUTH_ROLE_VALUES } from "../../../../domain/constants";
+import {
+  AUTH_ROLES,
+  AUTH_ROLE_VALUES,
+  AVAILABLE_USER_MODULES,
+} from "../../../../domain/constants";
 
 const usuarioSchema = new Schema(
   {
@@ -59,6 +63,15 @@ const usuarioSchema = new Schema(
       required: true,
       default: AUTH_ROLES.CLIENT,
       enum: AUTH_ROLE_VALUES,
+    },
+    parkings: {
+      type: [String],
+      default: [],
+    },
+    modules: {
+      type: [String],
+      default: AVAILABLE_USER_MODULES,
+      enum: AVAILABLE_USER_MODULES,
     },
     nacimiento: {
       type: Number,

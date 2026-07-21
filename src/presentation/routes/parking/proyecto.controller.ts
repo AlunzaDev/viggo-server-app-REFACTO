@@ -2,6 +2,11 @@ import { Request, Response } from "express";
 import { CreateProyectoDto } from "../../../domain/dtos/parking/create-proyecto.dto";
 import { UpdateProyectoDto } from "../../../domain/dtos/parking/update-proyecto.dto";
 import { ErrorService } from "../../services/error.service";
+import {
+  canAccessProjectFromRequest,
+  getAllowedProjectIdsFromRequest,
+  isSuperAdminRequest,
+} from "../../middlewares";
 import { ProyectoService } from "../../services/parking/proyecto.service";
 
 export class ProyectoController {
@@ -19,10 +24,14 @@ export class ProyectoController {
     }
   };
 
-  getProyectos = async (_req: Request, res: Response) => {
+  getProyectos = async (req: Request, res: Response) => {
     try {
       const proyectos = await this.proyectoService.getProyectos();
-      return res.status(200).json({ proyectos });
+      const allowedProjectIds = getAllowedProjectIdsFromRequest(req);
+      const filteredProjects = isSuperAdminRequest(req)
+        ? proyectos
+        : proyectos.filter((proyecto) => allowedProjectIds.includes(proyecto.id));
+      return res.status(200).json({ proyectos: filteredProjects });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -31,6 +40,9 @@ export class ProyectoController {
   getProyectoById = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      if (!canAccessProjectFromRequest(req, id)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const proyecto = await this.proyectoService.getProyectoById(id);
       return res.status(200).json({ proyecto });
     } catch (error) {
@@ -41,6 +53,9 @@ export class ProyectoController {
   updateProyecto = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      if (!canAccessProjectFromRequest(req, id)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const [error, updateProyectoDto] = UpdateProyectoDto.create(req.body);
       if (error) return res.status(400).json({ error });
 
@@ -54,6 +69,9 @@ export class ProyectoController {
   updateProyectoStatus = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      if (!canAccessProjectFromRequest(req, id)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const { estado } = req.body as { estado?: unknown };
 
       if (typeof estado !== "boolean") {
@@ -73,6 +91,9 @@ export class ProyectoController {
   deleteProyecto = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      if (!canAccessProjectFromRequest(req, id)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const proyecto = await this.proyectoService.deleteProyecto(id);
       return res.status(200).json({ proyecto });
     } catch (error) {

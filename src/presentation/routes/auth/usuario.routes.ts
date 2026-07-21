@@ -12,8 +12,9 @@ export class UsuarioRoutes {
       AUTH_ROLES.ADMIN,
       AUTH_ROLES.SUPER,
     );
+    const userModuleAccess = AuthMiddleware.requireModules("users");
 
-    router.use(AuthMiddleware.requireAuth, adminRoles);
+    router.use(AuthMiddleware.requireAuth, adminRoles, userModuleAccess);
 
     router.post("/", controller.createUsuario);
     router.get("/", controller.getUsuarios);

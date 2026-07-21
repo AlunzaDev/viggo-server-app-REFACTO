@@ -2,6 +2,11 @@ import { Request, Response } from "express";
 import { CreateTicketDto } from "../../../domain/dtos/parking/create-ticket.dto";
 import { UpdateTicketDto } from "../../../domain/dtos/parking/update-ticket.dto";
 import { ErrorService } from "../../services/error.service";
+import {
+  canAccessProjectFromRequest,
+  getAllowedProjectIdsFromRequest,
+  isSuperAdminRequest,
+} from "../../middlewares";
 import { TicketService } from "../../services/parking/ticket.service";
 
 export class TicketController {
@@ -11,6 +16,9 @@ export class TicketController {
     try {
       const [error, createTicketDto] = CreateTicketDto.create(req.body);
       if (error) return res.status(400).json({ error });
+      if (!canAccessProjectFromRequest(req, createTicketDto!.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
 
       const ticket = await this.ticketService.createTicket(createTicketDto!);
       return res.status(201).json({ ticket });
@@ -73,10 +81,14 @@ export class TicketController {
     }
   };
 
-  getTickets = async (_req: Request, res: Response) => {
+  getTickets = async (req: Request, res: Response) => {
     try {
+      const allowedProjectIds = getAllowedProjectIdsFromRequest(req);
       const tickets = await this.ticketService.getTickets();
-      return res.status(200).json({ tickets });
+      const filteredTickets = isSuperAdminRequest(req)
+        ? tickets
+        : tickets.filter((ticket) => allowedProjectIds.includes(ticket.proyecto));
+      return res.status(200).json({ tickets: filteredTickets });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -86,6 +98,9 @@ export class TicketController {
     try {
       const id = String(req.params.id);
       const ticket = await this.ticketService.getTicketById(id);
+      if (!canAccessProjectFromRequest(req, ticket.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       return res.status(200).json({ ticket });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -96,7 +111,12 @@ export class TicketController {
     try {
       const usuarioId = String(req.params.usuarioId);
       const tickets = await this.ticketService.getTicketsByUsuario(usuarioId);
-      return res.status(200).json({ tickets });
+      const filteredTickets = isSuperAdminRequest(req)
+        ? tickets
+        : tickets.filter((ticket) =>
+            getAllowedProjectIdsFromRequest(req).includes(ticket.proyecto),
+          );
+      return res.status(200).json({ tickets: filteredTickets });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -154,6 +174,11 @@ export class TicketController {
         return res.status(400).json({ error: "'idTicket' es requerido" });
       }
 
+      const currentTicket = await this.ticketService.getTicketById(idTicket.trim());
+      if (!canAccessProjectFromRequest(req, currentTicket.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
       const ticket = await this.ticketService.updateTicket(idTicket.trim(), {
         pagado: true,
         horaCobro: Date.now(),
@@ -172,6 +197,9 @@ export class TicketController {
       const usuarioId = String(req.params.usuarioId);
       const ticket =
         await this.ticketService.getActiveTicketByUsuario(usuarioId);
+      if (ticket && !canAccessProjectFromRequest(req, ticket.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       return res.status(200).json({ ticket });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -181,8 +209,18 @@ export class TicketController {
   updateTicket = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const currentTicket = await this.ticketService.getTicketById(id);
+      if (!canAccessProjectFromRequest(req, currentTicket.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const [error, updateTicketDto] = UpdateTicketDto.create(req.body);
       if (error) return res.status(400).json({ error });
+      if (
+        updateTicketDto?.proyecto &&
+        !canAccessProjectFromRequest(req, updateTicketDto.proyecto)
+      ) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
 
       const ticket = await this.ticketService.updateTicket(
         id,
@@ -197,6 +235,10 @@ export class TicketController {
   deleteTicket = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+      const currentTicket = await this.ticketService.getTicketById(id);
+      if (!canAccessProjectFromRequest(req, currentTicket.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const ticket = await this.ticketService.deleteTicket(id);
       return res.status(200).json({ ticket });
     } catch (error) {

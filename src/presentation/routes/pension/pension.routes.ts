@@ -12,11 +12,13 @@ export class PensionRoutes {
       AUTH_ROLES.ADMIN,
       AUTH_ROLES.SUPER,
     );
+    const pensionModuleAccess = AuthMiddleware.requireModules("pensions");
 
     router.post(
       "/",
       AuthMiddleware.requireAuth,
       adminRoles,
+      pensionModuleAccess,
       controller.createPension,
     );
     router.get("/", controller.getPensiones);
@@ -26,18 +28,21 @@ export class PensionRoutes {
       "/:id/status",
       AuthMiddleware.requireAuth,
       adminRoles,
+      pensionModuleAccess,
       controller.updatePensionStatus,
     );
     router.patch(
       "/:id",
       AuthMiddleware.requireAuth,
       adminRoles,
+      pensionModuleAccess,
       controller.updatePension,
     );
     router.delete(
       "/:id",
       AuthMiddleware.requireAuth,
       adminRoles,
+      pensionModuleAccess,
       controller.deletePension,
     );
 

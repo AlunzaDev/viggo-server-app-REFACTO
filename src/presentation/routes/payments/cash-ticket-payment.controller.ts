@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { getAllowedProjectIdsFromRequest } from "../../middlewares";
 import { ErrorService } from "../../services/error.service";
 import { CashTicketPaymentService } from "../../services/payments/cash-ticket-payment.service";
 
@@ -17,6 +18,7 @@ export class CashTicketPaymentController {
 
       const result = await this.cashTicketPaymentService.resolveTicketFromQr(
         qrValue.trim(),
+        getAllowedProjectIdsFromRequest(req),
       );
 
       return res.status(200).json(result);
@@ -33,6 +35,7 @@ export class CashTicketPaymentController {
       const session = await this.cashTicketPaymentService.startCashSession(
         ticketId,
         typeof deviceId === "string" ? deviceId : undefined,
+        getAllowedProjectIdsFromRequest(req),
       );
 
       return res.status(201).json({ session });
@@ -57,6 +60,7 @@ export class CashTicketPaymentController {
         sessionId,
         amount,
         rawEvent,
+        getAllowedProjectIdsFromRequest(req),
       );
 
       return res.status(200).json({ session });
@@ -69,7 +73,10 @@ export class CashTicketPaymentController {
     try {
       const sessionId = String(req.params.sessionId);
       const session =
-        await this.cashTicketPaymentService.cancelSession(sessionId);
+        await this.cashTicketPaymentService.cancelSession(
+          sessionId,
+          getAllowedProjectIdsFromRequest(req),
+        );
 
       return res.status(200).json({ session });
     } catch (error) {
@@ -81,7 +88,10 @@ export class CashTicketPaymentController {
     try {
       const sessionId = String(req.params.sessionId);
       const session =
-        await this.cashTicketPaymentService.getSessionById(sessionId);
+        await this.cashTicketPaymentService.getSessionById(
+          sessionId,
+          getAllowedProjectIdsFromRequest(req),
+        );
 
       return res.status(200).json({ session });
     } catch (error) {

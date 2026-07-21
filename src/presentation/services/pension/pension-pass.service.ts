@@ -76,6 +76,23 @@ export class PensionPassService {
     return this.pensionPassRepository.getAll();
   }
 
+  async getPensionPassesByProyecto(
+    proyectoId: string,
+  ): Promise<PensionPassEntity[]> {
+    const pensionPasses = await this.pensionPassRepository.getAll();
+
+    const filtered = await Promise.all(
+      pensionPasses.map(async (pensionPass) => {
+        const pension = await this.pensionRepository.findById(pensionPass.pension);
+        return pension?.proyecto === proyectoId ? pensionPass : null;
+      }),
+    );
+
+    return filtered.filter(
+      (pensionPass): pensionPass is PensionPassEntity => pensionPass !== null,
+    );
+  }
+
   async getPensionPassById(id: string): Promise<PensionPassEntity> {
     const pensionPass = await this.pensionPassRepository.findById(id);
 
@@ -117,6 +134,21 @@ export class PensionPassService {
   async getPensionPassCardById(id: string): Promise<PensionPassCardResponse> {
     const pensionPass = await this.getPensionPassById(id);
     return this.responseMapper.toPensionPassCardResponse(pensionPass);
+  }
+
+  async getProyectoIdByPensionId(pensionId: string): Promise<string> {
+    const pension = await this.pensionRepository.findById(pensionId);
+
+    if (!pension) {
+      throw CustomError.notFound("Pension no encontrada");
+    }
+
+    return pension.proyecto;
+  }
+
+  async getProyectoIdByPensionPassId(pensionPassId: string): Promise<string> {
+    const pensionPass = await this.getPensionPassById(pensionPassId);
+    return this.getProyectoIdByPensionId(pensionPass.pension);
   }
 
   async getPensionMovesByPensionPass(

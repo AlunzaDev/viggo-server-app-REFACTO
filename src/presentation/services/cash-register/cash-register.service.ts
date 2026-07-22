@@ -131,6 +131,8 @@ export class CashRegisterService {
     filters: {
       moduloId?: string;
       status?: string;
+      dateFrom?: number;
+      dateTo?: number;
       page?: number;
       limit?: number;
     },
@@ -142,6 +144,80 @@ export class CashRegisterService {
     });
 
     return result;
+  }
+
+  async listShiftSummaries(
+    filters: {
+      moduloId?: string;
+      status?: string;
+      dateFrom?: number;
+      dateTo?: number;
+      page?: number;
+      limit?: number;
+    },
+    actor: CashRegisterActorContext,
+  ) {
+    const result = await this.listShifts(filters, actor);
+    const items = await Promise.all(
+      result.items.map((shift) => this.getShiftDetail(shift.id, actor)),
+    );
+
+    return {
+      total: result.total,
+      items,
+    };
+  }
+
+  async getShiftsSummary(
+    filters: {
+      moduloId?: string;
+      status?: string;
+      dateFrom?: number;
+      dateTo?: number;
+    },
+    actor: CashRegisterActorContext,
+  ) {
+    const result = await this.listShiftSummaries(
+      {
+        ...filters,
+        page: 1,
+        limit: 100,
+      },
+      actor,
+    );
+
+    const totals = result.items.reduce(
+      (summary, item) => {
+        summary.totalShifts += 1;
+        if (item.shift.status === "open") summary.openShifts += 1;
+        if (item.shift.status === "closed") summary.closedShifts += 1;
+        summary.openingAmount += item.summary.openingAmount;
+        summary.totalIn += item.summary.totalIn;
+        summary.totalOut += item.summary.totalOut;
+        summary.expectedAmount += item.summary.expectedAmount;
+        summary.countedAmount += item.summary.countedAmount ?? 0;
+        summary.differenceAmount += item.summary.differenceAmount ?? 0;
+        return summary;
+      },
+      {
+        totalShifts: 0,
+        openShifts: 0,
+        closedShifts: 0,
+        openingAmount: 0,
+        totalIn: 0,
+        totalOut: 0,
+        expectedAmount: 0,
+        countedAmount: 0,
+        differenceAmount: 0,
+      },
+    );
+
+    return Object.fromEntries(
+      Object.entries(totals).map(([key, value]) => [
+        key,
+        Number(value.toFixed(2)),
+      ]),
+    );
   }
 
   async getShiftDetail(shiftId: string, actor: CashRegisterActorContext) {
@@ -170,6 +246,7 @@ export class CashRegisterService {
   ) {
     const shift = await this.getAccessibleShift(shiftId, actor);
     this.ensureShiftOpen(shift);
+    this.ensureShiftOperator(shift, actor);
 
     const direction =
       input.direction ?? this.resolveDirectionFromType(input.type);
@@ -202,6 +279,7 @@ export class CashRegisterService {
   ) {
     const shift = await this.getAccessibleShift(shiftId, actor);
     this.ensureShiftOpen(shift);
+    this.ensureShiftOperator(shift, actor);
 
     const denominations = input.denominations
       .map((line) => this.normalizeCountLine(line))
@@ -249,6 +327,20 @@ export class CashRegisterService {
     const existingCut = await this.cutRepository.findByShiftId(shift.id);
     if (existingCut) {
       throw CustomError.badRequest("El turno ya fue cerrado");
+    }
+
+    const movements = await this.movementRepository.getByShiftId(shift.id);
+    const totals = this.sumMovementTotals(movements);
+    const expectedAmount = Number(
+      (shift.openingAmount + totals.totalIn - totals.totalOut).toFixed(2),
+    );
+    const countedAmount = this.calculateCountTotal(input.denominations);
+    const projectedDifference = Number((countedAmount - expectedAmount).toFixed(2));
+
+    if (projectedDifference !== 0 && !input.notes?.trim()) {
+      throw CustomError.badRequest(
+        "Captura una nota explicando la diferencia antes de cerrar el turno",
+      );
     }
 
     const { count, preview } = await this.saveCount(shift.id, input, actor);
@@ -382,6 +474,19 @@ export class CashRegisterService {
     }
   }
 
+  private ensureShiftOperator(
+    shift: CashRegisterShiftEntity,
+    actor: CashRegisterActorContext,
+  ) {
+    if (actor.isSuperAdmin) return;
+
+    if (shift.openedByUserId !== actor.userId) {
+      throw CustomError.forbidden(
+        "Solo el usuario que abrio el turno puede operar esta caja",
+      );
+    }
+  }
+
   private resolveDirectionFromType(type: CashRegisterMovementType) {
     switch (type) {
       case "manual_expense":
@@ -422,10 +527,27 @@ export class CashRegisterService {
     };
   }
 
+  private calculateCountTotal(
+    lines: Array<{
+      value: number;
+      quantity: number;
+    }>,
+  ) {
+    return Number(
+      lines
+        .reduce((sum, line) => {
+          const value = Number(line.value ?? 0);
+          const quantity = Number(line.quantity ?? 0);
+          return sum + value * quantity;
+        }, 0)
+        .toFixed(2),
+    );
+  }
+
   private buildShiftSummary(
     shift: CashRegisterShiftEntity,
     movements: CashRegisterMovementEntity[],
-    latestCount: CashRegisterCountEntity | null,
+    latestCount: CashRegisterCountEntity | null | undefined,
     cut: CashRegisterCutEntity | null,
   ) {
     const totals = this.sumMovementTotals(movements);
@@ -439,10 +561,9 @@ export class CashRegisterService {
       totalOut: totals.totalOut,
       expectedAmount,
       countedAmount: latestCount?.totalAmount ?? null,
-      differenceAmount:
-        latestCount === null
-          ? null
-          : Number((latestCount.totalAmount - expectedAmount).toFixed(2)),
+      differenceAmount: latestCount
+        ? Number((latestCount.totalAmount - expectedAmount).toFixed(2))
+        : null,
       hasCut: Boolean(cut),
       cutStatus: cut?.status ?? null,
     };
@@ -492,7 +613,10 @@ export class CashRegisterService {
   private sumMovementTotals(movements: CashRegisterMovementEntity[]) {
     const totalIn = Number(
       movements
-        .filter((movement) => movement.direction === "in")
+        .filter(
+          (movement) =>
+            movement.direction === "in" && movement.type !== "opening_fund",
+        )
         .reduce((sum, movement) => sum + movement.amount, 0)
         .toFixed(2),
     );

@@ -1,12 +1,26 @@
 import { envs } from "../../../config";
+import { CashRegisterMovementModel } from "../../../data/mongo/models/cash-register/cash-register-movement.schema";
+import { CashRegisterShiftModel } from "../../../data/mongo/models/cash-register/cash-register-shift.schema";
 import { ModuloModel } from "../../../data/mongo/models/parking/modulo.schema";
 import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
+import { TicketModel } from "../../../data/mongo/models/parking/ticket.schema";
+import { CashPaymentSessionModel } from "../../../data/mongo/models/payments/cash-payment-session.schema";
+import { PaymentModel } from "../../../data/mongo/models/payments/payment.schema";
+import { startSession as startMongoSession } from "mongoose";
+import { CashPaymentSessionEntity } from "../../../domain/entities/payments/cash-payment-session.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { CashRegisterShiftRepository } from "../../../domain/repository/cash-register/cash-register-shift.repository";
 import { TicketRepository } from "../../../domain/repository/parking/ticket.repository";
 import { CashPaymentSessionRepository } from "../../../domain/repository/payments/cash-payment-session.repository";
 import { PaymentRepository } from "../../../domain/repository/payments/payment.repository";
 import { CashRegisterService } from "../cash-register/cash-register.service";
+
+export interface CashPaymentActorContext {
+  userId: string;
+  userName?: string;
+  allowedProjectIds: string[];
+  isSuperAdmin: boolean;
+}
 
 export class CashTicketPaymentService {
   constructor(
@@ -73,7 +87,7 @@ export class CashTicketPaymentService {
   async startCashSession(
     ticketId: string,
     moduloId: string,
-    allowedProjectIds: string[] = [],
+    actor: CashPaymentActorContext,
   ) {
     const ticket = await this.ticketRepository.findById(ticketId);
 
@@ -81,7 +95,7 @@ export class CashTicketPaymentService {
       throw CustomError.notFound("Ticket no encontrado");
     }
 
-    this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
+    this.ensureProjectAccess(ticket.proyecto, actor.allowedProjectIds);
 
     if (ticket.pagado) {
       throw CustomError.badRequest("El ticket ya fue pagado");
@@ -128,6 +142,8 @@ export class CashTicketPaymentService {
       );
     }
 
+    this.ensureShiftOperator(activeShift.openedByUserId, actor);
+
     return this.cashPaymentSessionRepository.create({
       ticketId: ticket.id,
       idBoleto: ticket.idBoleto,
@@ -166,8 +182,8 @@ export class CashTicketPaymentService {
   async registerCashInsertion(
     sessionId: string,
     amount: number,
+    actor: CashPaymentActorContext,
     rawEvent?: Record<string, unknown>,
-    allowedProjectIds: string[] = [],
   ) {
     const session = await this.cashPaymentSessionRepository.findById(sessionId);
 
@@ -180,128 +196,58 @@ export class CashTicketPaymentService {
       throw CustomError.notFound("Ticket no encontrado");
     }
 
-    this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
+    this.ensureProjectAccess(ticket.proyecto, actor.allowedProjectIds);
 
     if (!this.isSessionActive(session.status)) {
       throw CustomError.badRequest("La sesion ya no esta activa");
+    }
+
+    const idempotencyKey =
+      typeof rawEvent?.idempotencyKey === "string"
+        ? rawEvent.idempotencyKey.trim()
+        : "";
+    const duplicateEvent = idempotencyKey
+      ? session.events.find((event) => {
+          const payload = event.payload ?? {};
+          return (
+            event.type === "cash_inserted" &&
+            typeof payload.idempotencyKey === "string" &&
+            payload.idempotencyKey === idempotencyKey
+          );
+        })
+      : undefined;
+
+    if (duplicateEvent) {
+      return session;
     }
 
     if (!Number.isFinite(amount) || amount <= 0) {
       throw CustomError.badRequest("El monto registrado en POS no es valido");
     }
 
-    const now = Date.now();
-    const nextAmountReceived = session.amountReceived + amount;
-    const nextChange =
-      nextAmountReceived > session.amountExpected
-        ? nextAmountReceived - session.amountExpected
-        : 0;
-
-    const nextStatus =
-      nextAmountReceived >= session.amountExpected ? "paid" : "partially_paid";
-
-    const updatedSession = await this.cashPaymentSessionRepository.update(
-      session.id,
-      {
-        amountReceived: nextAmountReceived,
-        changeAmount: nextChange,
-        status: nextStatus,
-        completedAt: nextStatus === "paid" ? now : undefined,
-      },
-    );
-
-    if (!updatedSession) {
-      throw CustomError.notFound("Sesion de cobro no encontrada");
-    }
-
-    const sessionWithInsertEvent =
-      await this.cashPaymentSessionRepository.appendEvent(updatedSession.id, {
-        type: "cash_inserted",
-        amount,
-        payload: rawEvent,
-        createdAt: now,
-      });
-
-    if (!sessionWithInsertEvent) {
-      throw CustomError.notFound("Sesion de cobro no encontrada");
-    }
-
-    if (nextStatus !== "paid") {
-      return sessionWithInsertEvent;
-    }
-
-    await this.cashPaymentSessionRepository.appendEvent(
-      sessionWithInsertEvent.id,
-      {
-        type: "change_calculated",
-        amount: nextChange,
-        createdAt: Date.now(),
-        payload: {
-          amountExpected: session.amountExpected,
-          amountReceived: nextAmountReceived,
-        },
-      },
-    );
-
-    const paidAt = Date.now();
-
-    const ticketUpdated = await this.ticketRepository.update(session.ticketId, {
-      pagado: true,
-      horaCobro: paidAt,
-    });
-
-    if (!ticketUpdated) {
-      throw CustomError.notFound("Ticket no encontrado");
-    }
-
-    const payment = await this.recordCashTicketPayment({
-      ticketId: ticketUpdated.id,
-      userId: ticketUpdated.usuario,
-      projectId: ticketUpdated.proyecto,
-      amount: ticketUpdated.monto,
-      paidAt: ticketUpdated.horaCobro,
-      sessionId: sessionWithInsertEvent.id,
-    });
-
     if (session.cashRegisterShiftId) {
-      await this.cashRegisterService.recordTicketPaymentFromCashSession({
-        shiftId: session.cashRegisterShiftId,
-        cashPaymentSessionId: sessionWithInsertEvent.id,
-        ticketId: ticketUpdated.id,
-        proyectoId: ticketUpdated.proyecto,
-        moduloId: session.moduloId,
-        paymentId: payment.id,
-        amountExpected: session.amountExpected,
-        amountReceived: nextAmountReceived,
-        changeAmount: nextChange,
-        paidAt: ticketUpdated.horaCobro,
-      });
+      const activeShift = await this.cashRegisterShiftRepository.findById(
+        session.cashRegisterShiftId,
+      );
+      if (!activeShift) {
+        throw CustomError.badRequest("El turno de caja asociado no existe");
+      }
+      this.ensureShiftOperator(activeShift.openedByUserId, actor);
     }
 
-    await this.cashPaymentSessionRepository.appendEvent(
-      sessionWithInsertEvent.id,
-      {
-        type: "session_completed",
-        createdAt: Date.now(),
-        payload: {
-          ticketId: ticketUpdated.id,
-          paidAt: ticketUpdated.horaCobro,
-        },
-      },
-    );
-
-    const finalSession = await this.cashPaymentSessionRepository.findById(
-      sessionWithInsertEvent.id,
-    );
-
-    if (!finalSession) {
-      throw CustomError.notFound("Sesion de cobro no encontrada");
-    }
-
-    return finalSession;
+    return this.commitCashInsertionTransaction({
+      session,
+      amount,
+      rawEvent,
+      actor,
+    });
   }
 
-  async cancelSession(sessionId: string, allowedProjectIds: string[] = []) {
+  async cancelSession(
+    sessionId: string,
+    actor: CashPaymentActorContext,
+    cancellationReason?: string,
+  ) {
     const session = await this.cashPaymentSessionRepository.findById(sessionId);
 
     if (!session) {
@@ -313,10 +259,26 @@ export class CashTicketPaymentService {
       throw CustomError.notFound("Ticket no encontrado");
     }
 
-    this.ensureProjectAccess(ticket.proyecto, allowedProjectIds);
+    this.ensureProjectAccess(ticket.proyecto, actor.allowedProjectIds);
+
+    if (session.cashRegisterShiftId) {
+      const activeShift = await this.cashRegisterShiftRepository.findById(
+        session.cashRegisterShiftId,
+      );
+      if (activeShift) {
+        this.ensureShiftOperator(activeShift.openedByUserId, actor);
+      }
+    }
 
     if (!this.isSessionActive(session.status)) {
       return session;
+    }
+
+    const reason = String(cancellationReason ?? "").trim();
+    if (session.amountReceived > 0 && reason.length < 5) {
+      throw CustomError.badRequest(
+        "Captura un motivo de cancelacion cuando el cobro ya tiene efectivo registrado",
+      );
     }
 
     const cancelledAt = Date.now();
@@ -338,6 +300,9 @@ export class CashTicketPaymentService {
       createdAt: cancelledAt,
       payload: {
         amountReceived: updatedSession.amountReceived,
+        reason: reason || undefined,
+        cancelledByUserId: actor.userId,
+        cancelledByUserName: actor.userName,
       },
     });
 
@@ -387,49 +352,288 @@ export class CashTicketPaymentService {
     }
   }
 
-  private async recordCashTicketPayment(options: {
-    ticketId: string;
-    userId: string;
-    projectId: string;
-    amount: number;
-    paidAt: number;
-    sessionId: string;
-  }) {
-    const providerReference = `pos_session_${options.sessionId}`;
+  private ensureShiftOperator(openedByUserId: string, actor: CashPaymentActorContext) {
+    if (actor.isSuperAdmin) return;
 
-    const existingPayment =
-      await this.paymentRepository.findByStripePaymentIntentId(
-        providerReference,
+    if (openedByUserId !== actor.userId) {
+      throw CustomError.forbidden(
+        "Solo el usuario que abrio el turno puede operar esta caja",
       );
+    }
+  }
 
-    if (existingPayment) {
-      return existingPayment;
+  private async commitCashInsertionTransaction(options: {
+    session: CashPaymentSessionEntity;
+    amount: number;
+    rawEvent?: Record<string, unknown>;
+    actor: CashPaymentActorContext;
+  }) {
+    const mongoSession = await startMongoSession();
+    let finalSession: CashPaymentSessionEntity | null = null;
+
+    try {
+      await mongoSession.withTransaction(async () => {
+        const sessionDocument = await CashPaymentSessionModel.findById(
+          options.session.id,
+        ).session(mongoSession);
+
+        if (!sessionDocument) {
+          throw CustomError.notFound("Sesion de cobro no encontrada");
+        }
+
+        const currentSession = CashPaymentSessionEntity.fromObject(
+          sessionDocument.toObject(),
+        );
+
+        if (!this.isSessionActive(currentSession.status)) {
+          throw CustomError.badRequest("La sesion ya no esta activa");
+        }
+
+        const idempotencyKey =
+          typeof options.rawEvent?.idempotencyKey === "string"
+            ? options.rawEvent.idempotencyKey.trim()
+            : "";
+        const duplicateEvent = idempotencyKey
+          ? currentSession.events.find((event) => {
+              const payload = event.payload ?? {};
+              return (
+                event.type === "cash_inserted" &&
+                typeof payload.idempotencyKey === "string" &&
+                payload.idempotencyKey === idempotencyKey
+              );
+            })
+          : undefined;
+
+        if (duplicateEvent) {
+          finalSession = currentSession;
+          return;
+        }
+
+        const ticketDocument = await TicketModel.findById(
+          currentSession.ticketId,
+        ).session(mongoSession);
+
+        if (!ticketDocument) {
+          throw CustomError.notFound("Ticket no encontrado");
+        }
+
+        if (ticketDocument.get("pagado") === true) {
+          throw CustomError.badRequest("El ticket ya fue pagado");
+        }
+
+        const shiftDocument = currentSession.cashRegisterShiftId
+          ? await CashRegisterShiftModel.findById(
+              currentSession.cashRegisterShiftId,
+            ).session(mongoSession)
+          : null;
+
+        if (currentSession.cashRegisterShiftId && !shiftDocument) {
+          throw CustomError.badRequest("El turno de caja asociado no existe");
+        }
+
+        if (shiftDocument) {
+          if (String(shiftDocument.get("status")) !== "open") {
+            throw CustomError.badRequest("El turno de caja ya no esta abierto");
+          }
+          this.ensureShiftOperator(
+            String(shiftDocument.get("openedByUserId") ?? ""),
+            options.actor,
+          );
+        }
+
+        const now = Date.now();
+        const nextAmountReceived = currentSession.amountReceived + options.amount;
+        const nextChange =
+          nextAmountReceived > currentSession.amountExpected
+            ? nextAmountReceived - currentSession.amountExpected
+            : 0;
+        const nextStatus =
+          nextAmountReceived >= currentSession.amountExpected
+            ? "paid"
+            : "partially_paid";
+
+        const events: CashPaymentSessionEntity["events"] = [
+          {
+            type: "cash_inserted",
+            amount: options.amount,
+            payload: options.rawEvent,
+            createdAt: now,
+          },
+        ];
+
+        if (nextStatus === "paid") {
+          events.push(
+            {
+              type: "change_calculated",
+              amount: nextChange,
+              createdAt: now,
+              payload: {
+                amountExpected: currentSession.amountExpected,
+                amountReceived: nextAmountReceived,
+              },
+            },
+            {
+              type: "session_completed",
+              createdAt: now,
+              payload: {
+                ticketId: currentSession.ticketId,
+                paidAt: now,
+                completedByUserId: options.actor.userId,
+                completedByUserName: options.actor.userName,
+              },
+            },
+          );
+        }
+
+        const updatedSessionDocument =
+          await CashPaymentSessionModel.findByIdAndUpdate(
+            currentSession.id,
+            {
+              $set: {
+                amountReceived: nextAmountReceived,
+                changeAmount: nextChange,
+                status: nextStatus,
+                completedAt: nextStatus === "paid" ? now : undefined,
+              },
+              $push: {
+                events: {
+                  $each: events,
+                },
+              },
+            },
+            { new: true, session: mongoSession },
+          );
+
+        if (!updatedSessionDocument) {
+          throw CustomError.notFound("Sesion de cobro no encontrada");
+        }
+
+        if (nextStatus !== "paid") {
+          finalSession = CashPaymentSessionEntity.fromObject(
+            updatedSessionDocument.toObject(),
+          );
+          return;
+        }
+
+        await TicketModel.findByIdAndUpdate(
+          currentSession.ticketId,
+          {
+            pagado: true,
+            horaCobro: now,
+          },
+          { session: mongoSession },
+        );
+
+        const providerReference = `pos_session_${currentSession.id}`;
+        let paymentDocument = await PaymentModel.findOne({
+          stripePaymentIntentId: providerReference,
+        }).session(mongoSession);
+
+        if (!paymentDocument) {
+          const projectDocument = await ProyectoModel.findById(
+            ticketDocument.get("proyecto"),
+          ).session(mongoSession);
+
+          [paymentDocument] = await PaymentModel.create(
+            [
+              {
+                user: ticketDocument.get("usuario"),
+                type: "ticket",
+                concept: "Pago de ticket en POS",
+                amount: Number(ticketDocument.get("monto") ?? 0),
+                currency: envs.STRIPE_CURRENCY.toUpperCase(),
+                status: "succeeded",
+                paidAt: now,
+                stripePaymentIntentId: providerReference,
+                paymentMethod: undefined,
+                reference: {
+                  type: "ticket",
+                  id: currentSession.ticketId,
+                },
+                parking: projectDocument
+                  ? {
+                      id: String(projectDocument._id),
+                      name: String(projectDocument.get("nombre") ?? ""),
+                      city: String(projectDocument.get("ciudad") ?? ""),
+                    }
+                  : undefined,
+                rawProviderStatus: "pos_succeeded",
+              },
+            ],
+            { session: mongoSession },
+          );
+        }
+
+        if (currentSession.cashRegisterShiftId && shiftDocument) {
+          const existingMovement = await CashRegisterMovementModel.findOne({
+            relatedCashPaymentSessionId: currentSession.id,
+          }).session(mongoSession);
+
+          if (!existingMovement) {
+            await CashRegisterMovementModel.create(
+              [
+                {
+                  shiftId: currentSession.cashRegisterShiftId,
+                  proyectoId: String(ticketDocument.get("proyecto") ?? ""),
+                  moduloId: currentSession.moduloId,
+                  createdByUserId: options.actor.userId,
+                  createdByUserName:
+                    options.actor.userName ||
+                    String(shiftDocument.get("openedByUserName") ?? "") ||
+                    undefined,
+                  type: "ticket_payment_income",
+                  direction: "in",
+                  concept: "Cobro de boleto en efectivo",
+                  amount: currentSession.amountExpected,
+                  createdAt: now,
+                  relatedTicketId: currentSession.ticketId,
+                  relatedPaymentId: String(paymentDocument._id),
+                  relatedCashPaymentSessionId: currentSession.id,
+                  metadata: {
+                    amountReceived: nextAmountReceived,
+                    changeAmount: nextChange,
+                    source: "cash_payment_transaction",
+                  },
+                },
+              ],
+              { session: mongoSession },
+            );
+          }
+        }
+
+        finalSession = CashPaymentSessionEntity.fromObject(
+          updatedSessionDocument.toObject(),
+        );
+      });
+    } catch (error) {
+      if (this.isMongoTransactionUnsupported(error)) {
+        throw CustomError.internalServer(
+          "MongoDB debe correr como replica set o Atlas para confirmar cobros POS con transacciones",
+          undefined,
+          "MONGO_TRANSACTIONS_REQUIRED",
+        );
+      }
+
+      throw error;
+    } finally {
+      await mongoSession.endSession();
     }
 
-    const project = await ProyectoModel.findById(options.projectId);
+    if (!finalSession) {
+      throw CustomError.notFound("Sesion de cobro no encontrada");
+    }
 
-    return this.paymentRepository.create({
-      user: options.userId,
-      type: "ticket",
-      concept: "Pago de ticket en POS",
-      amount: options.amount,
-      currency: envs.STRIPE_CURRENCY.toUpperCase(),
-      status: "succeeded",
-      paidAt: options.paidAt,
-      stripePaymentIntentId: providerReference,
-      paymentMethod: undefined,
-      reference: {
-        type: "ticket",
-        id: options.ticketId,
-      },
-      parking: project
-        ? {
-            id: String(project._id),
-            name: String(project.get("nombre") ?? ""),
-            city: String(project.get("ciudad") ?? ""),
-          }
-        : undefined,
-      rawProviderStatus: "pos_succeeded",
-    });
+    return finalSession;
+  }
+
+  private isMongoTransactionUnsupported(error: unknown) {
+    if (!error || typeof error !== "object") return false;
+    const message = String((error as { message?: unknown }).message ?? "");
+
+    return (
+      message.includes("Transaction numbers are only allowed") ||
+      message.includes("replica set member or mongos") ||
+      message.includes("Transaction") && message.includes("not supported")
+    );
   }
 }

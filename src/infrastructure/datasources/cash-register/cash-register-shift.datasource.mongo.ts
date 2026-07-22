@@ -62,6 +62,13 @@ export class CashRegisterShiftMongoDatasource
       query.status = filters.status;
     }
 
+    if (filters.dateFrom || filters.dateTo) {
+      query.openedAt = {
+        ...(filters.dateFrom ? { $gte: filters.dateFrom } : {}),
+        ...(filters.dateTo ? { $lte: filters.dateTo } : {}),
+      };
+    }
+
     const [total, items] = await Promise.all([
       CashRegisterShiftModel.countDocuments(query),
       CashRegisterShiftModel.find(query)

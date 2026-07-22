@@ -1,6 +1,7 @@
 export const AVAILABLE_USER_MODULES = [
   "cashPayments",
   "users",
+  "permissionProfiles",
   "projects",
   "modules",
   "pensions",
@@ -18,6 +19,7 @@ const MODULE_ALIASES: Record<string, UserModuleAccess> = {
   cashpayments: "cashPayments",
   pospayments: "cashPayments",
   users: "users",
+  permissionprofiles: "permissionProfiles",
   projects: "projects",
   modules: "modules",
   pensions: "pensions",

@@ -6,6 +6,7 @@ export interface LogEntity {
 }
 
 export * from "./auth/role.entity";
+export * from "./auth/permission-profile.entity";
 export * from "./auth/usuario.entity";
 export * from "./proveedores/proveedor.entity";
 export * from "./parking/proyecto.entity";

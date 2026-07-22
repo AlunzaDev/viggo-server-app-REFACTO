@@ -62,19 +62,53 @@ export class CashRegisterController {
 
   listShifts = async (req: Request, res: Response) => {
     try {
-      const { moduloId, status, page, limit } = req.query as {
+      const { moduloId, status, dateFrom, dateTo, page, limit, includeSummary } =
+        req.query as {
         moduloId?: string;
         status?: string;
+        dateFrom?: string;
+        dateTo?: string;
         page?: string;
         limit?: string;
+        includeSummary?: string;
       };
 
-      const result = await this.cashRegisterService.listShifts(
+      const filters = {
+        moduloId: moduloId?.trim() || undefined,
+        status: status?.trim() || undefined,
+        dateFrom: dateFrom ? Number(dateFrom) : undefined,
+        dateTo: dateTo ? Number(dateTo) : undefined,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      };
+
+      const actor = this.buildActorContext(req);
+      const result =
+        includeSummary === "true"
+          ? await this.cashRegisterService.listShiftSummaries(filters, actor)
+          : await this.cashRegisterService.listShifts(filters, actor);
+
+      return res.status(200).json(result);
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  getShiftsSummary = async (req: Request, res: Response) => {
+    try {
+      const { moduloId, status, dateFrom, dateTo } = req.query as {
+        moduloId?: string;
+        status?: string;
+        dateFrom?: string;
+        dateTo?: string;
+      };
+
+      const result = await this.cashRegisterService.getShiftsSummary(
         {
           moduloId: moduloId?.trim() || undefined,
           status: status?.trim() || undefined,
-          page: page ? Number(page) : undefined,
-          limit: limit ? Number(limit) : undefined,
+          dateFrom: dateFrom ? Number(dateFrom) : undefined,
+          dateTo: dateTo ? Number(dateTo) : undefined,
         },
         this.buildActorContext(req),
       );

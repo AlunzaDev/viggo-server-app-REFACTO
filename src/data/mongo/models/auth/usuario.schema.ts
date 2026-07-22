@@ -68,6 +68,10 @@ const usuarioSchema = new Schema(
       type: [String],
       default: [],
     },
+    permissionProfileId: {
+      type: String,
+      default: undefined,
+    },
     modules: {
       type: [String],
       default: AVAILABLE_USER_MODULES,

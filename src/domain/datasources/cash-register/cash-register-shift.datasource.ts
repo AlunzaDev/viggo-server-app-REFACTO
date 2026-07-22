@@ -4,6 +4,8 @@ export interface CashRegisterShiftFilters {
   proyectoIds?: string[];
   moduloId?: string;
   status?: string;
+  dateFrom?: number;
+  dateTo?: number;
   page?: number;
   limit?: number;
 }

@@ -164,6 +164,10 @@ export class AuthMiddleware {
         return next();
       }
 
+      if (authRequest.usuario.rol === "SUPER_ROLE") {
+        return next();
+      }
+
       const userModules = normalizeUserModules(authRequest.usuario.modules);
       const hasAccess = allowedModules.some((module) =>
         hasUserModuleAccess(userModules, module),

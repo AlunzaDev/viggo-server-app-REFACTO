@@ -16,6 +16,7 @@ export class CreateUsuarioDto {
     public readonly password: string,
     public readonly rol: UsuarioRol,
     public readonly parkings: string[],
+    public readonly permissionProfileId: string | undefined,
     public readonly modules: UserModuleAccess[],
     public readonly coordinates?: number[],
     public readonly nacimiento?: number,
@@ -45,6 +46,11 @@ export class CreateUsuarioDto {
       ? body.coordinates.map((value) => Number(value))
       : undefined;
     const parkings = normalizeUserParkings(body.parkings);
+    const permissionProfileId =
+      typeof body.permissionProfileId === "string" &&
+      body.permissionProfileId.trim().length > 0
+        ? body.permissionProfileId.trim()
+        : undefined;
     const modules = normalizeUserModules(body.modules);
 
     const nacimiento =
@@ -90,6 +96,7 @@ export class CreateUsuarioDto {
         password,
         rol,
         parkings,
+        permissionProfileId,
         modules,
         coordinates,
         nacimiento,

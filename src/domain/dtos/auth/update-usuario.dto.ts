@@ -15,6 +15,7 @@ export class UpdateUsuarioDto {
     public readonly password?: string,
     public readonly rol?: UsuarioRol,
     public readonly parkings?: string[],
+    public readonly permissionProfileId?: string,
     public readonly modules?: UserModuleAccess[],
     public readonly coordinates?: number[],
     public readonly nacimiento?: number,
@@ -35,9 +36,23 @@ export class UpdateUsuarioDto {
       typeof body.telefono === "string" ? body.telefono.trim() : undefined;
     const password =
       typeof body.password === "string" ? body.password : undefined;
-    const rol = body.rol === undefined ? undefined : isUsuarioRol(body.rol) ? body.rol : null;
+    const rol =
+      body.rol === undefined
+        ? undefined
+        : isUsuarioRol(body.rol)
+          ? body.rol
+          : null;
     const parkings =
-      body.parkings === undefined ? undefined : normalizeUserParkings(body.parkings);
+      body.parkings === undefined
+        ? undefined
+        : normalizeUserParkings(body.parkings);
+    const permissionProfileId =
+      body.permissionProfileId === undefined
+        ? undefined
+        : typeof body.permissionProfileId === "string" &&
+            body.permissionProfileId.trim().length > 0
+          ? body.permissionProfileId.trim()
+          : "";
     const modules =
       body.modules === undefined ? undefined : normalizeUserModules(body.modules);
 
@@ -59,23 +74,26 @@ export class UpdateUsuarioDto {
 
     const google = typeof body.google === "boolean" ? body.google : undefined;
 
-    if (nombre !== undefined && !nombre) return ["'nombre' no puede ir vacío"];
+    if (nombre !== undefined && !nombre) return ["'nombre' no puede ir vacio"];
     if (apellido !== undefined && !apellido) {
-      return ["'apellido' no puede ir vacío"];
+      return ["'apellido' no puede ir vacio"];
     }
-    if (correo !== undefined && !correo) return ["'correo' no puede ir vacío"];
+    if (correo !== undefined && !correo) return ["'correo' no puede ir vacio"];
     if (telefono !== undefined && !telefono) {
-      return ["'telefono' no puede ir vacío"];
+      return ["'telefono' no puede ir vacio"];
     }
     if (password !== undefined && password.length < 6) {
       return ["'password' debe tener al menos 6 caracteres"];
     }
-    if (rol === null) return ["'rol' no es válido"];
+    if (rol === null) return ["'rol' no es valido"];
+    if (body.permissionProfileId !== undefined && !permissionProfileId) {
+      return ["'permissionProfileId' no es valido"];
+    }
     if (coordinates?.some((value) => Number.isNaN(value))) {
-      return ["'coordinates' debe contener solo números"];
+      return ["'coordinates' debe contener solo numeros"];
     }
     if (nacimiento !== undefined && Number.isNaN(nacimiento)) {
-      return ["'nacimiento' debe ser numérico"];
+      return ["'nacimiento' debe ser numerico"];
     }
 
     return [
@@ -88,6 +106,7 @@ export class UpdateUsuarioDto {
         password,
         rol,
         parkings,
+        permissionProfileId,
         modules,
         coordinates,
         nacimiento,

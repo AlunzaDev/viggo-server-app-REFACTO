@@ -1,4 +1,5 @@
 export * from "./auth/auth.repository.impl";
+export * from "./auth/permission-profile.repository.impl";
 export * from "./auth/usuario.repository.impl";
 export * from "./cash-register/cash-register-shift.repository.impl";
 export * from "./cash-register/cash-register-movement.repository.impl";

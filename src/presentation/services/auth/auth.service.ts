@@ -196,7 +196,7 @@ export class AuthService {
     );
 
     const baseUrl = this.webServiceUrl.replace(/\/+$/, "");
-    const link = `${baseUrl}/api/auth/reset-password/${rawToken}`;
+    const link = `${baseUrl}/reset-password/${rawToken}`;
     const html = resetPasswordEmailHtml(link, usuario.correo, usuario.nombre);
 
     const isSent = await this.emailService.sendEmail({

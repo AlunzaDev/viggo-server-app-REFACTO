@@ -2,12 +2,18 @@ import { bcryptPlugin } from "../../../config/plugins/bcrypt.plugin";
 import { UsuarioEntity } from "../../../domain/entities/auth/usuario.entity";
 import { AUTH_ROLES } from "../../../domain/constants";
 import { CustomError } from "../../../domain/errors/custom.error";
+import { PermissionProfileRepository } from "../../../domain/repository/auth/permission-profile.repository";
 import { UsuarioRepository } from "../../../domain/repository/auth/usuario.repository";
+import { AuthService } from "./auth.service";
 
 type SafeUsuario = Omit<UsuarioEntity, "password">;
 
 export class UsuarioService {
-  constructor(private readonly usuarioRepository: UsuarioRepository) {}
+  constructor(
+    private readonly usuarioRepository: UsuarioRepository,
+    private readonly permissionProfileRepository: PermissionProfileRepository,
+    private readonly authService: AuthService,
+  ) {}
 
   async createUsuario(
     usuario: Omit<UsuarioEntity, "id" | "emailValidated"> & {
@@ -16,14 +22,23 @@ export class UsuarioService {
   ): Promise<SafeUsuario> {
     await this.validateUniqueFields(undefined, usuario);
     this.validateProjectAssignments(usuario);
+    const resolvedAccess = await this.resolvePermissionModules(usuario);
 
     const hashedPassword = bcryptPlugin.hash(usuario.password);
 
     const usuarioCreated = await this.usuarioRepository.create({
       ...usuario,
+      ...resolvedAccess,
       emailValidated: usuario.emailValidated ?? false,
       password: hashedPassword,
     });
+
+    if (usuarioCreated.emailValidated !== true) {
+      await this.authService.sendEmailValidationLink(
+        usuarioCreated.id,
+        usuarioCreated.correo,
+      );
+    }
 
     return this.toSafeUsuario(usuarioCreated);
   }
@@ -49,9 +64,11 @@ export class UsuarioService {
   ): Promise<SafeUsuario> {
     await this.validateUniqueFields(id, usuario);
     this.validateProjectAssignments(usuario);
+    const resolvedAccess = await this.resolvePermissionModules(usuario);
 
     const usuarioToUpdate = {
       ...usuario,
+      ...resolvedAccess,
       password: usuario.password
         ? bcryptPlugin.hash(usuario.password)
         : undefined,
@@ -136,5 +153,28 @@ export class UsuarioService {
   private toSafeUsuario(usuario: UsuarioEntity): SafeUsuario {
     const { password, ...safeUsuario } = usuario;
     return safeUsuario;
+  }
+
+  private async resolvePermissionModules(
+    usuario: Partial<Omit<UsuarioEntity, "id">>,
+  ): Promise<Partial<Pick<UsuarioEntity, "permissionProfileId" | "modules">>> {
+    if (!usuario.permissionProfileId) {
+      return usuario.modules ? { modules: usuario.modules } : {};
+    }
+
+    const profile = await this.permissionProfileRepository.findById(
+      usuario.permissionProfileId,
+    );
+
+    if (!profile || !profile.estado) {
+      throw CustomError.badRequest(
+        "El perfil de permisos seleccionado no existe o esta inactivo",
+      );
+    }
+
+    return {
+      permissionProfileId: profile.id,
+      modules: profile.modules,
+    };
   }
 }

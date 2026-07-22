@@ -18,6 +18,7 @@ export interface UsuarioEntityOptions {
   emailValidated: boolean;
   rol: UsuarioRol;
   parkings: string[];
+  permissionProfileId?: string;
   modules: UserModuleAccess[];
   nacimiento?: number;
   img?: string;
@@ -36,6 +37,7 @@ export class UsuarioEntity {
   public emailValidated: boolean;
   public rol: UsuarioRol;
   public parkings: string[];
+  public permissionProfileId?: string;
   public modules: UserModuleAccess[];
   public nacimiento?: number;
   public img?: string;
@@ -54,6 +56,7 @@ export class UsuarioEntity {
       emailValidated,
       rol,
       parkings,
+      permissionProfileId,
       modules,
       nacimiento,
       img,
@@ -71,6 +74,7 @@ export class UsuarioEntity {
     this.emailValidated = emailValidated;
     this.rol = rol;
     this.parkings = parkings;
+    this.permissionProfileId = permissionProfileId;
     this.modules = modules;
     this.nacimiento = nacimiento;
     this.img = img;
@@ -91,6 +95,7 @@ export class UsuarioEntity {
       emailValidated,
       rol,
       parkings,
+      permissionProfileId,
       modules,
       nacimiento,
       img,
@@ -131,6 +136,10 @@ export class UsuarioEntity {
             throw CustomError.badRequest("Invalid rol");
           })(),
       parkings: normalizeUserParkings(parkings),
+      permissionProfileId:
+        typeof permissionProfileId === "string" && permissionProfileId.trim().length > 0
+          ? permissionProfileId.trim()
+          : undefined,
       modules: normalizeUserModules(modules),
       nacimiento:
         typeof nacimiento === "number"

@@ -1,7 +1,16 @@
 import { Request, Response } from "express";
-import { getAllowedProjectIdsFromRequest } from "../../middlewares";
+import {
+  getAllowedProjectIdsFromRequest,
+  getAuthenticatedRequestUser,
+  isSuperAdminRequest,
+} from "../../middlewares";
 import { ErrorService } from "../../services/error.service";
-import { CashTicketPaymentService } from "../../services/payments/cash-ticket-payment.service";
+import {
+  CashPaymentActorContext,
+  CashTicketPaymentService,
+} from "../../services/payments/cash-ticket-payment.service";
+
+type AuthenticatedRequest = Request & { uid?: string };
 
 export class CashTicketPaymentController {
   constructor(
@@ -39,7 +48,7 @@ export class CashTicketPaymentController {
       const session = await this.cashTicketPaymentService.startCashSession(
         ticketId,
         moduloId.trim(),
-        getAllowedProjectIdsFromRequest(req),
+        this.buildActorContext(req),
       );
 
       return res.status(201).json({ session });
@@ -63,8 +72,8 @@ export class CashTicketPaymentController {
       const session = await this.cashTicketPaymentService.registerCashInsertion(
         sessionId,
         amount,
+        this.buildActorContext(req),
         rawEvent,
-        getAllowedProjectIdsFromRequest(req),
       );
 
       return res.status(200).json({ session });
@@ -76,11 +85,14 @@ export class CashTicketPaymentController {
   cancelSession = async (req: Request, res: Response) => {
     try {
       const sessionId = String(req.params.sessionId);
-      const session =
-        await this.cashTicketPaymentService.cancelSession(
-          sessionId,
-          getAllowedProjectIdsFromRequest(req),
-        );
+      const { cancellationReason } = req.body as {
+        cancellationReason?: unknown;
+      };
+      const session = await this.cashTicketPaymentService.cancelSession(
+        sessionId,
+        this.buildActorContext(req),
+        typeof cancellationReason === "string" ? cancellationReason : undefined,
+      );
 
       return res.status(200).json({ session });
     } catch (error) {
@@ -102,4 +114,23 @@ export class CashTicketPaymentController {
       return ErrorService.handleApiError(error, res);
     }
   };
+
+  private buildActorContext(req: Request): CashPaymentActorContext {
+    const authRequest = req as AuthenticatedRequest;
+    const authUser = getAuthenticatedRequestUser(req) as
+      | (Record<string, unknown> & { nombre?: unknown; apellido?: unknown })
+      | undefined;
+
+    const fullName = [authUser?.nombre, authUser?.apellido]
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .filter(Boolean)
+      .join(" ");
+
+    return {
+      userId: String(authRequest.uid ?? ""),
+      userName: fullName || undefined,
+      allowedProjectIds: getAllowedProjectIdsFromRequest(req),
+      isSuperAdmin: isSuperAdminRequest(req),
+    };
+  }
 }

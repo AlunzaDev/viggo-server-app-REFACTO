@@ -30,6 +30,13 @@ export class CashRegisterRoutes {
     );
 
     router.get(
+      "/shifts/stats/summary",
+      AuthMiddleware.requireAuth,
+      moduleAccess,
+      controller.getShiftsSummary,
+    );
+
+    router.get(
       "/shifts/:shiftId",
       AuthMiddleware.requireAuth,
       moduleAccess,

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { MongoDatabase } from "../../data/mongo";
 import { AuthRoutes } from "./auth/auth.routes";
+import { PermissionProfileRoutes } from "./auth/permission-profile.routes";
 import { UsuarioRoutes } from "./auth/usuario.routes";
 import { ProveedorRoutes } from "./proveedores/proveedor.routes";
 import { ProyectoRoutes } from "./parking/proyecto.routes";
@@ -29,6 +30,7 @@ export class AppRoutes {
 
     router.use("/api/auth", AuthRoutes.routes);
     router.use("/api/usuarios", UsuarioRoutes.routes);
+    router.use("/api/permission-profiles", PermissionProfileRoutes.routes);
 
     router.use("/api/proveedores", ProveedorRoutes.routes);
     router.use("/api/proyectos", ProyectoRoutes.routes);

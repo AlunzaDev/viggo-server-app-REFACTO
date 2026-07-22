@@ -1,5 +1,6 @@
 export * from "./error.service";
 export * from "./auth/auth.service";
+export * from "./auth/permission-profile.service";
 export * from "./auth/usuario.service";
 export * from "./proveedores/proveedor.service";
 export * from "./parking/proyecto.service";

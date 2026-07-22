@@ -46,6 +46,7 @@ export interface CashPaymentSessionEntityOptions {
   moduloIdentificador?: string;
   moduloNombre?: string;
   deviceId?: string;
+  cashRegisterShiftId?: string;
   startedAt: number;
   completedAt?: number;
   cancelledAt?: number;
@@ -64,6 +65,7 @@ export class CashPaymentSessionEntity {
   public moduloIdentificador?: string;
   public moduloNombre?: string;
   public deviceId?: string;
+  public cashRegisterShiftId?: string;
   public startedAt: number;
   public completedAt?: number;
   public cancelledAt?: number;
@@ -81,6 +83,7 @@ export class CashPaymentSessionEntity {
     this.moduloIdentificador = options.moduloIdentificador;
     this.moduloNombre = options.moduloNombre;
     this.deviceId = options.deviceId;
+    this.cashRegisterShiftId = options.cashRegisterShiftId;
     this.startedAt = options.startedAt;
     this.completedAt = options.completedAt;
     this.cancelledAt = options.cancelledAt;
@@ -103,6 +106,7 @@ export class CashPaymentSessionEntity {
       moduloIdentificador,
       moduloNombre,
       deviceId,
+      cashRegisterShiftId,
       startedAt,
       completedAt,
       cancelledAt,
@@ -156,6 +160,9 @@ export class CashPaymentSessionEntity {
         : undefined,
       moduloNombre: moduloNombre ? String(moduloNombre) : undefined,
       deviceId: deviceId ? String(deviceId) : undefined,
+      cashRegisterShiftId: cashRegisterShiftId
+        ? String(cashRegisterShiftId)
+        : undefined,
       startedAt: Number(startedAt),
       completedAt:
         completedAt === undefined || completedAt === null

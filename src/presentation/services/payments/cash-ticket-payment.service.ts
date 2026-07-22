@@ -2,15 +2,19 @@ import { envs } from "../../../config";
 import { ModuloModel } from "../../../data/mongo/models/parking/modulo.schema";
 import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import { CustomError } from "../../../domain/errors/custom.error";
+import { CashRegisterShiftRepository } from "../../../domain/repository/cash-register/cash-register-shift.repository";
 import { TicketRepository } from "../../../domain/repository/parking/ticket.repository";
 import { CashPaymentSessionRepository } from "../../../domain/repository/payments/cash-payment-session.repository";
 import { PaymentRepository } from "../../../domain/repository/payments/payment.repository";
+import { CashRegisterService } from "../cash-register/cash-register.service";
 
 export class CashTicketPaymentService {
   constructor(
     private readonly ticketRepository: TicketRepository,
     private readonly cashPaymentSessionRepository: CashPaymentSessionRepository,
     private readonly paymentRepository: PaymentRepository,
+    private readonly cashRegisterShiftRepository: CashRegisterShiftRepository,
+    private readonly cashRegisterService: CashRegisterService,
   ) {}
 
   async resolveTicketFromQr(qrValue: string, allowedProjectIds: string[] = []) {
@@ -115,6 +119,15 @@ export class CashTicketPaymentService {
       return existingSession;
     }
 
+    const activeShift =
+      await this.cashRegisterShiftRepository.findOpenByModuloId(String(modulo._id));
+
+    if (!activeShift) {
+      throw CustomError.badRequest(
+        "La caja seleccionada no tiene un turno abierto",
+      );
+    }
+
     return this.cashPaymentSessionRepository.create({
       ticketId: ticket.id,
       idBoleto: ticket.idBoleto,
@@ -126,6 +139,7 @@ export class CashTicketPaymentService {
       moduloIdentificador: String(modulo.get("identificador") ?? "").trim() || undefined,
       moduloNombre: String(modulo.get("nombre") ?? "").trim() || undefined,
       deviceId: String(modulo.get("identificador") ?? "").trim() || undefined,
+      cashRegisterShiftId: activeShift.id,
       startedAt: Date.now(),
       completedAt: undefined,
       cancelledAt: undefined,
@@ -142,6 +156,7 @@ export class CashTicketPaymentService {
             moduloNombre: String(modulo.get("nombre") ?? "").trim() || undefined,
             deviceId:
               String(modulo.get("identificador") ?? "").trim() || undefined,
+            cashRegisterShiftId: activeShift.id,
           },
         },
       ],
@@ -172,7 +187,7 @@ export class CashTicketPaymentService {
     }
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      throw CustomError.badRequest("El monto insertado no es valido");
+      throw CustomError.badRequest("El monto registrado en POS no es valido");
     }
 
     const now = Date.now();
@@ -239,7 +254,7 @@ export class CashTicketPaymentService {
       throw CustomError.notFound("Ticket no encontrado");
     }
 
-    await this.recordCashTicketPayment({
+    const payment = await this.recordCashTicketPayment({
       ticketId: ticketUpdated.id,
       userId: ticketUpdated.usuario,
       projectId: ticketUpdated.proyecto,
@@ -247,6 +262,21 @@ export class CashTicketPaymentService {
       paidAt: ticketUpdated.horaCobro,
       sessionId: sessionWithInsertEvent.id,
     });
+
+    if (session.cashRegisterShiftId) {
+      await this.cashRegisterService.recordTicketPaymentFromCashSession({
+        shiftId: session.cashRegisterShiftId,
+        cashPaymentSessionId: sessionWithInsertEvent.id,
+        ticketId: ticketUpdated.id,
+        proyectoId: ticketUpdated.proyecto,
+        moduloId: session.moduloId,
+        paymentId: payment.id,
+        amountExpected: session.amountExpected,
+        amountReceived: nextAmountReceived,
+        changeAmount: nextChange,
+        paidAt: ticketUpdated.horaCobro,
+      });
+    }
 
     await this.cashPaymentSessionRepository.appendEvent(
       sessionWithInsertEvent.id,
@@ -365,7 +395,7 @@ export class CashTicketPaymentService {
     paidAt: number;
     sessionId: string;
   }) {
-    const providerReference = `cash_session_${options.sessionId}`;
+    const providerReference = `pos_session_${options.sessionId}`;
 
     const existingPayment =
       await this.paymentRepository.findByStripePaymentIntentId(
@@ -381,7 +411,7 @@ export class CashTicketPaymentService {
     return this.paymentRepository.create({
       user: options.userId,
       type: "ticket",
-      concept: "Pago de ticket en efectivo",
+      concept: "Pago de ticket en POS",
       amount: options.amount,
       currency: envs.STRIPE_CURRENCY.toUpperCase(),
       status: "succeeded",
@@ -399,7 +429,7 @@ export class CashTicketPaymentService {
             city: String(project.get("ciudad") ?? ""),
           }
         : undefined,
-      rawProviderStatus: "cash_succeeded",
+      rawProviderStatus: "pos_succeeded",
     });
   }
 }

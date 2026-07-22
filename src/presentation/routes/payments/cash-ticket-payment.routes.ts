@@ -6,7 +6,7 @@ export class CashTicketPaymentRoutes {
   static get routes(): Router {
     const router = Router();
     const controller = buildCashTicketPaymentController();
-    const cashModuleAccess = AuthMiddleware.requireModules(
+    const posModuleAccess = AuthMiddleware.requireModules(
       "cashPayments",
       "payments",
     );
@@ -14,35 +14,42 @@ export class CashTicketPaymentRoutes {
     router.post(
       "/tickets/resolve-qr",
       AuthMiddleware.requireAuth,
-      cashModuleAccess,
+      posModuleAccess,
       controller.resolveTicketFromQr,
     );
 
     router.post(
       "/tickets/:ticketId/start",
       AuthMiddleware.requireAuth,
-      cashModuleAccess,
+      posModuleAccess,
       controller.startCashSession,
+    );
+
+    router.post(
+      "/sessions/:sessionId/register-pos-amount",
+      AuthMiddleware.requireAuth,
+      posModuleAccess,
+      controller.registerCashInsertion,
     );
 
     router.post(
       "/sessions/:sessionId/insert-cash",
       AuthMiddleware.requireAuth,
-      cashModuleAccess,
+      posModuleAccess,
       controller.registerCashInsertion,
     );
 
     router.post(
       "/sessions/:sessionId/cancel",
       AuthMiddleware.requireAuth,
-      cashModuleAccess,
+      posModuleAccess,
       controller.cancelSession,
     );
 
     router.get(
       "/sessions/:sessionId",
       AuthMiddleware.requireAuth,
-      cashModuleAccess,
+      posModuleAccess,
       controller.getSessionById,
     );
 

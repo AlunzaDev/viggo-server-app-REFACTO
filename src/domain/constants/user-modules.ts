@@ -16,6 +16,7 @@ const USER_MODULE_SET = new Set<string>(AVAILABLE_USER_MODULES);
 
 const MODULE_ALIASES: Record<string, UserModuleAccess> = {
   cashpayments: "cashPayments",
+  pospayments: "cashPayments",
   users: "users",
   projects: "projects",
   modules: "modules",

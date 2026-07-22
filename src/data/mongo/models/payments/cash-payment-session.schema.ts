@@ -103,6 +103,12 @@ const cashPaymentSessionSchema = new Schema(
       trim: true,
       index: true,
     },
+    cashRegisterShiftId: {
+      type: String,
+      default: undefined,
+      trim: true,
+      index: true,
+    },
     startedAt: {
       type: Number,
       required: [true, "La fecha de inicio es obligatoria"],

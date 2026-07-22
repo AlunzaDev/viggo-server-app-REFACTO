@@ -9,6 +9,7 @@ import { TicketRoutes } from "./parking/ticket.routes";
 import { PensionRoutes } from "./pension/pension.routes";
 import { PensionPassRoutes } from "./pension/pension-pass.routes";
 import { PensionMoveRoutes } from "./pension/pension-move.routes";
+import { CashRegisterRoutes } from "./cash-register/cash-register.routes";
 import { TicketPaymentRoutes } from "./payments/ticket-payment.routes";
 import { StripePaymentRoutes } from "./payments/stripe-payment.routes";
 import { CashTicketPaymentRoutes } from "./payments/cash-ticket-payment.routes";
@@ -36,8 +37,11 @@ export class AppRoutes {
     router.use("/api/pensiones", PensionRoutes.routes);
     router.use("/api/pension-pass", PensionPassRoutes.routes);
     router.use("/api/pension-moves", PensionMoveRoutes.routes);
+    router.use("/api/pos-register", CashRegisterRoutes.routes);
+    router.use("/api/cash-register", CashRegisterRoutes.routes);
     router.use("/api/payments", TicketPaymentRoutes.routes);
     router.use("/api/stripe", StripePaymentRoutes.routes);
+    router.use("/api/pos-payments", CashTicketPaymentRoutes.routes);
     router.use("/api/cash-payments", CashTicketPaymentRoutes.routes);
 
     return router;

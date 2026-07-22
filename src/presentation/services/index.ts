@@ -11,6 +11,6 @@ export * from "./pension/pension-move.service";
 
 export * from "./email/email.service";
 
+export * from "./cash-register/cash-register.service";
 export * from "./payments/cash-ticket-payment.service";
 export * from "./payments/ticket-payment.service";
-

@@ -1,8 +1,8 @@
-import { CustomError } from "../../../domain/errors/custom.error";
+import { ModuloFilters } from "../../../domain/datasources/parking/modulo.datasource";
 import { ModuloEntity } from "../../../domain/entities/parking/modulo.entity";
+import { CustomError } from "../../../domain/errors/custom.error";
 import { ModuloRepository } from "../../../domain/repository/parking/modulo.repository";
 import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
-import { ModuloFilters } from "./modulo-device-binding.types";
 
 export class ModuloCrudService {
   constructor(
@@ -12,15 +12,9 @@ export class ModuloCrudService {
 
   async createModulo(modulo: Omit<ModuloEntity, "id">): Promise<ModuloEntity> {
     const proyecto = await this.proyectoRepository.findById(modulo.proyecto);
+    if (!proyecto) throw CustomError.badRequest("El proyecto asociado no existe");
 
-    if (!proyecto) {
-      throw CustomError.badRequest("El proyecto asociado no existe");
-    }
-
-    const moduloExists = await this.moduloRepository.findByIdentificador(
-      modulo.identificador,
-    );
-
+    const moduloExists = await this.moduloRepository.findByIdentificador(modulo.identificador);
     if (moduloExists) {
       throw CustomError.badRequest(
         `El modulo con identificador '${modulo.identificador}' ya existe`,
@@ -30,55 +24,33 @@ export class ModuloCrudService {
     return this.moduloRepository.create(modulo);
   }
 
-  async getModulos(): Promise<ModuloEntity[]> {
+  getModulos(): Promise<ModuloEntity[]> {
     return this.moduloRepository.getAll();
-  }
-
-  async getModulosWithPendingDeviceBindingRequests(): Promise<ModuloEntity[]> {
-    return this.moduloRepository.getWithPendingDeviceBindingRequests();
   }
 
   async getModulosFiltered(filters: ModuloFilters): Promise<ModuloEntity[]> {
     if (filters.proyecto) {
       const proyecto = await this.proyectoRepository.findById(filters.proyecto);
-
-      if (!proyecto) {
-        throw CustomError.notFound("Proyecto no encontrado");
-      }
+      if (!proyecto) throw CustomError.notFound("Proyecto no encontrado");
     }
-
     return this.moduloRepository.getFiltered(filters);
   }
 
   async getModuloById(id: string): Promise<ModuloEntity> {
     const modulo = await this.moduloRepository.findById(id);
-
-    if (!modulo) {
-      throw CustomError.notFound("Modulo no encontrado");
-    }
-
+    if (!modulo) throw CustomError.notFound("Modulo no encontrado");
     return modulo;
   }
 
   async getModuloByIdentificador(identificador: string): Promise<ModuloEntity> {
-    const modulo = await this.moduloRepository.findByIdentificador(
-      identificador,
-    );
-
-    if (!modulo) {
-      throw CustomError.notFound("Modulo no encontrado");
-    }
-
+    const modulo = await this.moduloRepository.findByIdentificador(identificador);
+    if (!modulo) throw CustomError.notFound("Modulo no encontrado");
     return modulo;
   }
 
   async getModulosByProyecto(proyectoId: string): Promise<ModuloEntity[]> {
     const proyecto = await this.proyectoRepository.findById(proyectoId);
-
-    if (!proyecto) {
-      throw CustomError.notFound("Proyecto no encontrado");
-    }
-
+    if (!proyecto) throw CustomError.notFound("Proyecto no encontrado");
     return this.moduloRepository.getByProyecto(proyectoId);
   }
 
@@ -86,57 +58,36 @@ export class ModuloCrudService {
     id: string,
     modulo: Partial<Omit<ModuloEntity, "id">>,
   ): Promise<ModuloEntity> {
-    const currentModulo = await this.getModuloById(id);
+    const current = await this.getModuloById(id);
 
-    if (modulo.proyecto && modulo.proyecto !== currentModulo.proyecto) {
+    if (modulo.proyecto && modulo.proyecto !== current.proyecto) {
       const proyecto = await this.proyectoRepository.findById(modulo.proyecto);
-
-      if (!proyecto) {
-        throw CustomError.badRequest("El proyecto asociado no existe");
-      }
+      if (!proyecto) throw CustomError.badRequest("El proyecto asociado no existe");
     }
 
-    if (
-      modulo.identificador &&
-      modulo.identificador !== currentModulo.identificador
-    ) {
-      const moduloExists = await this.moduloRepository.findByIdentificador(
-        modulo.identificador,
-      );
-
-      if (moduloExists && moduloExists.id !== id) {
+    if (modulo.identificador && modulo.identificador !== current.identificador) {
+      const duplicate = await this.moduloRepository.findByIdentificador(modulo.identificador);
+      if (duplicate && duplicate.id !== id) {
         throw CustomError.badRequest(
           `El modulo con identificador '${modulo.identificador}' ya existe`,
         );
       }
     }
 
-    const moduloUpdated = await this.moduloRepository.update(id, modulo);
-
-    if (!moduloUpdated) {
-      throw CustomError.notFound("Modulo no encontrado");
-    }
-
-    return moduloUpdated;
+    const updated = await this.moduloRepository.update(id, modulo);
+    if (!updated) throw CustomError.notFound("Modulo no encontrado");
+    return updated;
   }
 
   async updateModuloStatus(id: string, estado: boolean): Promise<ModuloEntity> {
-    const moduloUpdated = await this.moduloRepository.update(id, { estado });
-
-    if (!moduloUpdated) {
-      throw CustomError.notFound("Modulo no encontrado");
-    }
-
-    return moduloUpdated;
+    const updated = await this.moduloRepository.update(id, { estado });
+    if (!updated) throw CustomError.notFound("Modulo no encontrado");
+    return updated;
   }
 
   async deleteModulo(id: string): Promise<ModuloEntity> {
-    const moduloDeleted = await this.moduloRepository.delete(id);
-
-    if (!moduloDeleted) {
-      throw CustomError.notFound("Modulo no encontrado");
-    }
-
-    return moduloDeleted;
+    const deleted = await this.moduloRepository.delete(id);
+    if (!deleted) throw CustomError.notFound("Modulo no encontrado");
+    return deleted;
   }
 }

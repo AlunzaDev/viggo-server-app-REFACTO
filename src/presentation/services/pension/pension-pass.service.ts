@@ -1,117 +1,58 @@
 import { PensionPassEntity } from "../../../domain/entities/pension/pension-pass.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
-import { ModuloRepository } from "../../../domain/repository/parking/modulo.repository";
-import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
-import { PensionMoveRepository } from "../../../domain/repository/pension/pension-move.repository";
 import { PensionPassRepository } from "../../../domain/repository/pension/pension-pass.repository";
 import { PensionRepository } from "../../../domain/repository/pension/pension.repository";
-import {
-  buildPaginatedResponse,
-  paginateArray,
-  parsePaginationDateQuery,
-  PaginationDateQuery,
-} from "../shared/pagination-query";
-import { PensionPassAccessService } from "./pension-pass-access.service";
-import { PensionPassContractService } from "./pension-pass-contract.service";
-import {
-  PensionMoveResponse,
-  PensionPassCardResponse,
-  PensionPassResponseMapper,
-} from "./pension-pass-response.mapper";
 
 export class PensionPassService {
-  private readonly responseMapper: PensionPassResponseMapper;
-  private readonly contractService: PensionPassContractService;
-  private readonly accessService: PensionPassAccessService;
-
   constructor(
     private readonly pensionPassRepository: PensionPassRepository,
     private readonly pensionRepository: PensionRepository,
-    proyectoRepository: ProyectoRepository,
-    moduloRepository: ModuloRepository,
-    private readonly pensionMoveRepository: PensionMoveRepository,
-  ) {
-    this.responseMapper = new PensionPassResponseMapper(
-      pensionRepository,
-      proyectoRepository,
-      moduloRepository,
-    );
-    this.contractService = new PensionPassContractService(
-      pensionPassRepository,
-      pensionRepository,
-      this.responseMapper,
-    );
-    this.accessService = new PensionPassAccessService(
-      pensionPassRepository,
-      pensionRepository,
-      moduloRepository,
-      pensionMoveRepository,
-      this.responseMapper,
-    );
-  }
+  ) {}
 
   async createPensionPass(
     pensionPass: Omit<PensionPassEntity, "id">,
   ): Promise<PensionPassEntity> {
     const pension = await this.pensionRepository.findById(pensionPass.pension);
+    if (!pension) throw CustomError.badRequest("La pension asociada no existe");
 
-    if (!pension) {
-      throw CustomError.badRequest("La pension asociada no existe");
-    }
-
-    const pensionPassExists = await this.pensionPassRepository.findByIdPass(
-      pensionPass.idPass,
-    );
-
-    if (pensionPassExists) {
+    const duplicate = await this.pensionPassRepository.findByIdPass(pensionPass.idPass);
+    if (duplicate) {
       throw CustomError.badRequest(
         `El pensionPass con idPass '${pensionPass.idPass}' ya existe`,
       );
     }
 
-    return this.pensionPassRepository.create(pensionPass);
+    return this.pensionPassRepository.create({
+      ...pensionPass,
+      antiPassback: true,
+      inParking: false,
+    });
   }
 
   getPensionPasses(): Promise<PensionPassEntity[]> {
     return this.pensionPassRepository.getAll();
   }
 
-  async getPensionPassesByProyecto(
-    proyectoId: string,
-  ): Promise<PensionPassEntity[]> {
-    const pensionPasses = await this.pensionPassRepository.getAll();
-
-    const filtered = await Promise.all(
-      pensionPasses.map(async (pensionPass) => {
-        const pension = await this.pensionRepository.findById(pensionPass.pension);
-        return pension?.proyecto === proyectoId ? pensionPass : null;
+  async getPensionPassesByProyecto(proyectoId: string): Promise<PensionPassEntity[]> {
+    const passes = await this.pensionPassRepository.getAll();
+    const resolved = await Promise.all(
+      passes.map(async (pass) => {
+        const pension = await this.pensionRepository.findById(pass.pension);
+        return pension?.proyecto === proyectoId ? pass : null;
       }),
     );
-
-    return filtered.filter(
-      (pensionPass): pensionPass is PensionPassEntity => pensionPass !== null,
-    );
+    return resolved.filter((pass): pass is PensionPassEntity => pass !== null);
   }
 
   async getPensionPassById(id: string): Promise<PensionPassEntity> {
     const pensionPass = await this.pensionPassRepository.findById(id);
-
-    if (!pensionPass) {
-      throw CustomError.notFound("PensionPass no encontrado");
-    }
-
+    if (!pensionPass) throw CustomError.notFound("PensionPass no encontrado");
     return pensionPass;
   }
 
-  async getPensionPassesByPension(
-    pensionId: string,
-  ): Promise<PensionPassEntity[]> {
+  async getPensionPassesByPension(pensionId: string): Promise<PensionPassEntity[]> {
     const pension = await this.pensionRepository.findById(pensionId);
-
-    if (!pension) {
-      throw CustomError.notFound("Pension no encontrada");
-    }
-
+    if (!pension) throw CustomError.notFound("Pension no encontrada");
     return this.pensionPassRepository.getByPension(pensionId);
   }
 
@@ -119,154 +60,108 @@ export class PensionPassService {
     return this.pensionPassRepository.getByUsuario(usuarioId);
   }
 
-  async getPensionPassCardsByUsuario(
-    usuarioId: string,
-  ): Promise<PensionPassCardResponse[]> {
-    const pensionPasses = await this.getPensionPassesByUsuario(usuarioId);
-
-    return Promise.all(
-      pensionPasses.map((pensionPass) =>
-        this.responseMapper.toPensionPassCardResponse(pensionPass),
-      ),
-    );
-  }
-
-  async getPensionPassCardById(id: string): Promise<PensionPassCardResponse> {
-    const pensionPass = await this.getPensionPassById(id);
-    return this.responseMapper.toPensionPassCardResponse(pensionPass);
-  }
-
   async getProyectoIdByPensionId(pensionId: string): Promise<string> {
     const pension = await this.pensionRepository.findById(pensionId);
-
-    if (!pension) {
-      throw CustomError.notFound("Pension no encontrada");
-    }
-
+    if (!pension) throw CustomError.notFound("Pension no encontrada");
     return pension.proyecto;
   }
 
   async getProyectoIdByPensionPassId(pensionPassId: string): Promise<string> {
-    const pensionPass = await this.getPensionPassById(pensionPassId);
-    return this.getProyectoIdByPensionId(pensionPass.pension);
+    const pass = await this.getPensionPassById(pensionPassId);
+    return this.getProyectoIdByPensionId(pass.pension);
   }
 
-  async getPensionMovesByPensionPass(
-    pensionPassId: string,
-    query: PaginationDateQuery = {},
-  ) {
-    await this.getPensionPassById(pensionPassId);
-    const { page, limit, from, to } = parsePaginationDateQuery(query);
-
-    const pensionMoves =
-      await this.pensionMoveRepository.getByPensionPass(pensionPassId);
-    const filteredMoves = pensionMoves
-      .filter((pensionMove) => this.isInDateRange(pensionMove.fecha, from, to))
-      .sort((a, b) => b.fecha - a.fecha);
-    const paginatedMoves = paginateArray(filteredMoves, page, limit);
-    const response = await Promise.all(
-      paginatedMoves.map((pensionMove) =>
-        this.responseMapper.toPensionMoveResponse(pensionMove),
-      ),
-    );
-
-    return buildPaginatedResponse(
-      "pensionMoves",
-      response,
-      filteredMoves.length,
-      page,
-      limit,
-    );
-  }
-
-  precontractPensionPass(
+  async precontractPensionPass(
     usuarioId: string,
     pensionId: string,
     contractMonths = 1,
-  ): Promise<PensionPassCardResponse> {
-    return this.contractService.precontractPensionPass(
+  ): Promise<PensionPassEntity> {
+    const pension = await this.pensionRepository.findById(pensionId);
+    if (!pension || !pension.estado) throw CustomError.notFound("Pension no encontrada");
+
+    const existing = await this.pensionPassRepository.findByUsuarioAndPension(
       usuarioId,
       pensionId,
-      contractMonths,
     );
+    if (existing) {
+      throw CustomError.badRequest("El usuario ya tiene una pension pass para esta pension");
+    }
+
+    const available = await this.pensionPassRepository.findAvailableByPension(pensionId);
+    if (!available) throw CustomError.badRequest("No hay pension pass disponibles");
+
+    const now = new Date();
+    const months = Number.isInteger(contractMonths) && contractMonths > 0 ? contractMonths : 1;
+    const end = new Date(now);
+    end.setMonth(end.getMonth() + months);
+
+    return this.updatePensionPass(available.id, {
+      usuario: usuarioId,
+      from: now.getTime(),
+      to: end.getTime(),
+      vigent: false,
+    });
   }
 
-  renewPensionPass(
+  async renewPensionPass(
     usuarioId: string,
     pensionPassId: string,
     contractMonths = 1,
-  ): Promise<PensionPassCardResponse> {
-    return this.contractService.renewPensionPass(
-      usuarioId,
-      pensionPassId,
-      contractMonths,
-    );
+  ): Promise<PensionPassEntity> {
+    const pass = await this.getPensionPassById(pensionPassId);
+    this.ensureOwner(pass, usuarioId);
+
+    const months = Number.isInteger(contractMonths) && contractMonths > 0 ? contractMonths : 1;
+    const now = Date.now();
+    const start = pass.vigent && pass.to > now ? new Date(pass.to) : new Date(now);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + months);
+
+    return this.updatePensionPass(pass.id, {
+      from: pass.from > 0 ? pass.from : now,
+      to: end.getTime(),
+    });
   }
 
-  contractPensionPass(
+  async contractPensionPass(
     usuarioId: string,
     pensionPassId: string,
-  ): Promise<PensionPassCardResponse> {
-    return this.contractService.contractPensionPass(usuarioId, pensionPassId);
+  ): Promise<PensionPassEntity> {
+    const pass = await this.getPensionPassById(pensionPassId);
+    this.ensureOwner(pass, usuarioId);
+    if (pass.from < 0 || pass.to < 0) {
+      throw CustomError.badRequest("No existe un precontrato vigente");
+    }
+    return this.updatePensionPass(pass.id, { vigent: true });
   }
 
   async updatePensionPass(
     id: string,
     pensionPass: Partial<Omit<PensionPassEntity, "id">>,
   ): Promise<PensionPassEntity> {
-    const pensionPassUpdated = await this.pensionPassRepository.update(
-      id,
-      pensionPass,
-    );
-
-    if (!pensionPassUpdated) {
-      throw CustomError.notFound("PensionPass no encontrado");
+    if (pensionPass.pension) {
+      const pension = await this.pensionRepository.findById(pensionPass.pension);
+      if (!pension) throw CustomError.badRequest("La pension asociada no existe");
     }
 
-    return pensionPassUpdated;
+    const updated = await this.pensionPassRepository.update(id, pensionPass);
+    if (!updated) throw CustomError.notFound("PensionPass no encontrado");
+    return updated;
   }
 
-  async updatePensionPassStatus(
-    id: string,
-    estado: boolean,
-  ): Promise<PensionPassEntity> {
-    const pensionPassUpdated = await this.pensionPassRepository.update(id, {
-      estado,
-    });
-
-    if (!pensionPassUpdated) {
-      throw CustomError.notFound("PensionPass no encontrado");
-    }
-
-    return pensionPassUpdated;
+  updatePensionPassStatus(id: string, estado: boolean): Promise<PensionPassEntity> {
+    return this.updatePensionPass(id, { estado });
   }
 
   async deletePensionPass(id: string): Promise<PensionPassEntity> {
-    const pensionPassDeleted = await this.pensionPassRepository.delete(id);
+    const deleted = await this.pensionPassRepository.delete(id);
+    if (!deleted) throw CustomError.notFound("PensionPass no encontrado");
+    return deleted;
+  }
 
-    if (!pensionPassDeleted) {
-      throw CustomError.notFound("PensionPass no encontrado");
+  private ensureOwner(pass: PensionPassEntity, usuarioId: string): void {
+    if (!pass.usuario || pass.usuario !== usuarioId) {
+      throw CustomError.unauthorized("La pension pass no pertenece al usuario");
     }
-
-    return pensionPassDeleted;
-  }
-
-  openBarrierWithPensionPass(
-    usuarioId: string,
-    pensionPassId: string,
-    moduleToken: string,
-  ): Promise<PensionMoveResponse> {
-    return this.accessService.openBarrierWithPensionPass(
-      usuarioId,
-      pensionPassId,
-      moduleToken,
-    );
-  }
-
-  private isInDateRange(value: number, from?: number, to?: number): boolean {
-    if (from !== undefined && value < from) return false;
-    if (to !== undefined && value > to) return false;
-
-    return true;
   }
 }

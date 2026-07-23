@@ -5,12 +5,11 @@ import { AuthMiddleware } from "../../middlewares";
 export class StripePaymentRoutes {
   static get routes(): Router {
     const router = Router();
-
     const controller = buildStripePaymentController();
     const paymentModuleAccess = AuthMiddleware.requireModules("payments");
 
-    router.get(
-      "/getPaymentIntent",
+    router.post(
+      "/payment-intents",
       AuthMiddleware.requireAuth,
       paymentModuleAccess,
       controller.createPaymentIntent,

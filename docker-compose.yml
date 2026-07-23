@@ -1,56 +1,43 @@
-name: viggo-backend
+name: viggo-nubeadmin
 
 services:
-  mongo-db:
+  mongo:
     image: mongo:7.0
-    container_name: viggo-mongo
-    restart: always
+    container_name: viggo-nubeadmin-mongo
+    restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
-    ports:
-      - "27017:27017"
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-viggo}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:-viggo_dev_password}
     volumes:
-      - ./mongo:/data/db
+      - viggo_nubeadmin_mongo:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  backend:
-    container_name: viggo-backend
-    image: ${BACKEND_IMAGE:-viggo-server-app-refacto:local}
+  api:
+    container_name: viggo-nubeadmin-api
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        APP_ENV: ${APP_ENV:-prod}
-      secrets:
-        - backend_env
     restart: unless-stopped
     depends_on:
-      mongo-db:
+      mongo:
         condition: service_healthy
+    env_file:
+      - ${BACKEND_ENV_FILE:-.env.dev}
     environment:
-      APP_ENV: ${APP_ENV:-prod}
+      APP_ENV: ${APP_ENV:-dev}
+      MONGO_URL: mongodb://${MONGO_USER:-viggo}:${MONGO_PASS:-viggo_dev_password}@mongo:27017/?authSource=admin
     ports:
       - "${BACKEND_PORT:-8080}:8080"
-    volumes:
-      - ./public/uploads:/project/public/uploads
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "require('http').get('http://127.0.0.1:8080/api/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))",
-        ]
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8080/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
-      retries: 3
+      retries: 5
       start_period: 20s
 
-secrets:
-  backend_env:
-    file: ${BACKEND_ENV_FILE:-.env.dev}
+volumes:
+  viggo_nubeadmin_mongo:

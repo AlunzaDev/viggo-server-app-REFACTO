@@ -1,12 +1,11 @@
 {
-  "name": "cobro-cajas-wm-refacto",
-  "version": "1.0.0",
-  "description": "Refactor de cobro-cajas-WM en TypeScript",
+  "name": "viggo-server-api-nubeadmin",
+  "version": "1.0.1",
+  "description": "API administrativa en nube para Viggo",
   "private": true,
   "main": "dist/app.js",
   "scripts": {
-    "predev": "cls",
-    "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
+    "dev": "node scripts/dev.mjs",
     "build": "tsc",
     "start": "node dist/app.js",
     "check": "tsc --noEmit"
@@ -21,7 +20,6 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.16.1",
     "nodemailer": "^9.0.3",
-    "socket.io": "^4.8.3",
     "stripe": "^22.3.1"
   },
   "devDependencies": {
@@ -29,8 +27,6 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.0.10",
     "@types/nodemailer": "^8.0.1",
-    "@types/socket.io": "^3.0.1",
-    "ts-node-dev": "^2.0.0",
     "typescript": "^6.0.3"
   }
 }

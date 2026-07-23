@@ -1,33 +1,32 @@
 import { Request, Response } from "express";
 import { CreatePensionPassDto } from "../../../domain/dtos/pension/create-pension-pass.dto";
 import { UpdatePensionPassDto } from "../../../domain/dtos/pension/update-pension-pass.dto";
-import { ErrorService } from "../../services/error.service";
 import {
   canAccessProjectFromRequest,
   getAllowedProjectIdsFromRequest,
   isSuperAdminRequest,
 } from "../../middlewares";
+import { ErrorService } from "../../services/error.service";
 import { PensionPassService } from "../../services/pension/pension-pass.service";
 
+type AuthenticatedRequest = Request & { uid?: string };
+
 export class PensionPassController {
-  constructor(private readonly pensionPassService: PensionPassService) {}
+  constructor(private readonly service: PensionPassService) {}
 
   createPensionPass = async (req: Request, res: Response) => {
     try {
-      const [error, createPensionPassDto] = CreatePensionPassDto.create(
-        req.body,
-      );
-      if (error) return res.status(400).json({ error });
-      const projectId = await this.pensionPassService.getProyectoIdByPensionId(
-        createPensionPassDto!.pension,
-      );
+      const [error, dto] = CreatePensionPassDto.create(req.body);
+      if (error || !dto) return res.status(400).json({ error });
+      const projectId = await this.service.getProyectoIdByPensionId(dto.pension);
       if (!canAccessProjectFromRequest(req, projectId)) {
         return res.status(403).json({ error: "Forbidden" });
       }
-
-      const pensionPass = await this.pensionPassService.createPensionPass(
-        createPensionPassDto!,
-      );
+      const pensionPass = await this.service.createPensionPass({
+        ...dto,
+        antiPassback: true,
+        inParking: false,
+      });
       return res.status(201).json({ pensionPass });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -36,13 +35,15 @@ export class PensionPassController {
 
   getPensionPasses = async (req: Request, res: Response) => {
     try {
-      const allowedProjectIds = getAllowedProjectIdsFromRequest(req);
-      const pensionPasses =
-        !isSuperAdminRequest(req) && allowedProjectIds.length === 1
-          ? await this.pensionPassService.getPensionPassesByProyecto(
-              allowedProjectIds[0],
-            )
-          : await this.pensionPassService.getPensionPasses();
+      let pensionPasses = await this.service.getPensionPasses();
+      if (!isSuperAdminRequest(req)) {
+        const allowed = getAllowedProjectIdsFromRequest(req);
+        const batches = await Promise.all(
+          allowed.map((id) => this.service.getPensionPassesByProyecto(id)),
+        );
+        const ids = new Set(batches.flat().map((pass) => pass.id));
+        pensionPasses = pensionPasses.filter((pass) => ids.has(pass.id));
+      }
       return res.status(200).json({ pensionPasses });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -52,14 +53,11 @@ export class PensionPassController {
   getPensionPassById = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
-      const projectId =
-        await this.pensionPassService.getProyectoIdByPensionPassId(id);
+      const projectId = await this.service.getProyectoIdByPensionPassId(id);
       if (!canAccessProjectFromRequest(req, projectId)) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const pensionPass =
-        await this.pensionPassService.getPensionPassCardById(id);
-      return res.status(200).json({ pensionPass });
+      return res.status(200).json({ pensionPass: await this.service.getPensionPassById(id) });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -68,15 +66,13 @@ export class PensionPassController {
   getPensionPassesByPension = async (req: Request, res: Response) => {
     try {
       const pensionId = String(req.params.pensionId);
-      const projectId = await this.pensionPassService.getProyectoIdByPensionId(
-        pensionId,
-      );
+      const projectId = await this.service.getProyectoIdByPensionId(pensionId);
       if (!canAccessProjectFromRequest(req, projectId)) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const pensionPasses =
-        await this.pensionPassService.getPensionPassesByPension(pensionId);
-      return res.status(200).json({ pensionPasses });
+      return res.status(200).json({
+        pensionPasses: await this.service.getPensionPassesByPension(pensionId),
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -84,25 +80,10 @@ export class PensionPassController {
 
   getPensionPassesByUsuario = async (req: Request, res: Response) => {
     try {
-      const usuarioId = String(req.params.usuarioId);
-      const pensionPasses =
-        await this.pensionPassService.getPensionPassesByUsuario(usuarioId);
-      const filtered = isSuperAdminRequest(req)
-        ? pensionPasses
-        : (
-            await Promise.all(
-              pensionPasses.map(async (pensionPass) => {
-                const projectId =
-                  await this.pensionPassService.getProyectoIdByPensionPassId(
-                    pensionPass.id,
-                  );
-                return canAccessProjectFromRequest(req, projectId)
-                  ? pensionPass
-                  : null;
-              }),
-            )
-          ).filter((pensionPass): pensionPass is (typeof pensionPasses)[number] => pensionPass !== null);
-      return res.status(200).json({ pensionPasses: filtered });
+      const pensionPasses = await this.service.getPensionPassesByUsuario(
+        String(req.params.usuarioId),
+      );
+      return res.status(200).json({ pensionPasses });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -110,79 +91,11 @@ export class PensionPassController {
 
   getMyPensionPasses = async (req: Request, res: Response) => {
     try {
-      const authRequest = req as Request & { uid?: string };
-      const usuarioId = authRequest.uid;
-
-      if (!usuarioId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const pensionPasses =
-        await this.pensionPassService.getPensionPassCardsByUsuario(usuarioId);
-
-      return res.status(200).json({ pensionPasses });
-    } catch (error) {
-      return ErrorService.handleApiError(error, res);
-    }
-  };
-
-  openBarrierWithPensionPass = async (req: Request, res: Response) => {
-    try {
-      const authRequest = req as Request & { uid?: string };
-      const usuarioId = authRequest.uid;
-      const { moduleToken, pensionPass } = req.body as {
-        moduleToken?: unknown;
-        pensionPass?: unknown;
-      };
-
-      if (!usuarioId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      if (typeof moduleToken !== "string" || moduleToken.trim().length === 0) {
-        return res.status(400).json({ error: "'moduleToken' es requerido" });
-      }
-
-      if (typeof pensionPass !== "string" || pensionPass.trim().length === 0) {
-        return res.status(400).json({ error: "'pensionPass' es requerido" });
-      }
-
-      const projectId =
-        await this.pensionPassService.getProyectoIdByPensionPassId(
-          pensionPass.trim(),
-        );
-      if (!canAccessProjectFromRequest(req, projectId)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-
-      const pensionMove =
-        await this.pensionPassService.openBarrierWithPensionPass(
-          usuarioId,
-          pensionPass.trim(),
-          moduleToken.trim(),
-        );
-
-      return res.status(200).json({ pensionMove });
-    } catch (error) {
-      return ErrorService.handleApiError(error, res);
-    }
-  };
-
-  getPensionMovesByPensionPass = async (req: Request, res: Response) => {
-    try {
-      const id = String(req.params.id);
-      const projectId =
-        await this.pensionPassService.getProyectoIdByPensionPassId(id);
-      if (!canAccessProjectFromRequest(req, projectId)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-      const response =
-        await this.pensionPassService.getPensionMovesByPensionPass(
-          id,
-          req.query,
-        );
-
-      return res.status(200).json(response);
+      const uid = (req as AuthenticatedRequest).uid;
+      if (!uid) return res.status(401).json({ error: "Unauthorized" });
+      return res.status(200).json({
+        pensionPasses: await this.service.getPensionPassesByUsuario(uid),
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -190,36 +103,14 @@ export class PensionPassController {
 
   precontractPensionPass = async (req: Request, res: Response) => {
     try {
-      const authRequest = req as Request & { uid?: string };
-      const usuarioId = authRequest.uid;
-      const { pension, contractMonths = 1 } = req.body as {
-        pension?: unknown;
-        contractMonths?: unknown;
-      };
-
-      if (!usuarioId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      if (typeof pension !== "string" || pension.trim().length === 0) {
-        return res.status(400).json({ error: "'pension' es requerida" });
-      }
-
-      const projectId = await this.pensionPassService.getProyectoIdByPensionId(
-        pension.trim(),
-      );
-      if (!canAccessProjectFromRequest(req, projectId)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-
-      const pensionPass =
-        await this.pensionPassService.precontractPensionPass(
-          usuarioId,
-          pension.trim(),
-          Number(contractMonths),
-        );
-
-      return res.status(200).json({ pensionPass });
+      const uid = (req as AuthenticatedRequest).uid;
+      if (!uid) return res.status(401).json({ error: "Unauthorized" });
+      const pensionId = String((req.body as { pensionId?: unknown }).pensionId ?? "");
+      const contractMonths = Number((req.body as { contractMonths?: unknown }).contractMonths ?? 1);
+      if (!pensionId) return res.status(400).json({ error: "'pensionId' es requerido" });
+      return res.status(200).json({
+        pensionPass: await this.service.precontractPensionPass(uid, pensionId, contractMonths),
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -227,28 +118,12 @@ export class PensionPassController {
 
   renewPensionPass = async (req: Request, res: Response) => {
     try {
-      const authRequest = req as Request & { uid?: string };
-      const usuarioId = authRequest.uid;
-      const id = String(req.params.id);
-      const { contractMonths = 1 } = req.body as { contractMonths?: unknown };
-
-      if (!usuarioId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const projectId =
-        await this.pensionPassService.getProyectoIdByPensionPassId(id);
-      if (!canAccessProjectFromRequest(req, projectId)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-
-      const pensionPass = await this.pensionPassService.renewPensionPass(
-        usuarioId,
-        id,
-        Number(contractMonths),
-      );
-
-      return res.status(200).json({ pensionPass });
+      const uid = (req as AuthenticatedRequest).uid;
+      if (!uid) return res.status(401).json({ error: "Unauthorized" });
+      const contractMonths = Number((req.body as { contractMonths?: unknown }).contractMonths ?? 1);
+      return res.status(200).json({
+        pensionPass: await this.service.renewPensionPass(uid, String(req.params.id), contractMonths),
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -256,26 +131,11 @@ export class PensionPassController {
 
   contractPensionPass = async (req: Request, res: Response) => {
     try {
-      const authRequest = req as Request & { uid?: string };
-      const usuarioId = authRequest.uid;
-      const id = String(req.params.id);
-
-      if (!usuarioId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const projectId =
-        await this.pensionPassService.getProyectoIdByPensionPassId(id);
-      if (!canAccessProjectFromRequest(req, projectId)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-
-      const pensionPass = await this.pensionPassService.contractPensionPass(
-        usuarioId,
-        id,
-      );
-
-      return res.status(200).json({ pensionPass });
+      const uid = (req as AuthenticatedRequest).uid;
+      if (!uid) return res.status(401).json({ error: "Unauthorized" });
+      return res.status(200).json({
+        pensionPass: await this.service.contractPensionPass(uid, String(req.params.id)),
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -284,28 +144,29 @@ export class PensionPassController {
   updatePensionPass = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
-      const currentProjectId =
-        await this.pensionPassService.getProyectoIdByPensionPassId(id);
-      if (!canAccessProjectFromRequest(req, currentProjectId)) {
+      const currentProject = await this.service.getProyectoIdByPensionPassId(id);
+      if (!canAccessProjectFromRequest(req, currentProject)) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const [error, updatePensionPassDto] = UpdatePensionPassDto.create(
-        req.body,
-      );
-      if (error) return res.status(400).json({ error });
-      if (updatePensionPassDto?.pension) {
-        const nextProjectId = await this.pensionPassService.getProyectoIdByPensionId(
-          updatePensionPassDto.pension,
-        );
-        if (!canAccessProjectFromRequest(req, nextProjectId)) {
+      const [error, dto] = UpdatePensionPassDto.create(req.body);
+      if (error || !dto) return res.status(400).json({ error });
+      if (dto.pension) {
+        const nextProject = await this.service.getProyectoIdByPensionId(dto.pension);
+        if (!canAccessProjectFromRequest(req, nextProject)) {
           return res.status(403).json({ error: "Forbidden" });
         }
       }
-
-      const pensionPass = await this.pensionPassService.updatePensionPass(
-        id,
-        updatePensionPassDto!,
-      );
+      const pensionPass = await this.service.updatePensionPass(id, {
+        name: dto.name,
+        pension: dto.pension,
+        idPass: dto.idPass,
+        vigent: dto.vigent,
+        created: dto.created,
+        from: dto.from,
+        to: dto.to,
+        estado: dto.estado,
+        usuario: dto.usuario,
+      });
       return res.status(200).json({ pensionPass });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -315,22 +176,17 @@ export class PensionPassController {
   updatePensionPassStatus = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
-      const projectId =
-        await this.pensionPassService.getProyectoIdByPensionPassId(id);
+      const projectId = await this.service.getProyectoIdByPensionPassId(id);
       if (!canAccessProjectFromRequest(req, projectId)) {
         return res.status(403).json({ error: "Forbidden" });
       }
       const { estado } = req.body as { estado?: unknown };
-
       if (typeof estado !== "boolean") {
         return res.status(400).json({ error: "'estado' debe ser boolean" });
       }
-
-      const pensionPass = await this.pensionPassService.updatePensionPassStatus(
-        id,
-        estado,
-      );
-      return res.status(200).json({ pensionPass });
+      return res.status(200).json({
+        pensionPass: await this.service.updatePensionPassStatus(id, estado),
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -339,13 +195,11 @@ export class PensionPassController {
   deletePensionPass = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
-      const projectId =
-        await this.pensionPassService.getProyectoIdByPensionPassId(id);
+      const projectId = await this.service.getProyectoIdByPensionPassId(id);
       if (!canAccessProjectFromRequest(req, projectId)) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const pensionPass = await this.pensionPassService.deletePensionPass(id);
-      return res.status(200).json({ pensionPass });
+      return res.status(200).json({ pensionPass: await this.service.deletePensionPass(id) });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

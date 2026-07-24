@@ -6,6 +6,7 @@
   "main": "dist/app.js",
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "backfill:project-codes": "node scripts/backfill-project-codes.mjs",
     "build": "tsc",
     "start": "node dist/app.js",
     "check": "tsc --noEmit"

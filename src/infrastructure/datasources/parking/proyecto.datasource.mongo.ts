@@ -1,10 +1,17 @@
+import { CounterModel } from "../../../data/mongo/models/system/counter.schema";
 import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import { ProyectoDatasource } from "../../../domain/datasources/parking/proyecto.datasource";
 import { ProyectoEntity } from "../../../domain/entities/parking/proyecto.entity";
+import { CustomError } from "../../../domain/errors/custom.error";
 
 export class ProyectoMongoDatasource extends ProyectoDatasource {
     async create(proyecto: Omit<ProyectoEntity, "id">): Promise<ProyectoEntity> {
-        const proyectoDocument = await ProyectoModel.create(proyecto);
+        const codigoProyecto =
+            proyecto.codigoProyecto ?? (await this.getNextCodigoProyecto());
+        const proyectoDocument = await ProyectoModel.create({
+            ...proyecto,
+            codigoProyecto,
+        });
         return ProyectoEntity.fromObject(proyectoDocument.toObject());
     }
 
@@ -46,5 +53,50 @@ export class ProyectoMongoDatasource extends ProyectoDatasource {
         if (!proyectoDocument) return null;
 
         return ProyectoEntity.fromObject(proyectoDocument.toObject());
+    }
+
+    private async getNextCodigoProyecto(): Promise<string> {
+        await this.ensureProjectCounterInitialized();
+
+        const counter = await CounterModel.findOneAndUpdate(
+            { name: "proyecto_codigo" },
+            { $inc: { seq: 1 } },
+            { new: true, upsert: true, setDefaultsOnInsert: true },
+        );
+
+        const sequence = Number(counter.seq);
+        if (sequence > 9999) {
+            throw CustomError.badRequest(
+                "Se alcanzo el limite de 9999 codigos de proyecto",
+            );
+        }
+
+        return String(sequence).padStart(4, "0");
+    }
+
+    private async ensureProjectCounterInitialized(): Promise<void> {
+        const existingCounter = await CounterModel.findOne({
+            name: "proyecto_codigo",
+        }).lean();
+        if (existingCounter) return;
+
+        const proyectos = await ProyectoModel.find({
+            codigoProyecto: { $regex: /^\d{4}$/ },
+        })
+            .select("codigoProyecto")
+            .lean();
+        const maxSequence = proyectos.reduce((max, proyecto) => {
+            const sequence = Number(proyecto.codigoProyecto);
+            return Number.isFinite(sequence) && sequence > max ? sequence : max;
+        }, 0);
+
+        try {
+            await CounterModel.create({
+                name: "proyecto_codigo",
+                seq: maxSequence,
+            });
+        } catch (error) {
+            if ((error as { code?: number }).code !== 11000) throw error;
+        }
     }
 }

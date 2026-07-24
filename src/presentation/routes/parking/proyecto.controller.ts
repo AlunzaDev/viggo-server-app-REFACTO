@@ -1,4 +1,6 @@
 import { Request, Response } from "express";
+import { createHash, randomBytes } from "node:crypto";
+import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import { CreateProyectoDto } from "../../../domain/dtos/parking/create-proyecto.dto";
 import { UpdateProyectoDto } from "../../../domain/dtos/parking/update-proyecto.dto";
 import { ErrorService } from "../../services/error.service";
@@ -9,6 +11,14 @@ import {
 } from "../../middlewares";
 import { ProyectoService } from "../../services/parking/proyecto.service";
 
+const createInstallationLinkToken = (codigoProyecto?: string) => {
+  const prefix = codigoProyecto ? `viggo-${codigoProyecto}` : "viggo-project";
+  return `${prefix}-${randomBytes(18).toString("base64url")}`;
+};
+
+const hashInstallationLinkToken = (token: string) =>
+  createHash("sha256").update(token).digest("hex");
+
 export class ProyectoController {
   constructor(private readonly proyectoService: ProyectoService) {}
 
@@ -18,7 +28,13 @@ export class ProyectoController {
       if (error) return res.status(400).json({ error });
 
       const proyecto = await this.proyectoService.createProyecto(createProyectoDto!);
-      return res.status(201).json({ proyecto });
+      const installationLinkToken = createInstallationLinkToken(proyecto.codigoProyecto);
+      await ProyectoModel.findByIdAndUpdate(proyecto.id, {
+        installationLinkTokenHash: hashInstallationLinkToken(installationLinkToken),
+        installationLinkTokenIssuedAt: Date.now(),
+      });
+
+      return res.status(201).json({ proyecto, installationLinkToken });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

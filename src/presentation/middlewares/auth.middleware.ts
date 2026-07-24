@@ -16,6 +16,8 @@ type AuthenticatedRequest = Request & {
   uid?: string;
   usuario?: {
     id: string;
+    nombre?: string;
+    apellido?: string;
     rol: UsuarioRol;
     parkings: string[];
     modules: UserModuleAccess[];

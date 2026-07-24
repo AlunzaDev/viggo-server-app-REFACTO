@@ -1,35 +1,36 @@
 name: viggo-nubeadmin
 
 services:
-  mongo:
+  mongo-db:
     image: mongo:7.0
     container_name: viggo-nubeadmin-mongo
-    restart: unless-stopped
+    restart: always
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-viggo}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:-viggo_dev_password}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
+    ports:
+      - "27017:27017"
     volumes:
-      - viggo_nubeadmin_mongo:/data/db
+      - ./mongo:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  api:
+  backend:
     container_name: viggo-nubeadmin-api
+    image: ${BACKEND_IMAGE:-viggo-server-api-nubeadmin:local}
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
-      mongo:
+      mongo-db:
         condition: service_healthy
-    env_file:
-      - ${BACKEND_ENV_FILE:-.env.dev}
     environment:
       APP_ENV: ${APP_ENV:-dev}
-      MONGO_URL: mongodb://${MONGO_USER:-viggo}:${MONGO_PASS:-viggo_dev_password}@mongo:27017/?authSource=admin
+      MONGO_URL: mongodb://${MONGO_USER}:${MONGO_PASS}@mongo-db:27017/${MONGO_DB_NAME}?authSource=admin
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     healthcheck:
@@ -38,6 +39,3 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-
-volumes:
-  viggo_nubeadmin_mongo:

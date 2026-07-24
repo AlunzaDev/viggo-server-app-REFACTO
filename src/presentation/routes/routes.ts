@@ -10,6 +10,8 @@ import { StripePaymentRoutes } from "./payments/stripe-payment.routes";
 import { PensionPassRoutes } from "./pension/pension-pass.routes";
 import { PensionRoutes } from "./pension/pension.routes";
 import { SyncRoutes } from "./sync/sync.routes";
+import { InstallationsRoutes } from "./installations/installations.routes";
+import { LocalProjectsRoutes } from "./local-projects/local-projects.routes";
 
 export class AppRoutes {
   static get routes(): Router {
@@ -37,6 +39,8 @@ export class AppRoutes {
     router.use("/api/payments", PaymentRoutes.routes);
     router.use("/api/stripe", StripePaymentRoutes.routes);
     router.use("/api/sync", SyncRoutes.routes);
+    router.use("/api/installations", InstallationsRoutes.routes);
+    router.use("/api/local-projects", LocalProjectsRoutes.routes);
 
     return router;
   }

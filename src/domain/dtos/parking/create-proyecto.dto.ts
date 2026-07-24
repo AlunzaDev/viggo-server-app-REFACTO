@@ -4,6 +4,9 @@ export class CreateProyectoDto {
         public readonly coordinates: number[],
         public readonly ciudad: string,
         public readonly identificador: string,
+        public readonly serverIp?: string,
+        public readonly serverMac?: string,
+        public readonly localApiBaseUrl?: string,
         public readonly img?: string,
         public readonly descripcion?: string,
         public readonly estado: boolean = true,
@@ -17,6 +20,18 @@ export class CreateProyectoDto {
         const ciudad = typeof body.ciudad === "string" ? body.ciudad.trim() : "";
         const identificador =
             typeof body.identificador === "string" ? body.identificador.trim() : "";
+        const serverIp =
+            typeof body.serverIp === "string" && body.serverIp.trim().length > 0
+                ? body.serverIp.trim()
+                : undefined;
+        const serverMac =
+            typeof body.serverMac === "string" && body.serverMac.trim().length > 0
+                ? body.serverMac.trim().toUpperCase()
+                : undefined;
+        const localApiBaseUrl =
+            typeof body.localApiBaseUrl === "string" && body.localApiBaseUrl.trim().length > 0
+                ? body.localApiBaseUrl.trim()
+                : undefined;
         const img =
             typeof body.img === "string" && body.img.trim().length > 0
                 ? body.img.trim()
@@ -39,6 +54,9 @@ export class CreateProyectoDto {
                 coordinates,
                 ciudad,
                 identificador,
+                serverIp,
+                serverMac,
+                localApiBaseUrl,
                 img,
                 descripcion,
                 estado,

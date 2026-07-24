@@ -4,6 +4,9 @@ export class UpdateProyectoDto {
         public readonly coordinates?: number[],
         public readonly ciudad?: string,
         public readonly identificador?: string,
+        public readonly serverIp?: string,
+        public readonly serverMac?: string,
+        public readonly localApiBaseUrl?: string,
         public readonly img?: string,
         public readonly descripcion?: string,
         public readonly estado?: boolean,
@@ -20,6 +23,15 @@ export class UpdateProyectoDto {
                 typeof body.ciudad === "string" ? body.ciudad.trim() : undefined,
                 typeof body.identificador === "string"
                     ? body.identificador.trim()
+                    : undefined,
+                typeof body.serverIp === "string"
+                    ? body.serverIp.trim()
+                    : undefined,
+                typeof body.serverMac === "string"
+                    ? body.serverMac.trim().toUpperCase()
+                    : undefined,
+                typeof body.localApiBaseUrl === "string"
+                    ? body.localApiBaseUrl.trim()
                     : undefined,
                 typeof body.img === "string" ? body.img.trim() : undefined,
                 typeof body.descripcion === "string"

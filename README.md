@@ -74,6 +74,20 @@ GET /api/sync/configuration/:proyectoId
 
 Devuelve el proyecto, módulos, planes de pensión y contratos necesarios para generar una proyección local.
 
+### Descargar snapshot de accesos
+
+```http
+GET /api/sync/access-snapshot/:proyectoId
+```
+
+Devuelve usuarios autorizados para el parking, usuarios `SUPER_ROLE` y los perfiles de permisos relacionados. Incluye el hash de password porque `LOCALOPE` debe poder autenticar localmente aunque no haya internet.
+
+El snapshot se aplica en LOCALOPE con:
+
+```http
+PUT /api/sync/snapshots/access
+```
+
 ### Enviar evento idempotente
 
 ```http
@@ -154,3 +168,33 @@ Dashboard/App ───────────────► NUBEADMIN
 ```
 
 NUBEADMIN es autoridad de identidad y configuración. LOCALOPE es autoridad inmediata de la operación física.
+# Nota: codigo corto de proyecto
+
+Cada proyecto nuevo recibe automaticamente un `codigoProyecto` creciente de 4 digitos (`0001` a `9999`). Es distinto al `identificador` existente y sirve como referencia corta, humana y estable para parkings. Para asignar codigos a proyectos existentes sin codigo:
+
+```bash
+npm run backfill:project-codes
+```
+
+# Nota: consulta directa a LOCALOPE
+
+Modo actual para operacion visible desde nube: `NUBEADMIN` usa `localApiBaseUrl` del proyecto y consulta el API local.
+
+```http
+GET /api/local-projects/:projectId/snapshot?from=<epoch>&to=<epoch>
+Authorization: Bearer <JWT usuario dashboard>
+```
+
+Internamente `NUBEADMIN` llama a:
+
+```http
+GET <localApiBaseUrl>/api/local-reports/snapshot
+Authorization: Bearer <SYNC_SERVICE_TOKEN>
+X-Viggo-Sync-Source: nubeadmin-direct-query
+```
+
+Este flujo sirve para estado en vivo cuando existe conexion hacia el servidor local. El inbox de eventos queda disponible como base para una etapa offline-first, pero no es el mecanismo principal de monitoreo en esta fase.
+
+# Nota: token por instalacion
+
+Al crear un proyecto, NUBEADMIN genera un token de vinculacion y lo muestra una sola vez al administrador. NUBEADMIN guarda solo `installationLinkTokenHash` y `installationLinkTokenIssuedAt` en el proyecto. LOCALOPE debe ingresar ese token para poder solicitar vinculacion; si coincide con el hash del proyecto, la solicitud queda registrada.

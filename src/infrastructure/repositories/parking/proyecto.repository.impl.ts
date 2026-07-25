@@ -1,11 +1,14 @@
-import { ProyectoDatasource } from "../../../domain/datasources/parking/proyecto.datasource";
+import {
+    ProyectoDatasource,
+    type CreateProyectoResult,
+} from "../../../domain/datasources/parking/proyecto.datasource";
 import { ProyectoEntity } from "../../../domain/entities/parking/proyecto.entity";
 import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
 
 export class ProyectoRepositoryImpl implements ProyectoRepository {
     constructor(private readonly proyectoDatasource: ProyectoDatasource) {}
 
-    create(proyecto: Omit<ProyectoEntity, "id">): Promise<ProyectoEntity> {
+    create(proyecto: Omit<ProyectoEntity, "id">): Promise<CreateProyectoResult> {
         return this.proyectoDatasource.create(proyecto);
     }
 

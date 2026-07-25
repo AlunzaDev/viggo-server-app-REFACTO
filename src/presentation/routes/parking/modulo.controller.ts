@@ -1,7 +1,11 @@
 import { Request, Response } from "express";
 import { CreateModuloDto } from "../../../domain/dtos/parking/create-modulo.dto";
+import {
+  CreateModuloSubmoduloDto,
+  UpdateModuloSubmoduloDto,
+} from "../../../domain/dtos/parking/modulo-submodulo.dto";
 import { UpdateModuloDto } from "../../../domain/dtos/parking/update-modulo.dto";
-import { ModuloEntity } from "../../../domain/entities/parking/modulo.entity";
+import { ModuloEntity, ModuloSubmodulo } from "../../../domain/entities/parking/modulo.entity";
 import {
   canAccessProjectFromRequest,
   getAllowedProjectIdsFromRequest,
@@ -22,6 +26,20 @@ export class ModuloController {
       estado: modulo.estado,
       identificador: modulo.identificador,
       descripcion: modulo.descripcion,
+      submodulos: modulo.submodulos,
+    };
+  }
+
+  private sanitizeSubmodulo(submodulo: ModuloSubmodulo) {
+    return {
+      submoduloId: submodulo.submoduloId,
+      nombre: submodulo.nombre,
+      tipo: submodulo.tipo,
+      identificador: submodulo.identificador,
+      ip: submodulo.ip,
+      mac: submodulo.mac,
+      descripcion: submodulo.descripcion,
+      estado: submodulo.estado,
     };
   }
 
@@ -151,6 +169,68 @@ export class ModuloController {
         return res.status(400).json({ error: "'estado' debe ser boolean" });
       }
       const modulo = await this.moduloService.updateModuloStatus(id, estado);
+      return res.status(200).json({ modulo: this.sanitizeModulo(modulo) });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  getSubmodulos = async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.id);
+      const current = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, current.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const submodulos = await this.moduloService.getSubmodulos(id);
+      return res.status(200).json({ submodulos: submodulos.map((item) => this.sanitizeSubmodulo(item)) });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  createSubmodulo = async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.id);
+      const current = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, current.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const [error, dto] = CreateModuloSubmoduloDto.create(req.body);
+      if (error || !dto) return res.status(400).json({ error });
+      const submodulo = await this.moduloService.addSubmodulo(id, dto.values);
+      return res.status(201).json({ submodulo: this.sanitizeSubmodulo(submodulo) });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  updateSubmodulo = async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.id);
+      const submoduloId = String(req.params.submoduloId);
+      const current = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, current.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const [error, dto] = UpdateModuloSubmoduloDto.create(req.body);
+      if (error || !dto) return res.status(400).json({ error });
+      const submodulo = await this.moduloService.updateSubmodulo(id, submoduloId, dto.values);
+      return res.status(200).json({ submodulo: this.sanitizeSubmodulo(submodulo) });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  deleteSubmodulo = async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.id);
+      const submoduloId = String(req.params.submoduloId);
+      const current = await this.moduloService.getModuloById(id);
+      if (!canAccessProjectFromRequest(req, current.proyecto)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const modulo = await this.moduloService.deleteSubmodulo(id, submoduloId);
       return res.status(200).json({ modulo: this.sanitizeModulo(modulo) });
     } catch (error) {
       return ErrorService.handleApiError(error, res);

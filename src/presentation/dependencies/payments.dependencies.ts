@@ -4,9 +4,15 @@ import { PaymentHistoryController } from "../routes/payments/payment-history.con
 import { StripePaymentController } from "../routes/payments/stripe-payment.controller";
 import { PaymentHistoryService } from "../services/payments/payment-history.service";
 import { StripePaymentService } from "../services/payments/stripe-payment.service";
+import { StripePaymentMongoDatasource } from "../../infrastructure/datasources/payments/stripe-payment.datasource.mongo";
+import { StripePaymentRepositoryImpl } from "../../infrastructure/repositories/payments/stripe-payment.repository.impl";
 
-export const buildStripePaymentController = (): StripePaymentController =>
-  new StripePaymentController(new StripePaymentService());
+export const buildStripePaymentController = (): StripePaymentController => {
+  const repository = new StripePaymentRepositoryImpl(
+    new StripePaymentMongoDatasource(),
+  );
+  return new StripePaymentController(new StripePaymentService(repository));
+};
 
 export const buildPaymentHistoryController = (): PaymentHistoryController => {
   const repository = new PaymentRepositoryImpl(new PaymentMongoDatasource());

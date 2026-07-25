@@ -1,7 +1,12 @@
 import { ProyectoEntity } from "../../entities/parking/proyecto.entity";
 
+export type CreateProyectoResult = {
+    proyecto: ProyectoEntity;
+    installationLinkToken: string;
+};
+
 export abstract class ProyectoDatasource {
-    abstract create(proyecto: Omit<ProyectoEntity, "id">): Promise<ProyectoEntity>;
+    abstract create(proyecto: Omit<ProyectoEntity, "id">): Promise<CreateProyectoResult>;
     abstract findById(id: string): Promise<ProyectoEntity | null>;
     abstract findByIdentificador(identificador: string): Promise<ProyectoEntity | null>;
     abstract getAll(): Promise<ProyectoEntity[]>;

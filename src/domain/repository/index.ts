@@ -12,3 +12,7 @@ export * from "./auth/auth.repository";
 export * from "./auth/permission-profile.repository";
 export * from "./auth/usuario.repository";
 export * from "./payments/payment.repository";
+export * from "./payments/stripe-payment.repository";
+export * from "./installations/installations.repository";
+export * from "./sync/sync.repository";
+export * from "./local-projects/local-projects.repository";

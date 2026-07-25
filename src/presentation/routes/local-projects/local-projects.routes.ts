@@ -1,11 +1,11 @@
 import { Router } from "express";
+import { buildLocalProjectsController } from "../../dependencies";
 import { AuthMiddleware } from "../../middlewares";
-import { LocalProjectsController } from "./local-projects.controller";
 
 export class LocalProjectsRoutes {
   static get routes(): Router {
     const router = Router();
-    const controller = new LocalProjectsController();
+    const controller = buildLocalProjectsController();
 
     router.use(
       AuthMiddleware.requireAuth,

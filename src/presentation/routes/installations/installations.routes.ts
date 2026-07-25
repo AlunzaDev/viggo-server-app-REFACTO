@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { AUTH_ROLES } from "../../../domain/constants";
+import { buildInstallationsController } from "../../dependencies";
 import { AuthMiddleware } from "../../middlewares";
-import { InstallationsController } from "./installations.controller";
 
 export class InstallationsRoutes {
   static get routes(): Router {
     const router = Router();
-    const controller = new InstallationsController();
+    const controller = buildInstallationsController();
     const adminRoles = AuthMiddleware.requireRoles(AUTH_ROLES.ADMIN, AUTH_ROLES.SUPER);
     const installationsModuleAccess = AuthMiddleware.requireModules("installations");
 

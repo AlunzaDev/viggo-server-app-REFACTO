@@ -1,9 +1,11 @@
 import { envs } from "../../../config";
-import { UsuarioModel } from "../../../data/mongo/models/auth/usuario.schema";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { StripePlugin } from "../../../config/plugins/stripe.plugin";
+import { StripePaymentRepository } from "../../../domain/repository/payments/stripe-payment.repository";
 
 export class StripePaymentService {
+  constructor(private readonly repository: StripePaymentRepository) {}
+
   async createPaymentIntent(usuarioId: string, monto: number) {
     if (!Number.isFinite(monto) || monto <= 0) {
       throw CustomError.badRequest("El monto debe ser mayor a 0");
@@ -19,7 +21,11 @@ export class StripePaymentService {
       };
     }
 
-    const usuario = await UsuarioModel.findById(usuarioId);
+    const usuario = await this.repository.findUserById(usuarioId) as {
+      correo: string;
+      nombre: string;
+      apellido: string;
+    } | null;
 
     if (!usuario) {
       throw CustomError.notFound("Usuario no encontrado");

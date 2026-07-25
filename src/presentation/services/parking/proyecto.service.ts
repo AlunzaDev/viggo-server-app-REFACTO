@@ -1,4 +1,5 @@
 import { ProyectoEntity } from "../../../domain/entities/parking/proyecto.entity";
+import type { CreateProyectoResult } from "../../../domain/datasources/parking/proyecto.datasource";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
 
@@ -7,7 +8,7 @@ export class ProyectoService {
 
   async createProyecto(
     proyecto: Omit<ProyectoEntity, "id">,
-  ): Promise<ProyectoEntity> {
+  ): Promise<CreateProyectoResult> {
     const proyectoExists = await this.proyectoRepository.findByIdentificador(
       proyecto.identificador,
     );

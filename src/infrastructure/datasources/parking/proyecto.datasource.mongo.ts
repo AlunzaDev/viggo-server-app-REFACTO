@@ -1,18 +1,33 @@
 import { CounterModel } from "../../../data/mongo/models/system/counter.schema";
+import { createHash, randomBytes } from "node:crypto";
 import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import { ProyectoDatasource } from "../../../domain/datasources/parking/proyecto.datasource";
 import { ProyectoEntity } from "../../../domain/entities/parking/proyecto.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
 
+const createInstallationLinkToken = (codigoProyecto?: string) => {
+    const prefix = codigoProyecto ? `viggo-${codigoProyecto}` : "viggo-project";
+    return `${prefix}-${randomBytes(18).toString("base64url")}`;
+};
+
+const hashInstallationLinkToken = (token: string) =>
+    createHash("sha256").update(token).digest("hex");
+
 export class ProyectoMongoDatasource extends ProyectoDatasource {
-    async create(proyecto: Omit<ProyectoEntity, "id">): Promise<ProyectoEntity> {
+    async create(proyecto: Omit<ProyectoEntity, "id">) {
         const codigoProyecto =
             proyecto.codigoProyecto ?? (await this.getNextCodigoProyecto());
+        const installationLinkToken = createInstallationLinkToken(codigoProyecto);
         const proyectoDocument = await ProyectoModel.create({
             ...proyecto,
             codigoProyecto,
+            installationLinkTokenHash: hashInstallationLinkToken(installationLinkToken),
+            installationLinkTokenIssuedAt: Date.now(),
         });
-        return ProyectoEntity.fromObject(proyectoDocument.toObject());
+        return {
+            proyecto: ProyectoEntity.fromObject(proyectoDocument.toObject()),
+            installationLinkToken,
+        };
     }
 
     async findById(id: string): Promise<ProyectoEntity | null> {

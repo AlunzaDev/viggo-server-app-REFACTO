@@ -1,4 +1,5 @@
 import { ModuloTipo } from "../../entities/parking/modulo.entity";
+import { ModuloSubmodulo } from "../../entities/parking/modulo.entity";
 
 const MODULO_TIPOS: ModuloTipo[] = ["ENTRADA", "SALIDA", "POS"];
 
@@ -10,6 +11,7 @@ export class CreateModuloDto {
         public readonly identificador: string,
         public readonly estado: boolean = true,
         public readonly descripcion?: string,
+        public readonly submodulos: ModuloSubmodulo[] = [],
     ) {}
 
     static create(body: Record<string, unknown>): [string?, CreateModuloDto?] {

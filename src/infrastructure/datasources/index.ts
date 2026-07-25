@@ -6,3 +6,7 @@ export * from "./auth/auth.datasource.mongo";
 export * from "./auth/permission-profile.datasource.mongo";
 export * from "./auth/usuario.datasource.mongo";
 export * from "./payments/payment.datasource.mongo";
+export * from "./payments/stripe-payment.datasource.mongo";
+export * from "./installations/installations.datasource.mongo";
+export * from "./sync/sync.datasource.mongo";
+export * from "./local-projects/local-projects.datasource.mongo";

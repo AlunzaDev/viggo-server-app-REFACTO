@@ -9,3 +9,7 @@ export * from "./pension/pension-pass.service";
 export * from "./email/email.service";
 export * from "./payments/payment-history.service";
 export * from "./payments/stripe-payment.service";
+export * from "./installations/installations.service";
+export * from "./sync/sync.service";
+export * from "./local-projects/local-projects.service";
+export * from "./shared/pagination-query";

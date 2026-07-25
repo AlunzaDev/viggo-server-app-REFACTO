@@ -1,5 +1,6 @@
 import { ModuloFilters } from "../../../domain/datasources/parking/modulo.datasource";
-import { ModuloEntity } from "../../../domain/entities/parking/modulo.entity";
+import { ModuloSubmoduloDtoValues } from "../../../domain/dtos/parking/modulo-submodulo.dto";
+import { ModuloEntity, ModuloSubmodulo } from "../../../domain/entities/parking/modulo.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { ModuloRepository } from "../../../domain/repository/parking/modulo.repository";
 import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
@@ -82,6 +83,41 @@ export class ModuloCrudService {
   async updateModuloStatus(id: string, estado: boolean): Promise<ModuloEntity> {
     const updated = await this.moduloRepository.update(id, { estado });
     if (!updated) throw CustomError.notFound("Modulo no encontrado");
+    return updated;
+  }
+
+  async getSubmodulos(id: string): Promise<ModuloSubmodulo[]> {
+    await this.getModuloById(id);
+    const submodulos = await this.moduloRepository.getSubmodulos(id);
+    if (!submodulos) throw CustomError.notFound("Modulo no encontrado");
+    return submodulos;
+  }
+
+  async addSubmodulo(
+    id: string,
+    submodulo: ModuloSubmoduloDtoValues,
+  ): Promise<ModuloSubmodulo> {
+    await this.getModuloById(id);
+    const created = await this.moduloRepository.addSubmodulo(id, submodulo);
+    if (!created) throw CustomError.notFound("Modulo no encontrado");
+    return created;
+  }
+
+  async updateSubmodulo(
+    id: string,
+    submoduloId: string,
+    submodulo: ModuloSubmoduloDtoValues,
+  ): Promise<ModuloSubmodulo> {
+    await this.getModuloById(id);
+    const updated = await this.moduloRepository.updateSubmodulo(id, submoduloId, submodulo);
+    if (!updated) throw CustomError.notFound("Submodulo no encontrado");
+    return updated;
+  }
+
+  async deleteSubmodulo(id: string, submoduloId: string): Promise<ModuloEntity> {
+    await this.getModuloById(id);
+    const updated = await this.moduloRepository.deleteSubmodulo(id, submoduloId);
+    if (!updated) throw CustomError.notFound("Submodulo no encontrado");
     return updated;
   }
 

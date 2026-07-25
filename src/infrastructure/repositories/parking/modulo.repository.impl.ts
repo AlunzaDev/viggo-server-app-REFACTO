@@ -2,6 +2,7 @@ import {
   ModuloDatasource,
   ModuloFilters,
 } from "../../../domain/datasources/parking/modulo.datasource";
+import { ModuloSubmoduloDtoValues } from "../../../domain/dtos/parking/modulo-submodulo.dto";
 import { ModuloEntity } from "../../../domain/entities/parking/modulo.entity";
 import { ModuloRepository } from "../../../domain/repository/parking/modulo.repository";
 
@@ -16,6 +17,20 @@ export class ModuloRepositoryImpl implements ModuloRepository {
   getByProyecto(proyectoId: string) { return this.datasource.getByProyecto(proyectoId); }
   update(id: string, modulo: Partial<Omit<ModuloEntity, "id">>) {
     return this.datasource.update(id, modulo);
+  }
+  getSubmodulos(id: string) { return this.datasource.getSubmodulos(id); }
+  addSubmodulo(id: string, submodulo: ModuloSubmoduloDtoValues) {
+    return this.datasource.addSubmodulo(id, submodulo);
+  }
+  updateSubmodulo(
+    id: string,
+    submoduloId: string,
+    submodulo: ModuloSubmoduloDtoValues,
+  ) {
+    return this.datasource.updateSubmodulo(id, submoduloId, submodulo);
+  }
+  deleteSubmodulo(id: string, submoduloId: string) {
+    return this.datasource.deleteSubmodulo(id, submoduloId);
   }
   delete(id: string) { return this.datasource.delete(id); }
 }

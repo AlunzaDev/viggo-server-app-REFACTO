@@ -6,3 +6,7 @@ export * from "./auth/auth.datasource";
 export * from "./auth/permission-profile.datasource";
 export * from "./auth/usuario.datasource";
 export * from "./payments/payment.datasource";
+export * from "./payments/stripe-payment.datasource";
+export * from "./installations/installations.datasource";
+export * from "./sync/sync.datasource";
+export * from "./local-projects/local-projects.datasource";

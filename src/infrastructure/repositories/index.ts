@@ -6,3 +6,7 @@ export * from "./parking/modulo.repository.impl";
 export * from "./pension/pension.repository.impl";
 export * from "./pension/pension-pass.repository.impl";
 export * from "./payments/payment.repository.impl";
+export * from "./payments/stripe-payment.repository.impl";
+export * from "./installations/installations.repository.impl";
+export * from "./sync/sync.repository.impl";
+export * from "./local-projects/local-projects.repository.impl";

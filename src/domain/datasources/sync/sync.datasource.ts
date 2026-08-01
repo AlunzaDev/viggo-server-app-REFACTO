@@ -5,6 +5,9 @@ export type InstallationLinkRequestPayload = {
   localApiBaseUrl: string;
   serverIp: string;
   serverMac: string;
+  browserCoordinates?: [number, number];
+  browserLocationAccuracy?: number;
+  browserLocationCapturedAt?: number;
   requestedByUserId: string;
   requestedByUserName: string;
 };
@@ -19,6 +22,16 @@ export type InboxEventPayload = {
   payload: object;
 };
 
+export type HeartbeatSnapshotPayload = {
+  installationId: string;
+  proyectoId: string;
+  generatedAt: number;
+  source: string;
+  summary: Record<string, unknown>;
+  modules: Array<Record<string, unknown>>;
+  metadata?: Record<string, unknown>;
+};
+
 export abstract class SyncDatasource {
   abstract getConfiguration(proyectoId: string): Promise<any>;
   abstract getProjectsCatalog(): Promise<any[]>;
@@ -29,5 +42,6 @@ export abstract class SyncDatasource {
     payload: InstallationLinkRequestPayload,
   ): Promise<any>;
   abstract getInstallationRequestStatus(installationId: string): Promise<any>;
+  abstract receiveHeartbeatSnapshot(payload: HeartbeatSnapshotPayload): Promise<any>;
   abstract receiveEvent(payload: InboxEventPayload): Promise<any>;
 }

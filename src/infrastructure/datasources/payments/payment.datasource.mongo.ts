@@ -7,6 +7,7 @@ interface PaymentQueryOptions {
   limit?: number;
   type?: PaymentEntity["type"];
   status?: PaymentEntity["status"];
+  search?: string;
   from?: number;
   to?: number;
 }
@@ -82,6 +83,7 @@ export class PaymentMongoDatasource extends PaymentDatasource {
       user: string;
       type?: PaymentEntity["type"];
       status?: PaymentEntity["status"];
+      $or?: Array<Record<string, unknown>>;
       paidAt?: {
         $gte?: number;
         $lte?: number;
@@ -92,6 +94,22 @@ export class PaymentMongoDatasource extends PaymentDatasource {
 
     if (options.type) query.type = options.type;
     if (options.status) query.status = options.status;
+
+    if (options.search) {
+      const normalizedSearch = options.search.trim();
+      if (normalizedSearch) {
+        const regex = new RegExp(normalizedSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+        query.$or = [
+          { concept: regex },
+          { type: regex },
+          { status: regex },
+          { "reference.id": regex },
+          { "parking.name": regex },
+          { "parking.city": regex },
+          { "paymentMethod.brand": regex },
+        ];
+      }
+    }
 
     if (options.from !== undefined || options.to !== undefined) {
       query.paidAt = {};

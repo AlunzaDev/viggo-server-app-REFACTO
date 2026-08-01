@@ -1,4 +1,4 @@
-# Viggo Server API — NUBEADMIN
+# Viggo Server API — ADMINISTRATIVO
 
 API administrativa en nube separada del servicio operativo local de Viggo.
 
@@ -11,11 +11,11 @@ API administrativa en nube separada del servicio operativo local de Viggo.
 - planes de pensión y contratos Pension Pass;
 - Stripe e historial central de pagos;
 - proveedores;
-- configuración y recepción idempotente de eventos desde LOCALOPE.
+- configuración y recepción idempotente de eventos desde OPERATIVO.
 
 ## Fuera de este servicio
 
-No contiene ni ejecuta tickets operativos, caja, efectivo, barreras, heartbeat de dispositivos, Socket.IO, movimientos físicos de acceso ni runtime del estacionamiento. Esas responsabilidades pertenecen a `viggo-server-api-LOCALOPE`.
+No contiene ni ejecuta tickets operativos, caja, efectivo, barreras, heartbeat de dispositivos, Socket.IO, movimientos físicos de acceso ni runtime del estacionamiento. Esas responsabilidades pertenecen a `viggo-server-api-OPERATIVO`.
 
 ## Inicio local
 
@@ -57,7 +57,7 @@ docker compose up --build
 - `/api/proveedores`
 - `/api/sync`
 
-## Sincronización LOCALOPE → NUBEADMIN
+## Sincronización OPERATIVO → ADMINISTRATIVO
 
 Las rutas `/api/sync` requieren:
 
@@ -80,9 +80,9 @@ Devuelve el proyecto, módulos, planes de pensión y contratos necesarios para g
 GET /api/sync/access-snapshot/:proyectoId
 ```
 
-Devuelve usuarios autorizados para el parking, usuarios `SUPER_ROLE` y los perfiles de permisos relacionados. Incluye el hash de password porque `LOCALOPE` debe poder autenticar localmente aunque no haya internet.
+Devuelve usuarios autorizados para el parking, usuarios `SUPER_ROLE` y los perfiles de permisos relacionados. Incluye el hash de password porque `OPERATIVO` debe poder autenticar localmente aunque no haya internet.
 
-El snapshot se aplica en LOCALOPE con:
+El snapshot se aplica en OPERATIVO con:
 
 ```http
 PUT /api/sync/snapshots/access
@@ -110,11 +110,11 @@ Content-Type: application/json
 
 ## Decisiones de compatibilidad
 
-Los nombres `Proyecto`, `Pension` y `PensionPass` se conservaron para reducir el riesgo de migración. El módulo administrativo ya no persiste información de binding o runtime de dispositivos. El estado físico `inParking` permanece temporalmente en el esquema de Pension Pass por compatibilidad, pero NUBEADMIN no lo modifica mediante sus endpoints administrativos.
+Los nombres `Proyecto`, `Pension` y `PensionPass` se conservaron para reducir el riesgo de migración. El módulo administrativo ya no persiste información de binding o runtime de dispositivos. El estado físico `inParking` permanece temporalmente en el esquema de Pension Pass por compatibilidad, pero ADMINISTRATIVO no lo modifica mediante sus endpoints administrativos.
 
 ## Pendientes recomendados
 
-1. crear un registro formal de instalaciones LOCALOPE con credenciales rotables;
+1. crear un registro formal de instalaciones OPERATIVO con credenciales rotables;
 2. procesar la bandeja `SyncInboxEvent` mediante handlers por `eventType`;
 3. agregar webhook de Stripe y una máquina de estados de pagos;
 4. sustituir la reserva de precontratos por `reservedUntil` y un job persistente;
@@ -124,11 +124,11 @@ Los nombres `Proyecto`, `Pension` y `PensionPass` se conservaron para reducir el
 
 `npm run dev` realiza una compilación inicial, mantiene TypeScript en modo `--watch` y ejecuta `dist/app.js` con el watcher nativo de Node. Esto evita depender de `--experimental-strip-types`, que en Node.js 22.12 no resuelve imports de directorios ni transforma todas las construcciones de TypeScript utilizadas por el proyecto.
 
-# Arquitectura NUBEADMIN
+# Arquitectura ADMINISTRATIVO
 
 ## Fuente
 
-Este proyecto se derivó de `viggo-server-app-REFACTO`, conservando las verticales administrativas y separando la operación física hacia `viggo-server-api-LOCALOPE`.
+Este proyecto se derivó de `viggo-server-app-REFACTO`, conservando las verticales administrativas y separando la operación física hacia `viggo-server-api-OPERATIVO`.
 
 ## Incluido
 
@@ -140,8 +140,8 @@ Este proyecto se derivó de `viggo-server-app-REFACTO`, conservando las vertical
 - Inventario, precontrato, contratación y renovación de Pension Pass.
 - Stripe genérico e historial de pagos.
 - Proveedores.
-- Endpoint de configuración para LOCALOPE.
-- Inbox idempotente para eventos producidos por LOCALOPE.
+- Endpoint de configuración para OPERATIVO.
+- Inbox idempotente para eventos producidos por OPERATIVO.
 
 ## Excluido
 
@@ -157,17 +157,17 @@ Este proyecto se derivó de `viggo-server-app-REFACTO`, conservando las vertical
 ## Flujo esperado
 
 ```text
-Dashboard/App ───────────────► NUBEADMIN
+Dashboard/App ───────────────► ADMINISTRATIVO
                                   │
                                   │ configuración / contratos
                                   ▼
-                              LOCALOPE
+                              OPERATIVO
                                   │
                                   │ eventos operativos idempotentes
-                                  └────────────────────────────► NUBEADMIN Inbox
+                                  └────────────────────────────► ADMINISTRATIVO Inbox
 ```
 
-NUBEADMIN es autoridad de identidad y configuración. LOCALOPE es autoridad inmediata de la operación física.
+ADMINISTRATIVO es autoridad de identidad y configuración. OPERATIVO es autoridad inmediata de la operación física.
 # Nota: codigo corto de proyecto
 
 Cada proyecto nuevo recibe automaticamente un `codigoProyecto` creciente de 4 digitos (`0001` a `9999`). Es distinto al `identificador` existente y sirve como referencia corta, humana y estable para parkings. Para asignar codigos a proyectos existentes sin codigo:
@@ -176,25 +176,25 @@ Cada proyecto nuevo recibe automaticamente un `codigoProyecto` creciente de 4 di
 npm run backfill:project-codes
 ```
 
-# Nota: consulta directa a LOCALOPE
+# Nota: consulta directa a OPERATIVO
 
-Modo actual para operacion visible desde nube: `NUBEADMIN` usa `localApiBaseUrl` del proyecto y consulta el API local.
+Modo actual para operacion visible desde nube: `ADMINISTRATIVO` usa `localApiBaseUrl` del proyecto y consulta el API local.
 
 ```http
 GET /api/local-projects/:projectId/snapshot?from=<epoch>&to=<epoch>
 Authorization: Bearer <JWT usuario dashboard>
 ```
 
-Internamente `NUBEADMIN` llama a:
+Internamente `ADMINISTRATIVO` llama a:
 
 ```http
 GET <localApiBaseUrl>/api/local-reports/snapshot
 Authorization: Bearer <SYNC_SERVICE_TOKEN>
-X-Viggo-Sync-Source: nubeadmin-direct-query
+X-Viggo-Sync-Source: administrativo-direct-query
 ```
 
 Este flujo sirve para estado en vivo cuando existe conexion hacia el servidor local. El inbox de eventos queda disponible como base para una etapa offline-first, pero no es el mecanismo principal de monitoreo en esta fase.
 
 # Nota: token por instalacion
 
-Al crear un proyecto, NUBEADMIN genera un token de vinculacion y lo muestra una sola vez al administrador. NUBEADMIN guarda solo `installationLinkTokenHash` y `installationLinkTokenIssuedAt` en el proyecto. LOCALOPE debe ingresar ese token para poder solicitar vinculacion; si coincide con el hash del proyecto, la solicitud queda registrada.
+Al crear un proyecto, ADMINISTRATIVO genera un token de vinculacion y lo muestra al administrador. ADMINISTRATIVO guarda `installationLinkTokenHash` para validarlo de forma segura, `installationLinkTokenEncrypted` para poder volver a mostrarlo en admin y `installationLinkTokenIssuedAt` como referencia de emision. OPERATIVO debe ingresar ese token para poder solicitar vinculacion; si coincide con el hash del proyecto, la solicitud queda registrada.

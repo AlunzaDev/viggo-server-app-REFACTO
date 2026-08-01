@@ -3,8 +3,9 @@ import { CustomError } from "../../errors/custom.error";
 export interface ProyectoEntityOptions {
     id: string;
     nombre: string;
-    coordinates: number[];
+    coordinates: number[] | number[][];
     ciudad: string;
+    direccion?: string;
     identificador: string;
     codigoProyecto?: string;
     serverIp?: string;
@@ -18,8 +19,9 @@ export interface ProyectoEntityOptions {
 export class ProyectoEntity {
     public id: string;
     public nombre: string;
-    public coordinates: number[];
+    public coordinates: number[] | number[][];
     public ciudad: string;
+    public direccion?: string;
     public identificador: string;
     public codigoProyecto?: string;
     public serverIp?: string;
@@ -30,13 +32,14 @@ export class ProyectoEntity {
     public estado: boolean;
 
     constructor(options: ProyectoEntityOptions) {
-        const { id, nombre, coordinates, ciudad, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, img, descripcion, estado } =
+        const { id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, img, descripcion, estado } =
             options;
 
         this.id = id;
         this.nombre = nombre;
         this.coordinates = coordinates;
         this.ciudad = ciudad;
+        this.direccion = direccion;
         this.identificador = identificador;
         this.codigoProyecto = codigoProyecto;
         this.serverIp = serverIp;
@@ -48,7 +51,7 @@ export class ProyectoEntity {
     }
 
     static fromObject(object: { [key: string]: unknown }): ProyectoEntity {
-        const { _id, id, nombre, coordinates, ciudad, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, img, descripcion, estado } =
+        const { _id, id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, img, descripcion, estado } =
             object;
 
         const proyectoId = id || (_id ? String(_id) : undefined);
@@ -65,8 +68,12 @@ export class ProyectoEntity {
         return new ProyectoEntity({
             id: String(proyectoId),
             nombre: String(nombre).trim(),
-            coordinates: coordinates.map((value) => Number(value)),
+            coordinates: ProyectoEntity.parseCoordinates(coordinates),
             ciudad: String(ciudad).trim(),
+            direccion:
+                typeof direccion === "string" && direccion.trim().length > 0
+                    ? direccion.trim()
+                    : undefined,
             identificador: String(identificador).trim(),
             codigoProyecto:
                 typeof codigoProyecto === "string" && codigoProyecto.trim().length > 0
@@ -88,5 +95,31 @@ export class ProyectoEntity {
             descripcion: typeof descripcion === "string" ? descripcion : undefined,
             estado: Boolean(estado),
         });
+    }
+
+    private static parseCoordinates(value: unknown[]): number[] | number[][] {
+        if (
+            value.length >= 2 &&
+            !Array.isArray(value[0]) &&
+            Number.isFinite(Number(value[0])) &&
+            Number.isFinite(Number(value[1]))
+        ) {
+            return [Number(value[0]), Number(value[1])];
+        }
+
+        const points = value
+            .map((item) =>
+                Array.isArray(item) && item.length >= 2
+                    ? [Number(item[0]), Number(item[1])]
+                    : null,
+            )
+            .filter((item): item is number[] => Boolean(item))
+            .filter((item) => Number.isFinite(item[0]) && Number.isFinite(item[1]));
+
+        if (!points.length) {
+            throw CustomError.badRequest("Invalid coordinates");
+        }
+
+        return points;
     }
 }

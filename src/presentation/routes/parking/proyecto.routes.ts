@@ -2,6 +2,7 @@ import { Router } from "express";
 import { buildProyectoController } from "../../dependencies";
 import { AuthMiddleware } from "../../middlewares";
 import { AUTH_ROLES } from "../../../domain/constants";
+import { uploadProjectImage } from "../../middlewares/project-image-upload.middleware";
 
 export class ProyectoRoutes {
   static get routes(): Router {
@@ -19,10 +20,25 @@ export class ProyectoRoutes {
       AuthMiddleware.requireAuth,
       adminRoles,
       projectModuleAccess,
+      uploadProjectImage,
       controller.createProyecto,
     );
     router.get("/", AuthMiddleware.requireAuth, controller.getProyectos);
     router.get("/:id", AuthMiddleware.requireAuth, controller.getProyectoById);
+    router.get(
+      "/:id/installation-link-token",
+      AuthMiddleware.requireAuth,
+      adminRoles,
+      projectModuleAccess,
+      controller.getInstallationLinkToken,
+    );
+    router.post(
+      "/:id/installation-link-token",
+      AuthMiddleware.requireAuth,
+      adminRoles,
+      projectModuleAccess,
+      controller.regenerateInstallationLinkToken,
+    );
     router.patch(
       "/:id/status",
       AuthMiddleware.requireAuth,
@@ -35,6 +51,7 @@ export class ProyectoRoutes {
       AuthMiddleware.requireAuth,
       adminRoles,
       projectModuleAccess,
+      uploadProjectImage,
       controller.updateProyecto,
     );
     router.delete(

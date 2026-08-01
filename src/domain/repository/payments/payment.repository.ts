@@ -16,6 +16,7 @@ export abstract class PaymentRepository {
       limit?: number;
       type?: PaymentEntity["type"];
       status?: PaymentEntity["status"];
+      search?: string;
       from?: number;
       to?: number;
     },
@@ -26,6 +27,7 @@ export abstract class PaymentRepository {
     options?: {
       type?: PaymentEntity["type"];
       status?: PaymentEntity["status"];
+      search?: string;
       from?: number;
       to?: number;
     },

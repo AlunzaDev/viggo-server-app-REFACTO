@@ -62,7 +62,7 @@ export class Server {
     });
 
     this.app.listen(this.port, this.host, () => {
-      console.log(`[NUBEADMIN] Server running on ${this.host}:${this.port}`);
+      console.log(`[ADMINISTRATIVO] Server running on ${this.host}:${this.port}`);
     });
   }
 }

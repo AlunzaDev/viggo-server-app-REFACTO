@@ -1,4 +1,5 @@
 import type {
+  HeartbeatSnapshotPayload,
   InboxEventPayload,
   InstallationLinkRequestPayload,
   SyncDatasource,
@@ -34,6 +35,10 @@ export class SyncRepositoryImpl implements SyncRepository {
 
   getInstallationRequestStatus(installationId: string) {
     return this.datasource.getInstallationRequestStatus(installationId);
+  }
+
+  receiveHeartbeatSnapshot(payload: HeartbeatSnapshotPayload) {
+    return this.datasource.receiveHeartbeatSnapshot(payload);
   }
 
   receiveEvent(payload: InboxEventPayload) {

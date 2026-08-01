@@ -1,9 +1,9 @@
-name: viggo-nubeadmin
+name: viggo-administrativo
 
 services:
   mongo-db:
     image: mongo:7.0
-    container_name: viggo-nubeadmin-mongo
+    container_name: viggo-administrativo-mongo
     restart: always
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
@@ -19,8 +19,8 @@ services:
       retries: 10
 
   backend:
-    container_name: viggo-nubeadmin-api
-    image: ${BACKEND_IMAGE:-viggo-server-api-nubeadmin:local}
+    container_name: viggo-administrativo-api
+    image: ${BACKEND_IMAGE:-viggo-server-api-administrativo:local}
     build:
       context: .
       dockerfile: Dockerfile

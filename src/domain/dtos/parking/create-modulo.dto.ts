@@ -10,6 +10,10 @@ export class CreateModuloDto {
         public readonly tipo: ModuloTipo,
         public readonly identificador: string,
         public readonly estado: boolean = true,
+        public readonly ip?: string,
+        public readonly mac?: string,
+        public readonly ubicacion?: string,
+        public readonly coordinates?: [number, number],
         public readonly descripcion?: string,
         public readonly submodulos: ModuloSubmodulo[] = [],
     ) {}
@@ -21,6 +25,19 @@ export class CreateModuloDto {
         const identificador =
             typeof body.identificador === "string" ? body.identificador.trim() : "";
         const estado = typeof body.estado === "boolean" ? body.estado : true;
+        const ip =
+            typeof body.ip === "string" && body.ip.trim().length > 0
+                ? body.ip.trim()
+                : undefined;
+        const mac =
+            typeof body.mac === "string" && body.mac.trim().length > 0
+                ? body.mac.trim()
+                : undefined;
+        const ubicacion =
+            typeof body.ubicacion === "string" && body.ubicacion.trim().length > 0
+                ? body.ubicacion.trim()
+                : undefined;
+        const coordinates = parseCoordinates(body.coordinates);
         const descripcion =
             typeof body.descripcion === "string" && body.descripcion.trim().length > 0
                 ? body.descripcion.trim()
@@ -42,8 +59,20 @@ export class CreateModuloDto {
                 tipo as ModuloTipo,
                 identificador,
                 estado,
+                ip,
+                mac,
+                ubicacion,
+                coordinates,
                 descripcion,
             ),
         ];
     }
+}
+
+function parseCoordinates(value: unknown): [number, number] | undefined {
+    if (!Array.isArray(value) || value.length !== 2) return undefined;
+    const longitude = Number(value[0]);
+    const latitude = Number(value[1]);
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return undefined;
+    return [longitude, latitude];
 }

@@ -8,6 +8,8 @@ const projectRoot = resolve(currentDir, "..");
 const tscBin = resolve(projectRoot, "node_modules", "typescript", "bin", "tsc");
 const appEntry = resolve(projectRoot, "dist", "app.js");
 
+process.stdout.write("\x1Bc");
+
 if (!existsSync(tscBin)) {
   console.error("[DEV] TypeScript no está instalado. Ejecuta `npm install` primero.");
   process.exit(1);

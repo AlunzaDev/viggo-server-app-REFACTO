@@ -5,10 +5,12 @@ import { ModuloModel } from "../../../data/mongo/models/parking/modulo.schema";
 import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import { PensionPassModel } from "../../../data/mongo/models/pension/pension-pass.schema";
 import { PensionModel } from "../../../data/mongo/models/pension/pension.schema";
+import { ProjectHeartbeatSnapshotModel } from "../../../data/mongo/models/system/project-heartbeat-snapshot.schema";
 import { InboxEventModel } from "../../../data/mongo/models/sync/inbox-event.schema";
 import { LocalInstallationRequestModel } from "../../../data/mongo/models/system/local-installation-request.schema";
 import {
   SyncDatasource,
+  type HeartbeatSnapshotPayload,
   type InboxEventPayload,
   type InstallationLinkRequestPayload,
 } from "../../../domain/datasources/sync/sync.datasource";
@@ -49,7 +51,7 @@ export class SyncMongoDatasource implements SyncDatasource {
   getProjectsCatalog() {
     return ProyectoModel.find({ estado: true })
       .select(
-        "nombre ciudad identificador codigoProyecto serverIp serverMac localApiBaseUrl img descripcion estado coordinates",
+        "nombre ciudad direccion identificador codigoProyecto serverIp serverMac localApiBaseUrl img descripcion estado coordinates",
       )
       .sort({ nombre: 1 })
       .lean();
@@ -116,6 +118,9 @@ export class SyncMongoDatasource implements SyncDatasource {
         localApiBaseUrl: payload.localApiBaseUrl,
         serverIp: payload.serverIp,
         serverMac: payload.serverMac,
+        browserCoordinates: payload.browserCoordinates,
+        browserLocationAccuracy: payload.browserLocationAccuracy,
+        browserLocationCapturedAt: payload.browserLocationCapturedAt,
         status: existing?.status === "approved" ? "approved" : "pending",
         requestedByUserId: payload.requestedByUserId,
         requestedByUserName: payload.requestedByUserName,
@@ -141,6 +146,47 @@ export class SyncMongoDatasource implements SyncDatasource {
         : null;
 
     return { request, proyecto, oneTimeSyncToken: null };
+  }
+
+  async receiveHeartbeatSnapshot(payload: HeartbeatSnapshotPayload) {
+    const proyecto = await ProyectoModel.findById(payload.proyectoId).lean();
+    if (!proyecto) {
+      return {
+        accepted: false,
+        proyectoId: payload.proyectoId,
+        reason: "PROJECT_NOT_FOUND",
+      };
+    }
+
+    const receivedAt = Date.now();
+    await ProjectHeartbeatSnapshotModel.findOneAndUpdate(
+      { proyectoId: payload.proyectoId },
+      {
+        proyectoId: payload.proyectoId,
+        installationId: payload.installationId,
+        source: payload.source,
+        generatedAt: payload.generatedAt,
+        receivedAt,
+        summary: payload.summary,
+        modules: payload.modules,
+        metadata: {
+          ...(payload.metadata ?? {}),
+          proyectoNombre: String(proyecto.nombre ?? ""),
+          proyectoIdentificador: String(proyecto.identificador ?? ""),
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+      },
+    );
+
+    return {
+      accepted: true,
+      proyectoId: payload.proyectoId,
+      receivedAt,
+    };
   }
 
   async receiveEvent(payload: InboxEventPayload) {

@@ -1,6 +1,7 @@
 import {
     ProyectoDatasource,
     type CreateProyectoResult,
+    type ProyectoInstallationLinkTokenResult,
 } from "../../../domain/datasources/parking/proyecto.datasource";
 import { ProyectoEntity } from "../../../domain/entities/parking/proyecto.entity";
 import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
@@ -10,6 +11,14 @@ export class ProyectoRepositoryImpl implements ProyectoRepository {
 
     create(proyecto: Omit<ProyectoEntity, "id">): Promise<CreateProyectoResult> {
         return this.proyectoDatasource.create(proyecto);
+    }
+
+    getInstallationLinkToken(id: string): Promise<ProyectoInstallationLinkTokenResult | null> {
+        return this.proyectoDatasource.getInstallationLinkToken(id);
+    }
+
+    regenerateInstallationLinkToken(id: string): Promise<ProyectoInstallationLinkTokenResult | null> {
+        return this.proyectoDatasource.regenerateInstallationLinkToken(id);
     }
 
     findById(id: string): Promise<ProyectoEntity | null> {

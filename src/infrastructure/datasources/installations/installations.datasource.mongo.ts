@@ -10,6 +10,29 @@ export class InstallationsMongoDatasource implements InstallationsDatasource {
     return LocalInstallationRequestModel.find().sort({ updatedAt: -1 }).lean();
   }
 
+  private async updateRequestStatus(
+    requestId: string,
+    payload: InstallationReviewPayload,
+    status: "pending" | "rejected",
+    note: string,
+  ) {
+    const request = await LocalInstallationRequestModel.findById(requestId);
+    if (!request) return null;
+
+    request.status = status;
+    request.reviewedByUserId = payload.userId;
+    request.reviewedByUserName = payload.userName;
+    request.reviewedAt = Date.now();
+    request.reviewNote = note;
+    request.syncTokenHash = "";
+    request.syncTokenIssuedAt = undefined;
+    request.syncTokenDeliveredAt = undefined;
+    request.updatedAt = Date.now();
+    await request.save();
+
+    return request.toJSON();
+  }
+
   async approveRequest(payload: InstallationReviewPayload) {
     const request = await LocalInstallationRequestModel.findById(payload.requestId);
     if (!request) return null;
@@ -49,5 +72,23 @@ export class InstallationsMongoDatasource implements InstallationsDatasource {
       },
       { new: true },
     ).lean();
+  }
+
+  unlinkTemporary(payload: InstallationReviewPayload) {
+    return this.updateRequestStatus(
+      payload.requestId,
+      payload,
+      "pending",
+      payload.note?.trim() || "Desvinculacion temporal solicitada desde administrativo",
+    );
+  }
+
+  unlinkPermanent(payload: InstallationReviewPayload) {
+    return this.updateRequestStatus(
+      payload.requestId,
+      payload,
+      "rejected",
+      payload.note?.trim() || "Desvinculacion definitiva solicitada desde administrativo",
+    );
   }
 }

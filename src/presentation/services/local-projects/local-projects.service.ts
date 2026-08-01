@@ -7,4 +7,8 @@ export class LocalProjectsService {
   getSnapshot(payload: LocalProjectSnapshotPayload) {
     return this.repository.getSnapshot(payload);
   }
+
+  getHeartbeat(projectId: string) {
+    return this.repository.getHeartbeat(projectId);
+  }
 }

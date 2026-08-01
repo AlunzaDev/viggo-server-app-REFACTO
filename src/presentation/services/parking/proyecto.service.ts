@@ -1,5 +1,8 @@
 import { ProyectoEntity } from "../../../domain/entities/parking/proyecto.entity";
-import type { CreateProyectoResult } from "../../../domain/datasources/parking/proyecto.datasource";
+import type {
+  CreateProyectoResult,
+  ProyectoInstallationLinkTokenResult,
+} from "../../../domain/datasources/parking/proyecto.datasource";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
 
@@ -34,6 +37,36 @@ export class ProyectoService {
     }
 
     return proyecto;
+  }
+
+  async getInstallationLinkToken(
+    id: string,
+  ): Promise<ProyectoInstallationLinkTokenResult> {
+    const result = await this.proyectoRepository.getInstallationLinkToken(id);
+
+    if (!result) {
+      throw CustomError.notFound("Proyecto no encontrado");
+    }
+
+    if (!result.installationLinkToken) {
+      throw CustomError.badRequest(
+        "Este proyecto no tiene un token visible guardado. Solo se conserva el hash del token anterior.",
+      );
+    }
+
+    return result;
+  }
+
+  async regenerateInstallationLinkToken(
+    id: string,
+  ): Promise<ProyectoInstallationLinkTokenResult> {
+    const result = await this.proyectoRepository.regenerateInstallationLinkToken(id);
+
+    if (!result) {
+      throw CustomError.notFound("Proyecto no encontrado");
+    }
+
+    return result;
   }
 
   async updateProyecto(

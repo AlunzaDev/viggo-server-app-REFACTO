@@ -61,4 +61,44 @@ export class InstallationsController {
       return ErrorService.handleApiError(error, res);
     }
   };
+
+  unlinkTemporary = async (req: Request, res: Response) => {
+    try {
+      const requestId = String(req.params.id ?? "").trim();
+      const note = String(req.body?.note ?? "").trim();
+      const user = getAuthenticatedRequestUser(req);
+
+      const request = await this.service.unlinkTemporary({
+        requestId,
+        userId: user?.id ?? "",
+        userName: getReviewerName(user),
+        note,
+      });
+
+      if (!request) return res.status(404).json({ error: "Solicitud no encontrada" });
+      return res.status(200).json({ request });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  unlinkPermanent = async (req: Request, res: Response) => {
+    try {
+      const requestId = String(req.params.id ?? "").trim();
+      const note = String(req.body?.note ?? "").trim();
+      const user = getAuthenticatedRequestUser(req);
+
+      const request = await this.service.unlinkPermanent({
+        requestId,
+        userId: user?.id ?? "",
+        userName: getReviewerName(user),
+        note,
+      });
+
+      if (!request) return res.status(404).json({ error: "Solicitud no encontrada" });
+      return res.status(200).json({ request });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
 }

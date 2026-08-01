@@ -1,4 +1,5 @@
 import type {
+  InstallationUnlinkPayload,
   InstallationReviewPayload,
   InstallationsDatasource,
 } from "../../../domain/datasources/installations/installations.datasource";
@@ -17,5 +18,13 @@ export class InstallationsRepositoryImpl implements InstallationsRepository {
 
   rejectRequest(payload: InstallationReviewPayload & { note: string }) {
     return this.datasource.rejectRequest(payload);
+  }
+
+  unlinkTemporary(payload: InstallationUnlinkPayload) {
+    return this.datasource.unlinkTemporary(payload);
+  }
+
+  unlinkPermanent(payload: InstallationUnlinkPayload) {
+    return this.datasource.unlinkPermanent(payload);
   }
 }

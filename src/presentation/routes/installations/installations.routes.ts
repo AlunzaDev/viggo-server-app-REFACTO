@@ -14,6 +14,8 @@ export class InstallationsRoutes {
     router.get("/", controller.getRequests);
     router.patch("/:id/approve", controller.approveRequest);
     router.patch("/:id/reject", controller.rejectRequest);
+    router.patch("/:id/unlink-temporary", controller.unlinkTemporary);
+    router.patch("/:id/unlink-permanent", controller.unlinkPermanent);
 
     return router;
   }

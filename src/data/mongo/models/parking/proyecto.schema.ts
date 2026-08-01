@@ -1,5 +1,11 @@
 import { Schema, model } from "mongoose";
 
+const isValidCoordinatePair = (value: unknown): boolean =>
+    Array.isArray(value) &&
+    value.length >= 2 &&
+    Number.isFinite(Number(value[0])) &&
+    Number.isFinite(Number(value[1]));
+
 const proyectoSchema = new Schema(
     {
         nombre: {
@@ -8,12 +14,26 @@ const proyectoSchema = new Schema(
             trim: true,
         },
         coordinates: {
-            type: [Number],
+            type: [Schema.Types.Mixed],
             required: [true, "coordinates [lon,lat] are required"],
+            validate: {
+                validator: (value: unknown) => {
+                    if (!Array.isArray(value) || value.length === 0) return false;
+                    if (isValidCoordinatePair(value)) return true;
+                    return value.every((point) => isValidCoordinatePair(point));
+                },
+                message: "coordinates debe contener [lon,lat] o un arreglo de puntos [lon,lat]",
+            },
         },
         ciudad: {
             type: String,
             required: [true, "La ciudad es obligatoria"],
+            trim: true,
+        },
+        direccion: {
+            type: String,
+            required: false,
+            default: "",
             trim: true,
         },
         identificador: {
@@ -55,6 +75,18 @@ const proyectoSchema = new Schema(
             default: "",
             trim: true,
         },
+        installationLinkTokenEncrypted: {
+            type: String,
+            required: false,
+            default: "",
+            trim: true,
+        },
+        installationLinkTokenValue: {
+            type: String,
+            required: false,
+            default: "",
+            trim: true,
+        },
         installationLinkTokenIssuedAt: {
             type: Number,
             required: false,
@@ -84,6 +116,8 @@ const proyectoSchema = new Schema(
                 serialized.id = String(serialized._id);
                 delete serialized._id;
                 delete serialized.installationLinkTokenHash;
+                delete serialized.installationLinkTokenEncrypted;
+                delete serialized.installationLinkTokenValue;
                 return serialized;
             },
         },

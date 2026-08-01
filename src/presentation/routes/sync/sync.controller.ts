@@ -8,7 +8,7 @@ export class SyncController {
 
   status = async (req: Request, res: Response) => {
     return res.status(200).json({
-      service: "viggo-nubeadmin-sync",
+      service: "viggo-administrativo-sync",
       installationId: (req as SyncRequest).installationId,
       status: "ok",
       serverTime: Date.now(),
@@ -74,6 +74,19 @@ export class SyncController {
       const body = req.body as Record<string, unknown>;
       const proyectoId = String(body.proyectoId ?? "").trim();
       const installationLinkToken = String(body.installationLinkToken ?? "").trim();
+      const browserCoordinatesRaw = Array.isArray(body.browserCoordinates)
+        ? body.browserCoordinates
+        : [];
+      const browserLongitude = Number(browserCoordinatesRaw[0]);
+      const browserLatitude = Number(browserCoordinatesRaw[1]);
+      const browserCoordinates =
+        browserCoordinatesRaw.length === 2 &&
+        Number.isFinite(browserLongitude) &&
+        Number.isFinite(browserLatitude)
+          ? [browserLongitude, browserLatitude] as [number, number]
+          : undefined;
+      const browserLocationAccuracy = Number(body.browserLocationAccuracy);
+      const browserLocationCapturedAt = Number(body.browserLocationCapturedAt);
       if (!proyectoId) return res.status(400).json({ error: "proyectoId es requerido" });
       if (!installationLinkToken) {
         return res.status(400).json({ error: "Token de vinculacion requerido" });
@@ -86,6 +99,13 @@ export class SyncController {
         localApiBaseUrl: String(body.localApiBaseUrl ?? ""),
         serverIp: String(body.serverIp ?? ""),
         serverMac: String(body.serverMac ?? ""),
+        browserCoordinates,
+        browserLocationAccuracy: Number.isFinite(browserLocationAccuracy)
+          ? browserLocationAccuracy
+          : undefined,
+        browserLocationCapturedAt: Number.isFinite(browserLocationCapturedAt)
+          ? browserLocationCapturedAt
+          : undefined,
         requestedByUserId: String(body.requestedByUserId ?? ""),
         requestedByUserName: String(body.requestedByUserName ?? ""),
       });
@@ -117,6 +137,57 @@ export class SyncController {
       const installationId = (req as SyncRequest).installationId!;
       const result = await this.service.getInstallationRequestStatus(installationId);
       return res.status(200).json(result);
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  receiveHeartbeatSnapshot = async (req: Request, res: Response) => {
+    try {
+      const installationId = (req as SyncRequest).installationId!;
+      const body = req.body as Record<string, unknown>;
+      const proyectoId = String(body.proyectoId ?? "").trim();
+      const generatedAt = Number(body.generatedAt);
+      const source = String(body.source ?? "operativo-sync").trim() || "operativo-sync";
+      const summary =
+        body.summary && typeof body.summary === "object"
+          ? (body.summary as Record<string, unknown>)
+          : null;
+      const modules = Array.isArray(body.modules)
+        ? body.modules.filter(
+            (item): item is Record<string, unknown> =>
+              Boolean(item) && typeof item === "object",
+          )
+        : null;
+      const metadata =
+        body.metadata && typeof body.metadata === "object"
+          ? (body.metadata as Record<string, unknown>)
+          : undefined;
+
+      if (!proyectoId) {
+        return res.status(400).json({ error: "proyectoId es requerido" });
+      }
+      if (!Number.isFinite(generatedAt)) {
+        return res.status(400).json({ error: "generatedAt debe ser numerico" });
+      }
+      if (!summary) {
+        return res.status(400).json({ error: "summary es requerido" });
+      }
+      if (!modules) {
+        return res.status(400).json({ error: "modules debe ser un arreglo" });
+      }
+
+      const result = await this.service.receiveHeartbeatSnapshot({
+        installationId,
+        proyectoId,
+        generatedAt,
+        source,
+        summary,
+        modules,
+        metadata,
+      });
+
+      return res.status(202).json(result);
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

@@ -23,6 +23,20 @@ const moduloSubmoduloSchema = new Schema(
     identificador: { type: String, default: "", trim: true },
     ip: { type: String, default: "", trim: true },
     mac: { type: String, default: "", trim: true },
+    ubicacion: { type: String, default: "", trim: true },
+    coordinates: {
+      type: [Number],
+      default: [],
+      validate: {
+        validator: (value: unknown) =>
+          !Array.isArray(value) ||
+          value.length === 0 ||
+          (value.length === 2 &&
+            Number.isFinite(Number(value[0])) &&
+            Number.isFinite(Number(value[1]))),
+        message: "coordinates debe contener [lon,lat]",
+      },
+    },
     descripcion: { type: String, default: "", trim: true },
     estado: { type: Boolean, default: true },
   },
@@ -46,6 +60,22 @@ const moduloSchema = new Schema(
     },
     estado: { type: Boolean, default: true, index: true },
     identificador: { type: String, required: true, trim: true, unique: true },
+    ip: { type: String, default: "", trim: true },
+    mac: { type: String, default: "", trim: true },
+    ubicacion: { type: String, default: "", trim: true },
+    coordinates: {
+      type: [Number],
+      default: [],
+      validate: {
+        validator: (value: unknown) =>
+          !Array.isArray(value) ||
+          value.length === 0 ||
+          (value.length === 2 &&
+            Number.isFinite(Number(value[0])) &&
+            Number.isFinite(Number(value[1]))),
+        message: "coordinates debe contener [lon,lat]",
+      },
+    },
     descripcion: { type: String, default: "", trim: true },
     submodulos: { type: [moduloSubmoduloSchema], default: [] },
   },

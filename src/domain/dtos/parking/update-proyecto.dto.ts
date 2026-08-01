@@ -1,8 +1,33 @@
 export class UpdateProyectoDto {
+    private static normalizeCoordinates(value: unknown): number[] | number[][] | undefined {
+        if (!Array.isArray(value)) return undefined;
+
+        if (
+            value.length >= 2 &&
+            !Array.isArray(value[0]) &&
+            Number.isFinite(Number(value[0])) &&
+            Number.isFinite(Number(value[1]))
+        ) {
+            return [Number(value[0]), Number(value[1])];
+        }
+
+        const points = value
+            .map((point) =>
+                Array.isArray(point) && point.length >= 2
+                    ? [Number(point[0]), Number(point[1])]
+                    : null,
+            )
+            .filter((point): point is number[] => Boolean(point))
+            .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+
+        return points.length ? points : undefined;
+    }
+
     private constructor(
         public readonly nombre?: string,
-        public readonly coordinates?: number[],
+        public readonly coordinates?: number[] | number[][],
         public readonly ciudad?: string,
+        public readonly direccion?: string,
         public readonly identificador?: string,
         public readonly serverIp?: string,
         public readonly serverMac?: string,
@@ -17,10 +42,11 @@ export class UpdateProyectoDto {
             undefined,
             new UpdateProyectoDto(
                 typeof body.nombre === "string" ? body.nombre.trim() : undefined,
-                Array.isArray(body.coordinates)
-                    ? body.coordinates.map((value) => Number(value))
-                    : undefined,
+                UpdateProyectoDto.normalizeCoordinates(body.coordinates),
                 typeof body.ciudad === "string" ? body.ciudad.trim() : undefined,
+                typeof body.direccion === "string"
+                    ? body.direccion.trim()
+                    : undefined,
                 typeof body.identificador === "string"
                     ? body.identificador.trim()
                     : undefined,

@@ -22,6 +22,8 @@ export interface ModuloSubmodulo {
   identificador?: string;
   ip?: string;
   mac?: string;
+  ubicacion?: string;
+  coordinates?: [number, number];
   descripcion?: string;
   estado: boolean;
 }
@@ -33,6 +35,10 @@ export interface ModuloEntityOptions {
   tipo: ModuloTipo;
   estado: boolean;
   identificador: string;
+  ip?: string;
+  mac?: string;
+  ubicacion?: string;
+  coordinates?: [number, number];
   descripcion?: string;
   submodulos?: ModuloSubmodulo[];
 }
@@ -44,6 +50,10 @@ export class ModuloEntity {
   public tipo: ModuloTipo;
   public estado: boolean;
   public identificador: string;
+  public ip?: string;
+  public mac?: string;
+  public ubicacion?: string;
+  public coordinates?: [number, number];
   public descripcion?: string;
   public submodulos: ModuloSubmodulo[];
 
@@ -54,6 +64,10 @@ export class ModuloEntity {
     this.tipo = options.tipo;
     this.estado = options.estado;
     this.identificador = options.identificador;
+    this.ip = options.ip;
+    this.mac = options.mac;
+    this.ubicacion = options.ubicacion;
+    this.coordinates = options.coordinates;
     this.descripcion = options.descripcion;
     this.submodulos = options.submodulos ?? [];
   }
@@ -77,6 +91,10 @@ export class ModuloEntity {
       tipo,
       estado: object.estado === undefined ? true : Boolean(object.estado),
       identificador: String(object.identificador).trim(),
+      ip: String(object.ip ?? "").trim() || undefined,
+      mac: String(object.mac ?? "").trim() || undefined,
+      ubicacion: String(object.ubicacion ?? "").trim() || undefined,
+      coordinates: parseCoordinates(object.coordinates),
       descripcion: String(object.descripcion ?? "").trim() || undefined,
       submodulos: parseSubmodulos(object.submodulos),
     });
@@ -110,7 +128,17 @@ function parseSubmodulo(value: unknown): ModuloSubmodulo | null {
     identificador: String(source.identificador ?? "").trim() || undefined,
     ip: String(source.ip ?? "").trim() || undefined,
     mac: String(source.mac ?? "").trim() || undefined,
+    ubicacion: String(source.ubicacion ?? "").trim() || undefined,
+    coordinates: parseCoordinates(source.coordinates),
     descripcion: String(source.descripcion ?? "").trim() || undefined,
     estado: source.estado === undefined ? true : Boolean(source.estado),
   };
+}
+
+function parseCoordinates(value: unknown): [number, number] | undefined {
+  if (!Array.isArray(value) || value.length !== 2) return undefined;
+  const longitude = Number(value[0]);
+  const latitude = Number(value[1]);
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return undefined;
+  return [longitude, latitude];
 }

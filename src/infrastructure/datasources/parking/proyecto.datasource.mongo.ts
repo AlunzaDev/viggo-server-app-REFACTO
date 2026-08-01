@@ -2,8 +2,14 @@ import { CounterModel } from "../../../data/mongo/models/system/counter.schema";
 import { createHash, randomBytes } from "node:crypto";
 import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import { ProyectoDatasource } from "../../../domain/datasources/parking/proyecto.datasource";
+import type { ProyectoInstallationLinkTokenResult } from "../../../domain/datasources/parking/proyecto.datasource";
 import { ProyectoEntity } from "../../../domain/entities/parking/proyecto.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
+import { deleteManagedProjectImage } from "../../../presentation/utils/project-image.util";
+import {
+    decryptInstallationLinkToken,
+    encryptInstallationLinkToken,
+} from "../../../presentation/utils/installation-link-token-crypto.util";
 
 const createInstallationLinkToken = (codigoProyecto?: string) => {
     const prefix = codigoProyecto ? `viggo-${codigoProyecto}` : "viggo-project";
@@ -18,12 +24,79 @@ export class ProyectoMongoDatasource extends ProyectoDatasource {
         const codigoProyecto =
             proyecto.codigoProyecto ?? (await this.getNextCodigoProyecto());
         const installationLinkToken = createInstallationLinkToken(codigoProyecto);
-        const proyectoDocument = await ProyectoModel.create({
-            ...proyecto,
-            codigoProyecto,
-            installationLinkTokenHash: hashInstallationLinkToken(installationLinkToken),
-            installationLinkTokenIssuedAt: Date.now(),
-        });
+        try {
+            const proyectoDocument = await ProyectoModel.create({
+                ...proyecto,
+                codigoProyecto,
+                installationLinkTokenHash: hashInstallationLinkToken(installationLinkToken),
+                installationLinkTokenEncrypted: encryptInstallationLinkToken(installationLinkToken),
+                installationLinkTokenIssuedAt: Date.now(),
+            });
+            return {
+                proyecto: ProyectoEntity.fromObject(proyectoDocument.toObject()),
+                installationLinkToken,
+            };
+        } catch (error) {
+            deleteManagedProjectImage(proyecto.img);
+            throw error;
+        }
+    }
+
+    async getInstallationLinkToken(id: string): Promise<ProyectoInstallationLinkTokenResult | null> {
+        const proyectoDocument = await ProyectoModel.findById(id);
+        if (!proyectoDocument) return null;
+
+        const encryptedToken = String(
+            proyectoDocument.get("installationLinkTokenEncrypted") ?? "",
+        ).trim();
+        const legacyTokenValue = String(
+            proyectoDocument.get("installationLinkTokenValue") ?? "",
+        ).trim();
+        const installationLinkToken =
+            decryptInstallationLinkToken(encryptedToken) || legacyTokenValue;
+
+        if (!encryptedToken && legacyTokenValue) {
+            await ProyectoModel.findByIdAndUpdate(proyectoDocument.id, {
+                installationLinkTokenEncrypted: encryptInstallationLinkToken(legacyTokenValue),
+                installationLinkTokenValue: "",
+            });
+        }
+
+        if (!installationLinkToken) {
+            return {
+                proyecto: ProyectoEntity.fromObject(proyectoDocument.toObject()),
+                installationLinkToken: "",
+            };
+        }
+
+        return {
+            proyecto: ProyectoEntity.fromObject(proyectoDocument.toObject()),
+            installationLinkToken,
+        };
+    }
+
+    async regenerateInstallationLinkToken(id: string): Promise<ProyectoInstallationLinkTokenResult | null> {
+        const existingProject = await ProyectoModel.findById(id);
+        if (!existingProject) return null;
+
+        const codigoProyecto = String(
+            existingProject.codigoProyecto ?? existingProject.identificador ?? "",
+        ).trim() || undefined;
+        const installationLinkToken = createInstallationLinkToken(codigoProyecto);
+
+        const proyectoDocument = await ProyectoModel.findByIdAndUpdate(
+            id,
+            {
+                installationLinkTokenHash: hashInstallationLinkToken(installationLinkToken),
+                installationLinkTokenEncrypted: encryptInstallationLinkToken(installationLinkToken),
+                installationLinkTokenValue: "",
+                installationLinkTokenIssuedAt: Date.now(),
+            },
+            { new: true },
+        );
+
+        if (!proyectoDocument) return null;
+
         return {
             proyecto: ProyectoEntity.fromObject(proyectoDocument.toObject()),
             installationLinkToken,
@@ -53,19 +126,42 @@ export class ProyectoMongoDatasource extends ProyectoDatasource {
         id: string,
         proyecto: Partial<Omit<ProyectoEntity, "id">>,
     ): Promise<ProyectoEntity | null> {
-        const proyectoDocument = await ProyectoModel.findByIdAndUpdate(id, proyecto, {
-            new: true,
-        });
+        const existingProject = await ProyectoModel.findById(id);
+        if (!existingProject) {
+            deleteManagedProjectImage(proyecto.img);
+            return null;
+        }
 
-        if (!proyectoDocument) return null;
+        const previousImage = String(existingProject.img ?? "").trim();
+        const nextImage =
+            typeof proyecto.img === "string" ? proyecto.img.trim() : undefined;
 
-        return ProyectoEntity.fromObject(proyectoDocument.toObject());
+        try {
+            const proyectoDocument = await ProyectoModel.findByIdAndUpdate(id, proyecto, {
+                new: true,
+            });
+
+            if (!proyectoDocument) return null;
+
+            if (nextImage !== undefined && nextImage !== previousImage) {
+                deleteManagedProjectImage(previousImage);
+            }
+
+            return ProyectoEntity.fromObject(proyectoDocument.toObject());
+        } catch (error) {
+            if (nextImage && nextImage !== previousImage) {
+                deleteManagedProjectImage(nextImage);
+            }
+            throw error;
+        }
     }
 
     async delete(id: string): Promise<ProyectoEntity | null> {
         const proyectoDocument = await ProyectoModel.findByIdAndDelete(id);
 
         if (!proyectoDocument) return null;
+
+        deleteManagedProjectImage(String(proyectoDocument.img ?? ""));
 
         return ProyectoEntity.fromObject(proyectoDocument.toObject());
     }

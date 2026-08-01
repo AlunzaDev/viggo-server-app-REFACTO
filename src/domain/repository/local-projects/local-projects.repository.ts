@@ -2,4 +2,5 @@ import type { LocalProjectSnapshotPayload } from "../../datasources/local-projec
 
 export abstract class LocalProjectsRepository {
   abstract getSnapshot(payload: LocalProjectSnapshotPayload): Promise<any>;
+  abstract getHeartbeat(projectId: string): Promise<any>;
 }

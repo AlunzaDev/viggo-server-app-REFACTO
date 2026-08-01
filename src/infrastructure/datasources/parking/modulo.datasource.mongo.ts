@@ -103,6 +103,8 @@ export class ModuloMongoDatasource extends ModuloDatasource {
       identificador: submodulo.identificador ?? "",
       ip: submodulo.ip ?? "",
       mac: submodulo.mac ?? "",
+      ubicacion: submodulo.ubicacion ?? "",
+      coordinates: submodulo.coordinates ?? [],
       descripcion: submodulo.descripcion ?? "",
       estado: submodulo.estado ?? true,
     });
@@ -143,6 +145,8 @@ export class ModuloMongoDatasource extends ModuloDatasource {
     rawSubmodulos[index].identificador = submodulo.identificador ?? "";
     rawSubmodulos[index].ip = submodulo.ip ?? "";
     rawSubmodulos[index].mac = submodulo.mac ?? "";
+    rawSubmodulos[index].ubicacion = submodulo.ubicacion ?? "";
+    rawSubmodulos[index].coordinates = submodulo.coordinates ?? [];
     rawSubmodulos[index].descripcion = submodulo.descripcion ?? "";
     rawSubmodulos[index].estado = submodulo.estado ?? true;
     await document.save();

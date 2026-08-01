@@ -13,9 +13,22 @@ import {
 } from "../../middlewares";
 import { ErrorService } from "../../services/error.service";
 import { ModuloCrudService } from "../../services/parking/modulo-crud.service";
+import {
+  buildPaginatedResponse,
+  paginateArray,
+  parsePaginationDateQuery,
+} from "../../services/shared/pagination-query";
 
 export class ModuloController {
   constructor(private readonly moduloService: ModuloCrudService) {}
+
+  private normalizeText(value: string) {
+    return value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+  }
 
   private sanitizeModulo(modulo: ModuloEntity) {
     return {
@@ -25,6 +38,10 @@ export class ModuloController {
       tipo: modulo.tipo,
       estado: modulo.estado,
       identificador: modulo.identificador,
+      ip: modulo.ip,
+      mac: modulo.mac,
+      ubicacion: modulo.ubicacion,
+      coordinates: modulo.coordinates,
       descripcion: modulo.descripcion,
       submodulos: modulo.submodulos,
     };
@@ -38,6 +55,8 @@ export class ModuloController {
       identificador: submodulo.identificador,
       ip: submodulo.ip,
       mac: submodulo.mac,
+      ubicacion: submodulo.ubicacion,
+      coordinates: submodulo.coordinates,
       descripcion: submodulo.descripcion,
       estado: submodulo.estado,
     };
@@ -63,6 +82,22 @@ export class ModuloController {
     return null;
   }
 
+  private parseTipos(value: unknown): ModuloEntity["tipo"][] | null {
+    if (value === undefined) return [];
+
+    const rawValues = Array.isArray(value)
+      ? value
+      : String(value)
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+
+    const parsedValues = rawValues.map((item) => this.parseTipo(item));
+    if (parsedValues.some((item) => item === null)) return null;
+
+    return parsedValues.filter((item): item is ModuloEntity["tipo"] => Boolean(item));
+  }
+
   createModulo = async (req: Request, res: Response) => {
     try {
       const [error, dto] = CreateModuloDto.create(req.body);
@@ -81,21 +116,63 @@ export class ModuloController {
   getModulos = async (req: Request, res: Response) => {
     try {
       const proyecto = typeof req.query.proyecto === "string" ? req.query.proyecto.trim() : undefined;
-      const tipo = this.parseTipo(req.query.tipo);
+      const tipos = this.parseTipos(req.query.tipos ?? req.query.tipo);
       const estado = this.parseEstado(req.query.estado);
-      if (tipo === null) return res.status(400).json({ error: "'tipo' no es valido" });
+      const search =
+        typeof req.query.search === "string" ? req.query.search.trim() : "";
+      const shouldPaginate =
+        req.query.page !== undefined || req.query.limit !== undefined;
+      const { page, limit } = parsePaginationDateQuery(req.query);
+
+      if (tipos === null) return res.status(400).json({ error: "'tipo' no es valido" });
       if (estado === null) return res.status(400).json({ error: "'estado' debe ser boolean" });
       if (proyecto && !canAccessProjectFromRequest(req, proyecto)) {
         return res.status(403).json({ error: "Forbidden" });
       }
 
-      let modulos = await this.moduloService.getModulosFiltered({ proyecto, tipo, estado });
+      let modulos = await this.moduloService.getModulosFiltered({
+        proyecto,
+        tipo: tipos[0],
+        estado,
+      });
       if (!isSuperAdminRequest(req)) {
         const allowed = new Set(getAllowedProjectIdsFromRequest(req));
         modulos = modulos.filter((modulo) => allowed.has(modulo.proyecto));
       }
 
-      return res.status(200).json({ modulos: modulos.map((item) => this.sanitizeModulo(item)) });
+      if (tipos.length > 1) {
+        modulos = modulos.filter((modulo) => tipos.includes(modulo.tipo));
+      }
+
+      if (search) {
+        const normalizedSearch = this.normalizeText(search);
+        modulos = modulos.filter((modulo) =>
+          [
+            modulo.nombre,
+            modulo.identificador,
+            modulo.ip ?? "",
+            modulo.mac ?? "",
+            modulo.ubicacion ?? "",
+            modulo.descripcion ?? "",
+            modulo.tipo,
+          ].some((value) => this.normalizeText(String(value ?? "")).includes(normalizedSearch)),
+        );
+      }
+
+      const sanitized = modulos.map((item) => this.sanitizeModulo(item));
+      if (!shouldPaginate) {
+        return res.status(200).json({ modulos: sanitized });
+      }
+
+      return res.status(200).json(
+        buildPaginatedResponse(
+          "modulos",
+          paginateArray(sanitized, page, limit),
+          sanitized.length,
+          page,
+          limit,
+        ),
+      );
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

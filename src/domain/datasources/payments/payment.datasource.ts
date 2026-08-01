@@ -16,6 +16,7 @@ export abstract class PaymentDatasource {
     limit?: number;
     type?: PaymentEntity["type"];
     status?: PaymentEntity["status"];
+    search?: string;
     from?: number;
     to?: number;
   }): Promise<PaymentEntity[]>;
@@ -23,6 +24,7 @@ export abstract class PaymentDatasource {
   abstract countByUser(userId: string, options?: {
     type?: PaymentEntity["type"];
     status?: PaymentEntity["status"];
+    search?: string;
     from?: number;
     to?: number;
   }): Promise<number>;

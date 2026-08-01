@@ -6,4 +6,5 @@ export type LocalProjectSnapshotPayload = {
 
 export abstract class LocalProjectsDatasource {
   abstract getSnapshot(payload: LocalProjectSnapshotPayload): Promise<any>;
+  abstract getHeartbeat(projectId: string): Promise<any>;
 }

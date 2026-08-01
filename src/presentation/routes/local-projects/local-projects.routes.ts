@@ -12,6 +12,7 @@ export class LocalProjectsRoutes {
       AuthMiddleware.requireModules("projects", "installations"),
     );
     router.get("/:projectId/snapshot", controller.getSnapshot);
+    router.get("/:projectId/heartbeat", controller.getHeartbeat);
 
     return router;
   }

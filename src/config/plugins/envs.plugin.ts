@@ -63,8 +63,9 @@ export const envs = {
   APP_ENV: appEnv,
   PROD: isProd,
   JWT_SEED: env.get("JWT_SEED").required().asString(),
+  INSTALLATION_LINK_TOKEN_SECRET: env.get("INSTALLATION_LINK_TOKEN_SECRET").default("").asString(),
   MONGO_URL: mongoUrl,
-  MONGO_DB_NAME: getConfigValue("MONGO_DB_NAME") ?? "viggo-nubeadmin",
+  MONGO_DB_NAME: getConfigValue("MONGO_DB_NAME") ?? "viggo-administrativo",
   MONGO_DISCONNECT_EXIT_DELAY_MS: parseBoundedInteger(
     env.get("MONGO_DISCONNECT_EXIT_DELAY_MS").asString(),
     30000,

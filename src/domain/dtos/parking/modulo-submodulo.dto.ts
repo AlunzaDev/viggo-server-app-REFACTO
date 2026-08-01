@@ -10,6 +10,8 @@ export interface ModuloSubmoduloDtoValues {
   identificador?: string;
   ip?: string;
   mac?: string;
+  ubicacion?: string;
+  coordinates?: [number, number];
   descripcion?: string;
   estado?: boolean;
 }
@@ -27,6 +29,8 @@ const parseSubmodulo = (
     typeof body.identificador === "string" ? body.identificador.trim() : undefined;
   const ip = typeof body.ip === "string" ? body.ip.trim() : undefined;
   const mac = typeof body.mac === "string" ? body.mac.trim() : undefined;
+  const ubicacion = typeof body.ubicacion === "string" ? body.ubicacion.trim() : undefined;
+  const coordinates = parseCoordinates(body.coordinates);
   const descripcion =
     typeof body.descripcion === "string" ? body.descripcion.trim() : undefined;
   const estado = typeof body.estado === "boolean" ? body.estado : undefined;
@@ -46,6 +50,8 @@ const parseSubmodulo = (
       identificador,
       ip,
       mac,
+      ubicacion,
+      coordinates,
       descripcion,
       estado,
     },
@@ -70,4 +76,12 @@ export class UpdateModuloSubmoduloDto {
     if (error || !values) return [error || "Submodulo invalido"];
     return [undefined, new UpdateModuloSubmoduloDto(values)];
   }
+}
+
+function parseCoordinates(value: unknown): [number, number] | undefined {
+  if (!Array.isArray(value) || value.length !== 2) return undefined;
+  const longitude = Number(value[0]);
+  const latitude = Number(value[1]);
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return undefined;
+  return [longitude, latitude];
 }

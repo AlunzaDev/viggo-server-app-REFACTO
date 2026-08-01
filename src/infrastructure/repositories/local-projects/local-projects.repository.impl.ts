@@ -10,4 +10,8 @@ export class LocalProjectsRepositoryImpl implements LocalProjectsRepository {
   getSnapshot(payload: LocalProjectSnapshotPayload) {
     return this.datasource.getSnapshot(payload);
   }
+
+  getHeartbeat(projectId: string) {
+    return this.datasource.getHeartbeat(projectId);
+  }
 }

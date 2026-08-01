@@ -18,13 +18,13 @@ export class AppRoutes {
     const router = Router();
 
     router.get("/api/ping", (_req, res) => {
-      res.status(200).json({ service: "viggo-nubeadmin", status: "ok", message: "pong" });
+      res.status(200).json({ service: "viggo-administrativo", status: "ok", message: "pong" });
     });
 
     router.get("/api/health", (_req, res) => {
       const health = MongoDatabase.getHealthSnapshot();
       res.status(health.status === "ok" ? 200 : 503).json({
-        service: "viggo-nubeadmin",
+        service: "viggo-administrativo",
         ...health,
       });
     });

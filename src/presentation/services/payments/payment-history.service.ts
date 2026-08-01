@@ -13,6 +13,7 @@ interface PaymentHistoryFilters {
   limit?: unknown;
   type?: unknown;
   status?: unknown;
+  search?: unknown;
   from?: unknown;
   to?: unknown;
 }
@@ -32,11 +33,14 @@ export class PaymentHistoryService {
     const { page, limit, from, to } = parsePaginationDateQuery(filters);
     const type = this.parseEnum(filters.type, paymentTypes, "type");
     const status = this.parseEnum(filters.status, paymentStatuses, "status");
+    const search =
+      typeof filters.search === "string" ? filters.search.trim() : undefined;
 
     const [total, payments] = await Promise.all([
       this.paymentRepository.countByUser(userId, {
         type,
         status,
+        search,
         from,
         to,
       }),
@@ -45,6 +49,7 @@ export class PaymentHistoryService {
         limit,
         type,
         status,
+        search,
         from,
         to,
       }),

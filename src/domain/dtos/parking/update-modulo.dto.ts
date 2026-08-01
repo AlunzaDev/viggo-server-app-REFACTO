@@ -9,6 +9,10 @@ export class UpdateModuloDto {
         public readonly tipo?: ModuloTipo,
         public readonly identificador?: string,
         public readonly estado?: boolean,
+        public readonly ip?: string,
+        public readonly mac?: string,
+        public readonly ubicacion?: string,
+        public readonly coordinates?: [number, number],
         public readonly descripcion?: string,
     ) {}
 
@@ -29,10 +33,22 @@ export class UpdateModuloDto {
                     ? body.identificador.trim()
                     : undefined,
                 typeof body.estado === "boolean" ? body.estado : undefined,
+                typeof body.ip === "string" ? body.ip.trim() : undefined,
+                typeof body.mac === "string" ? body.mac.trim() : undefined,
+                typeof body.ubicacion === "string" ? body.ubicacion.trim() : undefined,
+                parseCoordinates(body.coordinates),
                 typeof body.descripcion === "string"
                     ? body.descripcion.trim()
                     : undefined,
             ),
         ];
     }
+}
+
+function parseCoordinates(value: unknown): [number, number] | undefined {
+    if (!Array.isArray(value) || value.length !== 2) return undefined;
+    const longitude = Number(value[0]);
+    const latitude = Number(value[1]);
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return undefined;
+    return [longitude, latitude];
 }

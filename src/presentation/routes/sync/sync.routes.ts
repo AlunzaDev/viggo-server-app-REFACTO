@@ -16,6 +16,7 @@ export class SyncRoutes {
     router.get("/access-user/by-telefono/:telefono", controller.getAccessUserByTelefono);
     router.get("/installation-request/status", controller.getInstallationRequestStatus);
     router.post("/installation-requests", controller.requestInstallationLink);
+    router.post("/heartbeat-snapshot", controller.receiveHeartbeatSnapshot);
     router.post("/events", controller.receiveEvent);
 
     return router;

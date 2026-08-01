@@ -2,6 +2,7 @@ import { Router } from "express";
 import { AUTH_ROLES } from "../../../domain/constants";
 import { buildUsuarioController } from "../../dependencies";
 import { AuthMiddleware } from "../../middlewares";
+import { uploadUserImage } from "../../middlewares/user-image-upload.middleware";
 
 export class UsuarioRoutes {
   static get routes(): Router {
@@ -16,11 +17,11 @@ export class UsuarioRoutes {
 
     router.use(AuthMiddleware.requireAuth, adminRoles, userModuleAccess);
 
-    router.post("/", controller.createUsuario);
+    router.post("/", uploadUserImage, controller.createUsuario);
     router.get("/", controller.getUsuarios);
     router.get("/:id", controller.getUsuarioById);
     router.patch("/:id/status", controller.updateUsuarioStatus);
-    router.patch("/:id", controller.updateUsuario);
+    router.patch("/:id", uploadUserImage, controller.updateUsuario);
     router.delete("/:id", controller.deleteUsuario);
 
     return router;

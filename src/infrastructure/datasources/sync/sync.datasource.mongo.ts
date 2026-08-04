@@ -35,7 +35,30 @@ export class SyncMongoDatasource implements SyncDatasource {
 
     const [modulos, pensiones] = await Promise.all([
       ModuloModel.find({ proyecto: proyectoId })
-        .select("nombre proyecto tipo estado identificador descripcion submodulos")
+        .select(
+          [
+            "nombre",
+            "proyecto",
+            "tipo",
+            "estado",
+            "identificador",
+            "ip",
+            "mac",
+            "ubicacion",
+            "coordinates",
+            "descripcion",
+            "submodulos.submoduloId",
+            "submodulos.nombre",
+            "submodulos.tipo",
+            "submodulos.identificador",
+            "submodulos.ip",
+            "submodulos.mac",
+            "submodulos.ubicacion",
+            "submodulos.coordinates",
+            "submodulos.descripcion",
+            "submodulos.estado",
+          ].join(" "),
+        )
         .lean(),
       PensionModel.find({ proyecto: proyectoId }).lean(),
     ]);

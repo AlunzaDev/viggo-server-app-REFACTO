@@ -14,13 +14,22 @@ export interface ParsedPaginationDateQuery {
   to?: number;
 }
 
-export interface PaginatedResult<TItemsKey extends string, TItem> {
+export type PaginatedResult<TItemsKey extends string, TItem> = Record<
+  TItemsKey,
+  TItem[]
+> & {
   total: number;
   page: number;
   limit: number;
   totalPages: number;
-  [itemsKey: string]: number | TItem[];
-}
+  items: TItem[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+};
 
 export const parsePaginationDateQuery = (
   query: PaginationDateQuery,
@@ -37,13 +46,24 @@ export const buildPaginatedResponse = <TItemsKey extends string, TItem>(
   total: number,
   page: number,
   limit: number,
-): PaginatedResult<TItemsKey, TItem> => ({
-  total,
-  page,
-  limit,
-  totalPages: Math.ceil(total / limit),
-  [itemsKey]: items,
-});
+): PaginatedResult<TItemsKey, TItem> => {
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    [itemsKey]: items,
+    total,
+    page,
+    limit,
+    totalPages,
+    items,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages,
+    },
+  } as PaginatedResult<TItemsKey, TItem>;
+};
 
 export const paginateArray = <TItem>(
   items: TItem[],

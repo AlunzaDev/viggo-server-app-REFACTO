@@ -3,9 +3,12 @@ import { JwtPlugin } from "../../config/plugins/jwt.plugin";
 import { CustomError } from "../../domain/errors/custom.error";
 import {
   hasUserModuleAccess,
+  isUserAppAccess,
   isUsuarioRol,
-  normalizeUserParkings,
+  normalizeUserApps,
   normalizeUserModules,
+  normalizeUserParkings,
+  type UserAppAccess,
   type UserModuleAccess,
   UsuarioRol,
 } from "../../domain/constants";
@@ -14,6 +17,7 @@ import { AuthRepositoryImpl } from "../../infrastructure/repositories/auth/auth.
 
 type AuthenticatedRequest = Request & {
   uid?: string;
+  authApp?: UserAppAccess;
   usuario?: {
     id: string;
     nombre?: string;
@@ -21,6 +25,7 @@ type AuthenticatedRequest = Request & {
     rol: UsuarioRol;
     parkings: string[];
     modules: UserModuleAccess[];
+    allowedApps: UserAppAccess[];
   };
 };
 
@@ -71,6 +76,16 @@ export class AuthMiddleware {
     next: NextFunction,
   ) => {
     try {
+      const existingAuthRequest = req as AuthenticatedRequest;
+
+      if (
+        existingAuthRequest.uid &&
+        existingAuthRequest.authApp &&
+        existingAuthRequest.usuario
+      ) {
+        return next();
+      }
+
       const authorization = req.header("Authorization");
       const legacyToken = req.header("x-token");
 
@@ -88,21 +103,45 @@ export class AuthMiddleware {
 
       const payload = await JwtPlugin.validateToken(token);
 
-      if (!payload || typeof payload !== "object" || !("id" in payload)) {
+      if (!payload || typeof payload !== "object") {
         return res.status(401).json({
           error: "Invalid token",
         });
       }
 
-      const userId = String((payload as { id: string }).id);
+      const tokenPayload = payload as {
+        id?: unknown;
+        app?: unknown;
+      };
+
+      const userId = String(tokenPayload.id ?? "").trim();
+      const tokenApp = tokenPayload.app;
+
+      if (!userId || !isUserAppAccess(tokenApp)) {
+        return res.status(401).json({
+          error: "Invalid token payload",
+        });
+      }
 
       const datasource = new AuthMongoDatasource();
       const repository = new AuthRepositoryImpl(datasource);
       const usuario = await repository.findById(userId);
 
-      if (!usuario || !usuario.estado) {
+      if (!usuario) {
         return res.status(401).json({
-          error: "User not found or inactive",
+          error: "User not found",
+        });
+      }
+
+      if (!usuario.estado) {
+        return res.status(403).json({
+          error: "Usuario inactivo",
+        });
+      }
+
+      if (!usuario.emailValidated) {
+        return res.status(403).json({
+          error: "Debes validar tu correo primero",
         });
       }
 
@@ -114,12 +153,33 @@ export class AuthMiddleware {
         });
       }
 
-      (req as AuthenticatedRequest).uid = usuario.id;
-      (req as AuthenticatedRequest).usuario = {
-        ...usuario,
+      const normalizedAllowedApps = normalizeUserApps(
+        (usuario as { allowedApps?: unknown }).allowedApps,
+      );
+
+      if (!normalizedAllowedApps.includes(tokenApp)) {
+        return res.status(403).json({
+          error: "Application access revoked",
+        });
+      }
+
+      const authRequest = req as AuthenticatedRequest;
+
+      authRequest.uid = usuario.id;
+      authRequest.authApp = tokenApp;
+
+      authRequest.usuario = {
+        id: usuario.id,
+        nombre: usuario.nombre,
+        apellido: usuario.apellido,
         rol: normalizedRole,
-        parkings: normalizeUserParkings((usuario as { parkings?: unknown }).parkings),
-        modules: normalizeUserModules((usuario as { modules?: unknown }).modules),
+        parkings: normalizeUserParkings(
+          (usuario as { parkings?: unknown }).parkings,
+        ),
+        modules: normalizeUserModules(
+          (usuario as { modules?: unknown }).modules,
+        ),
+        allowedApps: normalizedAllowedApps,
       };
 
       next();
@@ -128,6 +188,26 @@ export class AuthMiddleware {
         error: "Unauthorized",
       });
     }
+  };
+
+  static requireApps = (...allowedApps: UserAppAccess[]) => {
+    return (req: Request, res: Response, next: NextFunction) => {
+      const authRequest = req as AuthenticatedRequest;
+
+      if (!authRequest.uid || !authRequest.authApp) {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+
+      if (!allowedApps.includes(authRequest.authApp)) {
+        return res.status(403).json({
+          error: "Esta sesión no pertenece a la aplicación requerida",
+        });
+      }
+
+      next();
+    };
   };
 
   static requireRoles = (...allowedRoles: UsuarioRol[]) => {

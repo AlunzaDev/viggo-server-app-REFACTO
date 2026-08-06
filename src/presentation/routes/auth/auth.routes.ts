@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { buildAuthController } from "../../dependencies";
-import { rateLimitMiddleware } from "../../middlewares";
+import { AuthMiddleware, rateLimitMiddleware } from "../../middlewares";
 
 export class AuthRoutes {
   static get routes(): Router {
@@ -30,9 +30,13 @@ export class AuthRoutes {
       controller.resendValidationEmail,
     );
     router.get("/reset-password/:token", controller.renderResetPasswordPage);
-    router.post("/reset-password", strictAuthRateLimit, controller.resetPassword);
+    router.post(
+      "/reset-password",
+      strictAuthRateLimit,
+      controller.resetPassword,
+    );
     router.get("/validate-email/:token", controller.validateEmail);
-    router.get("/renew/:id", controller.renewToken);
+    router.get("/renew", AuthMiddleware.requireAuth, controller.renewToken);
 
     return router;
   }

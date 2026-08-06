@@ -1,47 +1,111 @@
 import { Router } from "express";
+
 import { MongoDatabase } from "../../data/mongo";
+import { USER_APPS } from "../../domain/constants";
+
+import { AuthMiddleware } from "../middlewares";
+
 import { AuthRoutes } from "./auth/auth.routes";
 import { PermissionProfileRoutes } from "./auth/permission-profile.routes";
 import { UsuarioRoutes } from "./auth/usuario.routes";
-import { ModuloRoutes } from "./parking/modulo.routes";
-import { ProyectoRoutes } from "./parking/proyecto.routes";
-import { PaymentRoutes } from "./payments/payment.routes";
-import { StripePaymentRoutes } from "./payments/stripe-payment.routes";
-import { PensionPassRoutes } from "./pension/pension-pass.routes";
-import { PensionRoutes } from "./pension/pension.routes";
-import { SyncRoutes } from "./sync/sync.routes";
+
 import { InstallationsRoutes } from "./installations/installations.routes";
 import { LocalProjectsRoutes } from "./local-projects/local-projects.routes";
+
+import { ModuloRoutes } from "./parking/modulo.routes";
+import { ProyectoRoutes } from "./parking/proyecto.routes";
+
+import { PaymentRoutes } from "./payments/payment.routes";
+import { StripePaymentRoutes } from "./payments/stripe-payment.routes";
+
+import { PensionPassRoutes } from "./pension/pension-pass.routes";
+import { PensionRoutes } from "./pension/pension.routes";
+
+import { SyncRoutes } from "./sync/sync.routes";
 
 export class AppRoutes {
   static get routes(): Router {
     const router = Router();
 
-    router.get("/api/ping", (_req, res) => {
-      res.status(200).json({ service: "viggo-administrativo", status: "ok", message: "pong" });
-    });
+    const requireAdminApp = AuthMiddleware.requireApps(USER_APPS.ADMIN_WEB);
 
+    router.get("/api/ping", (_req, res) => {
+      res.status(200).json({
+        service: "viggo-administrativo",
+        status: "ok",
+        message: "pong",
+      });
+    });
     router.get("/api/health", (_req, res) => {
       const health = MongoDatabase.getHealthSnapshot();
+
       res.status(health.status === "ok" ? 200 : 503).json({
         service: "viggo-administrativo",
         ...health,
       });
     });
-
     router.use("/api/auth", AuthRoutes.routes);
-    router.use("/api/usuarios", UsuarioRoutes.routes);
-    router.use("/api/permission-profiles", PermissionProfileRoutes.routes);
-    router.use("/api/proyectos", ProyectoRoutes.routes);
-    router.use("/api/modulos", ModuloRoutes.routes);
-    router.use("/api/pensiones", PensionRoutes.routes);
-    router.use("/api/pension-pass", PensionPassRoutes.routes);
-    router.use("/api/payments", PaymentRoutes.routes);
-    router.use("/api/stripe", StripePaymentRoutes.routes);
     router.use("/api/sync", SyncRoutes.routes);
-    router.use("/api/installations", InstallationsRoutes.routes);
-    router.use("/api/local-projects", LocalProjectsRoutes.routes);
-
+    router.use(
+      "/api/usuarios",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      UsuarioRoutes.routes,
+    );
+    router.use(
+      "/api/permission-profiles",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      PermissionProfileRoutes.routes,
+    );
+    router.use(
+      "/api/proyectos",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      ProyectoRoutes.routes,
+    );
+    router.use(
+      "/api/modulos",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      ModuloRoutes.routes,
+    );
+    router.use(
+      "/api/pensiones",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      PensionRoutes.routes,
+    );
+    router.use(
+      "/api/pension-pass",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      PensionPassRoutes.routes,
+    );
+    router.use(
+      "/api/payments",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      PaymentRoutes.routes,
+    );
+    router.use(
+      "/api/stripe",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      StripePaymentRoutes.routes,
+    );
+    router.use(
+      "/api/installations",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      InstallationsRoutes.routes,
+    );
+    router.use(
+      "/api/local-projects",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      LocalProjectsRoutes.routes,
+    );
     return router;
   }
 }

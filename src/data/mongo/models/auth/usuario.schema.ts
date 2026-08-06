@@ -3,6 +3,7 @@ import {
   AUTH_ROLES,
   AUTH_ROLE_VALUES,
   AVAILABLE_USER_MODULES,
+  USER_APP_VALUES,
 } from "../../../../domain/constants";
 
 const usuarioSchema = new Schema(
@@ -74,7 +75,7 @@ const usuarioSchema = new Schema(
     },
     modules: {
       type: [String],
-      default: AVAILABLE_USER_MODULES,
+      default: [],
       enum: AVAILABLE_USER_MODULES,
     },
     nacimiento: {
@@ -92,6 +93,11 @@ const usuarioSchema = new Schema(
     google: {
       type: Boolean,
       default: false,
+    },
+    allowedApps: {
+      type: [String],
+      enum: USER_APP_VALUES,
+      default: [],
     },
   },
   {

@@ -1,8 +1,11 @@
 import {
   isUsuarioRol,
+  isUserAppAccess,
   normalizeUserParkings,
   normalizeUserModules,
+  normalizeUserApps,
   type UserModuleAccess,
+  type UserAppAccess,
   UsuarioRol,
 } from "../../constants";
 
@@ -16,6 +19,7 @@ export class UpdateUsuarioDto {
     public readonly rol?: UsuarioRol,
     public readonly parkings?: string[],
     public readonly permissionProfileId?: string,
+    public readonly allowedApps?: UserAppAccess[],
     public readonly modules?: UserModuleAccess[],
     public readonly coordinates?: number[],
     public readonly nacimiento?: number,
@@ -53,8 +57,14 @@ export class UpdateUsuarioDto {
             body.permissionProfileId.trim().length > 0
           ? body.permissionProfileId.trim()
           : "";
+    const allowedApps =
+      body.allowedApps === undefined
+        ? undefined
+        : normalizeUserApps(body.allowedApps);
     const modules =
-      body.modules === undefined ? undefined : normalizeUserModules(body.modules);
+      body.modules === undefined
+        ? undefined
+        : normalizeUserModules(body.modules);
 
     const coordinates = Array.isArray(body.coordinates)
       ? body.coordinates.map((value) => Number(value))
@@ -95,6 +105,16 @@ export class UpdateUsuarioDto {
     if (nacimiento !== undefined && Number.isNaN(nacimiento)) {
       return ["'nacimiento' debe ser numerico"];
     }
+    /* if (img !== undefined && img.trim().length === 0) {
+      return ["'img' no puede estar vacio si se proporciona"];
+    }*/
+    if (
+      body.allowedApps !== undefined &&
+      (!Array.isArray(body.allowedApps) ||
+        !body.allowedApps.every(isUserAppAccess))
+    ) {
+      return ["'allowedApps' contiene aplicaciones no válidas"];
+    }
 
     return [
       undefined,
@@ -107,6 +127,7 @@ export class UpdateUsuarioDto {
         rol,
         parkings,
         permissionProfileId,
+        allowedApps,
         modules,
         coordinates,
         nacimiento,

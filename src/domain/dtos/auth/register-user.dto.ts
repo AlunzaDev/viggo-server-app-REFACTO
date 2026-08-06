@@ -1,9 +1,7 @@
 import {
   AUTH_ROLES,
-  normalizeUserParkings,
-  normalizeUserModules,
   type UserModuleAccess,
-  UsuarioRol,
+  type UsuarioRol,
 } from "../../constants";
 
 export class RegisterUserDto {
@@ -13,58 +11,67 @@ export class RegisterUserDto {
     public readonly correo: string,
     public readonly telefono: string,
     public readonly password: string,
+
+    // Estos valores los controla exclusivamente el backend.
     public readonly rol: UsuarioRol,
     public readonly parkings: string[],
     public readonly modules: UserModuleAccess[],
-    public readonly coordinates?: number[],
-    public readonly nacimiento?: number,
-    public readonly img?: string,
-    public readonly estado: boolean = true,
-    public readonly google: boolean = false,
+    public readonly estado: boolean,
+    public readonly google: boolean,
   ) {}
 
-  static create(body: Record<string, unknown>): [string?, RegisterUserDto?] {
-    const nombre = typeof body.nombre === "string" ? body.nombre.trim() : "";
+  static create(
+    body: Record<string, unknown>,
+  ): [string?, RegisterUserDto?] {
+    const nombre =
+      typeof body.nombre === "string"
+        ? body.nombre.trim()
+        : "";
+
     const apellido =
-      typeof body.apellido === "string" ? body.apellido.trim() : "";
+      typeof body.apellido === "string"
+        ? body.apellido.trim()
+        : "";
+
     const correo =
-      typeof body.correo === "string" ? body.correo.trim().toLowerCase() : "";
+      typeof body.correo === "string"
+        ? body.correo.trim().toLowerCase()
+        : "";
+
     const telefono =
-      typeof body.telefono === "string" ? body.telefono.trim() : "";
-    const password = typeof body.password === "string" ? body.password : "";
-    // El registro publico siempre crea clientes finales.
-    // Los roles administrativos solo deben asignarse desde flujos protegidos.
-    const rol = AUTH_ROLES.CLIENT;
-    const parkings = normalizeUserParkings(body.parkings);
-    const modules = normalizeUserModules(body.modules);
+      typeof body.telefono === "string"
+        ? body.telefono.trim()
+        : "";
 
-    const coordinates = Array.isArray(body.coordinates)
-      ? body.coordinates.map((value) => Number(value))
-      : undefined;
+    const password =
+      typeof body.password === "string"
+        ? body.password
+        : "";
 
-    const nacimiento =
-      typeof body.nacimiento === "number"
-        ? body.nacimiento
-        : body.nacimiento
-          ? Number(body.nacimiento)
-          : undefined;
+    if (!nombre) {
+      return ["'nombre' es requerido"];
+    }
 
-    const img =
-      typeof body.img === "string" && body.img.trim().length > 0
-        ? body.img.trim()
-        : undefined;
+    if (!apellido) {
+      return ["'apellido' es requerido"];
+    }
 
-    const estado = typeof body.estado === "boolean" ? body.estado : true;
+    if (!correo) {
+      return ["'correo' es requerido"];
+    }
 
-    const google = typeof body.google === "boolean" ? body.google : false;
+    if (!telefono) {
+      return ["'telefono' es requerido"];
+    }
 
-    if (!nombre) return ["'nombre' es requerido"];
-    if (!apellido) return ["'apellido' es requerido"];
-    if (!correo) return ["'correo' es requerido"];
-    if (!telefono) return ["'telefono' es requerido"];
-    if (!password) return ["'password' es requerido"];
+    if (!password) {
+      return ["'password' es requerido"];
+    }
+
     if (password.length < 6) {
-      return ["'password' debe tener al menos 6 caracteres"];
+      return [
+        "'password' debe tener al menos 6 caracteres",
+      ];
     }
 
     return [
@@ -75,14 +82,11 @@ export class RegisterUserDto {
         correo,
         telefono,
         password,
-        rol,
-        parkings,
-        modules,
-        coordinates,
-        nacimiento,
-        img,
-        estado,
-        google,
+        AUTH_ROLES.CLIENT,
+        [],
+        [],
+        true,
+        false,
       ),
     ];
   }

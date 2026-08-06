@@ -25,8 +25,8 @@ export class InstallationsMongoDatasource implements InstallationsDatasource {
     request.reviewedAt = Date.now();
     request.reviewNote = note;
     request.syncTokenHash = "";
-    request.syncTokenIssuedAt = undefined;
-    request.syncTokenDeliveredAt = undefined;
+    request.syncTokenIssuedAt = 0;
+    request.syncTokenDeliveredAt = 0;
     request.updatedAt = Date.now();
     await request.save();
 
@@ -51,8 +51,8 @@ export class InstallationsMongoDatasource implements InstallationsDatasource {
     request.reviewedAt = Date.now();
     request.reviewNote = payload.note ?? "";
     request.syncTokenHash = "";
-    request.syncTokenIssuedAt = undefined;
-    request.syncTokenDeliveredAt = undefined;
+    request.syncTokenIssuedAt = 0;
+    request.syncTokenDeliveredAt = 0;
     request.updatedAt = Date.now();
     await request.save();
 

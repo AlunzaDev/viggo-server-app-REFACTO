@@ -5,6 +5,24 @@ import { ErrorService } from "../../services/error.service";
 import { UsuarioService } from "../../services/auth/usuario.service";
 import { deleteManagedUserImage } from "../../utils/user-image.util";
 
+const parseArrayField = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return value;
+
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(normalized);
+    return Array.isArray(parsed) ? parsed : value;
+  } catch {
+    return value;
+  }
+};
+
 const parseBooleanField = (value: unknown): boolean | undefined => {
   if (typeof value === "boolean") return value;
   if (typeof value !== "string") return undefined;
@@ -34,13 +52,18 @@ const normalizeUsuarioRequestBody = (body: Record<string, unknown>) => {
   const normalizedBody: Record<string, unknown> = {
     ...body,
     coordinates: parseCoordinatesField(body.coordinates),
+    allowedApps: parseArrayField(body.allowedApps),
+    parkings: parseArrayField(body.parkings),
+    modules: parseArrayField(body.modules),
   };
 
   const google = parseBooleanField(body.google);
   if (google !== undefined) normalizedBody.google = google;
 
   const emailValidated = parseBooleanField(body.emailValidated);
-  if (emailValidated !== undefined) normalizedBody.emailValidated = emailValidated;
+  if (emailValidated !== undefined) {
+    normalizedBody.emailValidated = emailValidated;
+  }
 
   return normalizedBody;
 };
@@ -50,7 +73,9 @@ export class UsuarioController {
 
   createUsuario = async (req: Request, res: Response) => {
     try {
-      const body = normalizeUsuarioRequestBody(req.body as Record<string, unknown>);
+      const body = normalizeUsuarioRequestBody(
+        req.body as Record<string, unknown>,
+      );
       if (req.file?.filename) {
         body.img = `/uploads/users/${req.file.filename}`;
       }
@@ -58,7 +83,9 @@ export class UsuarioController {
       const [error, createUsuarioDto] = CreateUsuarioDto.create(body);
       if (error) return res.status(400).json({ error });
 
-      const usuario = await this.usuarioService.createUsuario(createUsuarioDto!);
+      const usuario = await this.usuarioService.createUsuario(
+        createUsuarioDto!,
+      );
       return res.status(201).json({ usuario });
     } catch (error) {
       if (req.file?.filename) {
@@ -90,7 +117,9 @@ export class UsuarioController {
   updateUsuario = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
-      const body = normalizeUsuarioRequestBody(req.body as Record<string, unknown>);
+      const body = normalizeUsuarioRequestBody(
+        req.body as Record<string, unknown>,
+      );
       const clearImage = parseBooleanField(body.clearImage) === true;
 
       if (req.file?.filename) {

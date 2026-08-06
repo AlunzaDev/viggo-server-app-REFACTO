@@ -6,6 +6,7 @@ import {
   type UserModuleAccess,
   UsuarioRol,
 } from "../../constants";
+import { type UserAppAccess, normalizeUserApps } from "../../constants";
 
 export interface UsuarioEntityOptions {
   id: string;
@@ -24,6 +25,7 @@ export interface UsuarioEntityOptions {
   img?: string;
   estado: boolean;
   google: boolean;
+  allowedApps: UserAppAccess[];
 }
 
 export class UsuarioEntity {
@@ -43,6 +45,7 @@ export class UsuarioEntity {
   public img?: string;
   public estado: boolean;
   public google: boolean;
+  public allowedApps: UserAppAccess[];
 
   constructor(options: UsuarioEntityOptions) {
     const {
@@ -62,6 +65,7 @@ export class UsuarioEntity {
       img,
       estado,
       google,
+      allowedApps,
     } = options;
 
     this.id = id;
@@ -80,6 +84,7 @@ export class UsuarioEntity {
     this.img = img;
     this.estado = estado;
     this.google = google;
+    this.allowedApps = options.allowedApps;
   }
 
   static fromObject(object: { [key: string]: unknown }): UsuarioEntity {
@@ -101,6 +106,7 @@ export class UsuarioEntity {
       img,
       estado,
       google,
+      allowedApps,
     } = object;
 
     const usuarioId = id || (_id ? String(_id) : undefined);
@@ -118,6 +124,9 @@ export class UsuarioEntity {
     if (google === undefined || google === null) {
       throw CustomError.badRequest("Missing google");
     }
+    /* if (!Array.isArray(allowedApps)) {
+      throw CustomError.badRequest("Missing allowedApps");
+    } */
 
     return new UsuarioEntity({
       id: String(usuarioId),
@@ -137,7 +146,8 @@ export class UsuarioEntity {
           })(),
       parkings: normalizeUserParkings(parkings),
       permissionProfileId:
-        typeof permissionProfileId === "string" && permissionProfileId.trim().length > 0
+        typeof permissionProfileId === "string" &&
+        permissionProfileId.trim().length > 0
           ? permissionProfileId.trim()
           : undefined,
       modules: normalizeUserModules(modules),
@@ -150,6 +160,7 @@ export class UsuarioEntity {
       img: typeof img === "string" ? img : undefined,
       estado: Boolean(estado),
       google: Boolean(google),
+      allowedApps: normalizeUserApps(allowedApps),
     });
   }
 }

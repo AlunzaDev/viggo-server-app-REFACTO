@@ -37,19 +37,18 @@ export const getDefaultUserModules = (): UserModuleAccess[] => [
 
 export const normalizeUserModules = (value: unknown): UserModuleAccess[] => {
   if (!Array.isArray(value)) {
-    return getDefaultUserModules();
+    return [];
   }
 
-  const normalized = value
-    .map((item) => String(item ?? "").trim())
-    .map((item) => MODULE_ALIASES[item.toLowerCase()] ?? item)
-    .filter((item): item is UserModuleAccess => USER_MODULE_SET.has(item));
-
-  return normalized.length > 0
-    ? Array.from(new Set(normalized))
-    : getDefaultUserModules();
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item ?? "").trim())
+        .map((item) => MODULE_ALIASES[item.toLowerCase()] ?? item)
+        .filter((item): item is UserModuleAccess => USER_MODULE_SET.has(item)),
+    ),
+  );
 };
-
 export const hasUserModuleAccess = (
   modules: UserModuleAccess[],
   module: UserModuleAccess,

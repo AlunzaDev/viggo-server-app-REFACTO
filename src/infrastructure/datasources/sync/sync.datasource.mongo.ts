@@ -16,9 +16,10 @@ import {
 } from "../../../domain/datasources/sync/sync.datasource";
 
 const USER_SYNC_SELECT =
-  "nombre apellido correo telefono coordinates password emailValidated rol parkings permissionProfileId modules nacimiento img estado google";
+  "nombre apellido correo telefono coordinates password emailValidated rol parkings permissionProfileId modules allowedApps nacimiento img estado google";
 
-const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+  const hashToken = (token: string) =>
+  createHash("sha256").update(token).digest("hex");
 const buildStableVersion = (payload: unknown): number => {
   const hash = createHash("sha256")
     .update(JSON.stringify(payload))
@@ -63,8 +64,12 @@ export class SyncMongoDatasource implements SyncDatasource {
       PensionModel.find({ proyecto: proyectoId }).lean(),
     ]);
     const pensionIds = pensiones.map((item) => String(item._id));
-    const pensionPasses = await PensionPassModel.find({ pension: { $in: pensionIds } })
-      .select("usuario name pension idPass vigent created from to estado antiPassback")
+    const pensionPasses = await PensionPassModel.find({
+      pension: { $in: pensionIds },
+    })
+      .select(
+        "usuario name pension idPass vigent created from to estado antiPassback",
+      )
       .lean();
 
     const snapshot = { proyecto, modulos, pensiones, pensionPasses };
@@ -94,7 +99,9 @@ export class SyncMongoDatasource implements SyncDatasource {
       ...new Set(
         users
           .map((user) => user.permissionProfileId)
-          .filter((profileId): profileId is string => typeof profileId === "string"),
+          .filter(
+            (profileId): profileId is string => typeof profileId === "string",
+          ),
       ),
     ];
     const permissionProfiles = profileIds.length
@@ -117,7 +124,9 @@ export class SyncMongoDatasource implements SyncDatasource {
     const proyecto = await ProyectoModel.findById(payload.proyectoId).lean();
     if (!proyecto) return { status: "missing-project" as const };
 
-    const expectedTokenHash = String(proyecto.installationLinkTokenHash ?? "").trim();
+    const expectedTokenHash = String(
+      proyecto.installationLinkTokenHash ?? "",
+    ).trim();
     if (!expectedTokenHash) return { status: "missing-token" as const };
     if (hashToken(payload.installationLinkToken) !== expectedTokenHash) {
       return { status: "invalid-token" as const };
@@ -126,8 +135,14 @@ export class SyncMongoDatasource implements SyncDatasource {
     const existing = await LocalInstallationRequestModel.findOne({
       installationId: payload.installationId,
     }).lean();
-    if (existing?.status === "approved" && existing.proyectoId !== payload.proyectoId) {
-      return { status: "already-approved-other-project" as const, request: existing };
+    if (
+      existing?.status === "approved" &&
+      existing.proyectoId !== payload.proyectoId
+    ) {
+      return {
+        status: "already-approved-other-project" as const,
+        request: existing,
+      };
     }
 
     const now = Date.now();
@@ -147,10 +162,14 @@ export class SyncMongoDatasource implements SyncDatasource {
         status: existing?.status === "approved" ? "approved" : "pending",
         requestedByUserId: payload.requestedByUserId,
         requestedByUserName: payload.requestedByUserName,
-        requestedAt: existing?.status === "pending" ? existing.requestedAt : now,
-        reviewedByUserId: existing?.status === "approved" ? existing.reviewedByUserId : "",
-        reviewedByUserName: existing?.status === "approved" ? existing.reviewedByUserName : "",
-        reviewedAt: existing?.status === "approved" ? existing.reviewedAt : undefined,
+        requestedAt:
+          existing?.status === "pending" ? existing.requestedAt : now,
+        reviewedByUserId:
+          existing?.status === "approved" ? existing.reviewedByUserId : "",
+        reviewedByUserName:
+          existing?.status === "approved" ? existing.reviewedByUserName : "",
+        reviewedAt:
+          existing?.status === "approved" ? existing.reviewedAt : undefined,
         reviewNote: existing?.status === "approved" ? existing.reviewNote : "",
         updatedAt: now,
       },
@@ -161,7 +180,9 @@ export class SyncMongoDatasource implements SyncDatasource {
   }
 
   async getInstallationRequestStatus(installationId: string) {
-    const requestDocument = await LocalInstallationRequestModel.findOne({ installationId });
+    const requestDocument = await LocalInstallationRequestModel.findOne({
+      installationId,
+    });
     const request = requestDocument?.toObject();
     const proyecto =
       request?.status === "approved"
@@ -213,8 +234,11 @@ export class SyncMongoDatasource implements SyncDatasource {
   }
 
   async receiveEvent(payload: InboxEventPayload) {
-    const existing = await InboxEventModel.findOne({ eventId: payload.eventId }).lean();
-    if (existing) return { accepted: true, duplicate: true, eventId: payload.eventId };
+    const existing = await InboxEventModel.findOne({
+      eventId: payload.eventId,
+    }).lean();
+    if (existing)
+      return { accepted: true, duplicate: true, eventId: payload.eventId };
 
     await InboxEventModel.create(payload);
     return { accepted: true, duplicate: false, eventId: payload.eventId };

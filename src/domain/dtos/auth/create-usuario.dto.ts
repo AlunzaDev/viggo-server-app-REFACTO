@@ -1,9 +1,12 @@
 import {
   AUTH_ROLES,
   isUsuarioRol,
+  isUserAppAccess,
   normalizeUserParkings,
   normalizeUserModules,
+  normalizeUserApps,
   type UserModuleAccess,
+  type UserAppAccess,
   UsuarioRol,
 } from "../../constants";
 
@@ -17,6 +20,7 @@ export class CreateUsuarioDto {
     public readonly rol: UsuarioRol,
     public readonly parkings: string[],
     public readonly permissionProfileId: string | undefined,
+    public readonly allowedApps: UserAppAccess[],
     public readonly modules: UserModuleAccess[],
     public readonly coordinates?: number[],
     public readonly nacimiento?: number,
@@ -41,7 +45,6 @@ export class CreateUsuarioDto {
         : isUsuarioRol(body.rol)
           ? body.rol
           : null;
-
     const coordinates = Array.isArray(body.coordinates)
       ? body.coordinates.map((value) => Number(value))
       : undefined;
@@ -51,20 +54,18 @@ export class CreateUsuarioDto {
       body.permissionProfileId.trim().length > 0
         ? body.permissionProfileId.trim()
         : undefined;
+    const allowedApps = normalizeUserApps(body.allowedApps);
     const modules = normalizeUserModules(body.modules);
-
     const nacimiento =
       typeof body.nacimiento === "number"
         ? body.nacimiento
         : body.nacimiento
           ? Number(body.nacimiento)
           : undefined;
-
     const img =
       typeof body.img === "string" && body.img.trim().length > 0
         ? body.img.trim()
         : undefined;
-
     const estado = typeof body.estado === "boolean" ? body.estado : true;
     const google = typeof body.google === "boolean" ? body.google : false;
     const emailValidated =
@@ -85,6 +86,16 @@ export class CreateUsuarioDto {
     if (nacimiento !== undefined && Number.isNaN(nacimiento)) {
       return ["'nacimiento' debe ser numérico"];
     }
+    /* if (img !== undefined && img.trim().length === 0) {
+      return ["'img' no puede estar vacío si se proporciona"];
+    }*/
+    if (
+      body.allowedApps !== undefined &&
+      (!Array.isArray(body.allowedApps) ||
+        !body.allowedApps.every(isUserAppAccess))
+    ) {
+      return ["'allowedApps' contiene aplicaciones no válidas"];
+    }
 
     return [
       undefined,
@@ -97,6 +108,7 @@ export class CreateUsuarioDto {
         rol,
         parkings,
         permissionProfileId,
+        allowedApps,
         modules,
         coordinates,
         nacimiento,

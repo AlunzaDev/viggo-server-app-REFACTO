@@ -17,12 +17,12 @@ export class UsuarioRoutes {
 
     router.use(AuthMiddleware.requireAuth, adminRoles, userModuleAccess);
 
-    router.post("/", uploadUserImage, controller.createUsuario);
+    router.post("/", AuthMiddleware.protectSuperUser, uploadUserImage, controller.createUsuario);
     router.get("/", controller.getUsuarios);
     router.get("/:id", controller.getUsuarioById);
-    router.patch("/:id/status", controller.updateUsuarioStatus);
-    router.patch("/:id", uploadUserImage, controller.updateUsuario);
-    router.delete("/:id", controller.deleteUsuario);
+    router.patch("/:id/status", AuthMiddleware.protectSuperUser, controller.updateUsuarioStatus);
+    router.patch("/:id", AuthMiddleware.protectSuperUser, uploadUserImage, controller.updateUsuario);
+    router.delete("/:id", AuthMiddleware.requireRoles(AUTH_ROLES.SUPER), controller.deleteUsuario);
 
     return router;
   }

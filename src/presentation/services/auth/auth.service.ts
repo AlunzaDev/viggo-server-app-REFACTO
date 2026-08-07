@@ -6,22 +6,28 @@ import {
   resetPasswordExpiredHtml,
   resetPasswordPageHtml,
 } from "../../../config";
-
 import { bcryptPlugin } from "../../../config/plugins/bcrypt.plugin";
 import { JwtPlugin } from "../../../config/plugins/jwt.plugin";
 
-import { USER_APPS, type UserAppAccess } from "../../../domain/constants";
-
+import {
+  isRoleAllowedForApp,
+  USER_APPS,
+  type UserAppAccess,
+} from "../../../domain/constants";
 import {
   ForgotPasswordDto,
   RegisterUserDto,
   ResendValidationEmailDto,
   ResetPasswordDto,
 } from "../../../domain/dtos";
-
-import { UsuarioEntity } from "../../../domain/entities/auth/usuario.entity";
+import {
+  UsuarioEntity,
+  type UserAppPermission,
+} from "../../../domain/entities/auth/usuario.entity";
+import type { PermissionProfileEntity } from "../../../domain/entities/auth/permission-profile.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { AuthRepository } from "../../../domain/repository/auth/auth.repository";
+import { PermissionProfileRepository } from "../../../domain/repository/auth/permission-profile.repository";
 
 import { EmailService } from "../email/email.service";
 
@@ -38,20 +44,30 @@ const REGISTER_RESPONSE_MESSAGE =
   "Cuenta creada correctamente. Te enviamos un enlace para validar tu correo antes de iniciar sesión.";
 
 const DEFAULT_REGISTER_ALLOWED_APPS: UserAppAccess[] = [
-  USER_APPS.OPERATIVE_WEB,
   USER_APPS.OPERATIVE_MOBILE,
 ];
+
+type SafeUsuario = Omit<UsuarioEntity, "password">;
+
+type ResolvedApplicationAccess = {
+  permissionProfileId?: string;
+  modules: PermissionProfileEntity["modules"];
+  appPermissions: UserAppPermission[];
+};
+
+type SessionUsuario = SafeUsuario & ResolvedApplicationAccess;
 
 export class AuthService {
   constructor(
     private readonly authRepository: AuthRepository,
     private readonly emailService: EmailService,
     private readonly webServiceUrl: string,
+    private readonly permissionProfileRepository: PermissionProfileRepository,
   ) {}
 
   async registerUser(user: RegisterUserDto): Promise<{
     message: string;
-    usuario: Omit<UsuarioEntity, "password">;
+    usuario: SafeUsuario;
   }> {
     const userByCorreo = await this.authRepository.findByCorreo(user.correo);
 
@@ -71,34 +87,27 @@ export class AuthService {
 
     const usuario = await this.authRepository.register({
       ...user,
-
-      // El servidor asigna las aplicaciones del autorregistro.
       allowedApps: DEFAULT_REGISTER_ALLOWED_APPS,
-
+      appPermissions: [],
       emailValidated: false,
       password: hashedPassword,
     });
 
     await this.sendEmailValidationLink(usuario.id, usuario.correo);
 
-    const { password, ...safeUsuario } = usuario;
-
     return {
       message: REGISTER_RESPONSE_MESSAGE,
-      usuario: safeUsuario,
+      usuario: this.toSafeUsuario(usuario),
     };
   }
 
-  /**
-   * Inicio de sesión mediante correo.
-   */
   async loginCorreo(
     correo: string,
     password: string,
     app: UserAppAccess,
   ): Promise<{
     token: unknown;
-    usuario: Omit<UsuarioEntity, "password">;
+    usuario: SessionUsuario;
   }> {
     const usuario = await this.authRepository.findByCorreo(correo);
 
@@ -115,6 +124,8 @@ export class AuthService {
     this.validateUserStatus(usuario);
     this.validateApplicationAccess(usuario, app);
 
+    const safeUsuario = await this.resolveApplicationUser(usuario, app);
+
     const token = await JwtPlugin.generateToken({
       id: usuario.id,
       app,
@@ -124,24 +135,19 @@ export class AuthService {
       throw CustomError.internalServer("No se pudo generar el token");
     }
 
-    const { password: _, ...safeUsuario } = usuario;
-
     return {
       token,
       usuario: safeUsuario,
     };
   }
 
-  /**
-   * Inicio de sesión mediante teléfono.
-   */
   async loginTelefono(
     telefono: string,
     password: string,
     app: UserAppAccess,
   ): Promise<{
     token: unknown;
-    usuario: Omit<UsuarioEntity, "password">;
+    usuario: SessionUsuario;
   }> {
     const usuario = await this.authRepository.findByTelefono(telefono);
 
@@ -158,6 +164,8 @@ export class AuthService {
     this.validateUserStatus(usuario);
     this.validateApplicationAccess(usuario, app);
 
+    const safeUsuario = await this.resolveApplicationUser(usuario, app);
+
     const token = await JwtPlugin.generateToken({
       id: usuario.id,
       app,
@@ -167,24 +175,18 @@ export class AuthService {
       throw CustomError.internalServer("No se pudo generar el token");
     }
 
-    const { password: _, ...safeUsuario } = usuario;
-
     return {
       token,
       usuario: safeUsuario,
     };
   }
 
-  /**
-   * Renueva el token utilizando el usuario y la aplicación incluidos
-   * en el token anterior.
-   */
   async renewToken(
     id: string,
     app: UserAppAccess,
   ): Promise<{
     token: unknown;
-    usuario: Omit<UsuarioEntity, "password">;
+    usuario: SafeUsuario;
   }> {
     const usuario = await this.authRepository.findById(id);
 
@@ -195,6 +197,8 @@ export class AuthService {
     this.validateUserStatus(usuario);
     this.validateApplicationAccess(usuario, app);
 
+    const safeUsuario = await this.resolveApplicationUser(usuario, app);
+
     const token = await JwtPlugin.generateToken({
       id: usuario.id,
       app,
@@ -203,8 +207,6 @@ export class AuthService {
     if (!token) {
       throw CustomError.internalServer("No se pudo generar el token");
     }
-
-    const { password, ...safeUsuario } = usuario;
 
     return {
       token,
@@ -219,10 +221,6 @@ export class AuthService {
       forgotPasswordDto.correo,
     );
 
-    /*
-     * No revelamos si el correo existe para evitar enumeración
-     * de cuentas.
-     */
     if (!usuario || !usuario.estado) {
       return {
         message: PASSWORD_RESET_RESPONSE_MESSAGE,
@@ -230,7 +228,9 @@ export class AuthService {
     }
 
     const rawToken = crypto.randomBytes(32).toString("hex");
+
     const tokenHash = this.hashResetToken(rawToken);
+
     const expiresAt = new Date(Date.now() + PASSWORD_RESET_WINDOW_MS);
 
     await this.authRepository.savePasswordResetToken(
@@ -240,6 +240,7 @@ export class AuthService {
     );
 
     const baseUrl = this.webServiceUrl.replace(/\/+$/, "");
+
     const link = `${baseUrl}/reset-password/${rawToken}`;
 
     const html = resetPasswordEmailHtml(link, usuario.correo, usuario.nombre);
@@ -371,10 +372,6 @@ export class AuthService {
       resendValidationEmailDto.correo,
     );
 
-    /*
-     * Se devuelve siempre el mismo mensaje para no revelar
-     * información sobre la existencia de la cuenta.
-     */
     if (!usuario || !usuario.estado || usuario.emailValidated) {
       return {
         message: EMAIL_VALIDATION_RESPONSE_MESSAGE,
@@ -388,9 +385,6 @@ export class AuthService {
     };
   }
 
-  /**
-   * Verifica que la cuenta se encuentre activa y validada.
-   */
   private validateUserStatus(usuario: UsuarioEntity): void {
     if (!usuario.estado) {
       throw CustomError.forbidden("Usuario inactivo");
@@ -401,10 +395,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Verifica que el usuario tenga acceso a la aplicación
-   * desde la que intenta iniciar sesión o renovar el token.
-   */
   private validateApplicationAccess(
     usuario: UsuarioEntity,
     app: UserAppAccess,
@@ -412,6 +402,89 @@ export class AuthService {
     if (!usuario.allowedApps.includes(app)) {
       throw CustomError.forbidden("No tienes acceso a esta aplicación");
     }
+    if (!isRoleAllowedForApp(usuario.rol, app)) {
+      throw CustomError.forbidden("Tu rol no permite acceder a esta aplicación");
+    }
+  }
+
+  private async resolveApplicationUser(
+    usuario: UsuarioEntity,
+    app: UserAppAccess,
+  ): Promise<SessionUsuario> {
+    const resolvedAccess = await this.resolveApplicationPermissions(
+      usuario,
+      app,
+    );
+
+    const safeUsuario = this.toSafeUsuario(usuario);
+
+    return {
+      ...safeUsuario,
+      ...resolvedAccess,
+    };
+  }
+
+  private async resolveApplicationPermissions(
+    usuario: UsuarioEntity,
+    app: UserAppAccess,
+  ): Promise<ResolvedApplicationAccess> {
+    const assignment = usuario.appPermissions.find(
+      (permission) => permission.app === app,
+    );
+
+    if (assignment) {
+      return this.resolveAssignedProfile(assignment, app);
+    }
+
+    if (app === USER_APPS.OPERATIVE_MOBILE) {
+      return {
+        permissionProfileId: undefined,
+        modules: [],
+        appPermissions: [],
+      };
+    }
+
+    throw CustomError.forbidden(
+      "No tienes un perfil de permisos asignado para esta aplicación",
+    );
+  }
+
+  private async resolveAssignedProfile(
+    assignment: UserAppPermission,
+    app: UserAppAccess,
+  ): Promise<ResolvedApplicationAccess> {
+    const profile = await this.permissionProfileRepository.findById(
+      assignment.permissionProfileId,
+    );
+
+    if (!profile || !profile.estado) {
+      throw CustomError.forbidden(
+        "El perfil de permisos asignado no existe o está inactivo",
+      );
+    }
+
+    if (profile.app !== app) {
+      throw CustomError.forbidden(
+        "El perfil de permisos no pertenece a esta aplicación",
+      );
+    }
+
+    return {
+      permissionProfileId: profile.id,
+      modules: [...profile.modules],
+      appPermissions: [
+        {
+          app,
+          permissionProfileId: profile.id,
+        },
+      ],
+    };
+  }
+
+  private toSafeUsuario(usuario: UsuarioEntity): SafeUsuario {
+    const { password, ...safeUsuario } = usuario;
+
+    return safeUsuario;
   }
 
   private hashResetToken(token: string): string {

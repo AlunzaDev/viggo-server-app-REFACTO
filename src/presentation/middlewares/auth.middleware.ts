@@ -1,8 +1,8 @@
 import { NextFunction, Request, Response } from "express";
 import { JwtPlugin } from "../../config/plugins/jwt.plugin";
-import { CustomError } from "../../domain/errors/custom.error";
 import {
   hasUserModuleAccess,
+  isRoleAllowedForApp,
   isUserAppAccess,
   isUsuarioRol,
   normalizeUserApps,
@@ -10,10 +10,14 @@ import {
   normalizeUserParkings,
   type UserAppAccess,
   type UserModuleAccess,
-  UsuarioRol,
+  type UsuarioRol,
 } from "../../domain/constants";
+import type { UsuarioEntity } from "../../domain/entities/auth/usuario.entity";
+import { CustomError } from "../../domain/errors/custom.error";
 import { AuthMongoDatasource } from "../../infrastructure/datasources/auth/auth.datasource.mongo";
+import { PermissionProfileMongoDatasource } from "../../infrastructure/datasources/auth/permission-profile.datasource.mongo";
 import { AuthRepositoryImpl } from "../../infrastructure/repositories/auth/auth.repository.impl";
+import { PermissionProfileRepositoryImpl } from "../../infrastructure/repositories/auth/permission-profile.repository.impl";
 
 type AuthenticatedRequest = Request & {
   uid?: string;
@@ -24,29 +28,77 @@ type AuthenticatedRequest = Request & {
     apellido?: string;
     rol: UsuarioRol;
     parkings: string[];
+    permissionProfileId?: string;
     modules: UserModuleAccess[];
     allowedApps: UserAppAccess[];
   };
 };
 
-const normalizeRole = (value: unknown): UsuarioRol | null => {
-  return isUsuarioRol(value) ? value : null;
+interface ResolvedApplicationPermissions {
+  permissionProfileId?: string;
+  modules: UserModuleAccess[];
+}
+
+const authRepository = new AuthRepositoryImpl(new AuthMongoDatasource());
+
+const permissionProfileRepository = new PermissionProfileRepositoryImpl(
+  new PermissionProfileMongoDatasource(),
+);
+
+const normalizeRole = (value: unknown): UsuarioRol | null =>
+  isUsuarioRol(value) ? value : null;
+
+const resolveApplicationPermissions = async (
+  usuario: UsuarioEntity,
+  app: UserAppAccess,
+): Promise<ResolvedApplicationPermissions> => {
+  const appPermission = usuario.appPermissions.find(
+    (permission) => permission.app === app,
+  );
+
+  if (appPermission) {
+    const profile = await permissionProfileRepository.findById(
+      appPermission.permissionProfileId,
+    );
+
+    if (!profile || !profile.estado) {
+      throw CustomError.forbidden(
+        "El perfil de permisos asignado no existe o está inactivo",
+      );
+    }
+
+    if (profile.app !== app) {
+      throw CustomError.forbidden(
+        "El perfil de permisos asignado no pertenece a esta aplicación",
+      );
+    }
+
+    return {
+      permissionProfileId: profile.id,
+      modules: normalizeUserModules(profile.modules),
+    };
+  }
+
+  if (app === "OPERATIVE_MOBILE") {
+    return {
+      modules: [],
+    };
+  }
+
+  throw CustomError.forbidden(
+    "No tienes un perfil de permisos asignado para esta aplicación",
+  );
 };
 
 export const getAuthenticatedRequestUser = (
   req: Request,
-): AuthenticatedRequest["usuario"] => {
-  return (req as AuthenticatedRequest).usuario;
-};
+): AuthenticatedRequest["usuario"] => (req as AuthenticatedRequest).usuario;
 
-export const getAllowedProjectIdsFromRequest = (req: Request): string[] => {
-  const authUser = getAuthenticatedRequestUser(req);
-  return authUser?.parkings ?? [];
-};
+export const getAllowedProjectIdsFromRequest = (req: Request): string[] =>
+  getAuthenticatedRequestUser(req)?.parkings ?? [];
 
-export const isSuperAdminRequest = (req: Request): boolean => {
-  return getAuthenticatedRequestUser(req)?.rol === "SUPER_ROLE";
-};
+export const isSuperAdminRequest = (req: Request): boolean =>
+  getAuthenticatedRequestUser(req)?.rol === "SUPER_ROLE";
 
 export const canAccessProjectFromRequest = (
   req: Request,
@@ -63,7 +115,7 @@ export const canAccessProjectFromRequest = (
 export const ensureProjectAccessFromRequest = (
   req: Request,
   projectId: string,
-) => {
+): void => {
   if (!canAccessProjectFromRequest(req, projectId)) {
     throw CustomError.forbidden("No tienes acceso al proyecto solicitado");
   }
@@ -92,7 +144,7 @@ export class AuthMiddleware {
       let token = legacyToken;
 
       if (authorization?.startsWith("Bearer ")) {
-        token = authorization.split(" ")[1];
+        token = authorization.slice("Bearer ".length).trim();
       }
 
       if (!token) {
@@ -123,9 +175,7 @@ export class AuthMiddleware {
         });
       }
 
-      const datasource = new AuthMongoDatasource();
-      const repository = new AuthRepositoryImpl(datasource);
-      const usuario = await repository.findById(userId);
+      const usuario = await authRepository.findById(userId);
 
       if (!usuario) {
         return res.status(401).json({
@@ -153,9 +203,13 @@ export class AuthMiddleware {
         });
       }
 
-      const normalizedAllowedApps = normalizeUserApps(
-        (usuario as { allowedApps?: unknown }).allowedApps,
-      );
+      if (!isRoleAllowedForApp(normalizedRole, tokenApp)) {
+        return res.status(403).json({
+          error: "Tu rol no permite acceder a esta aplicación",
+        });
+      }
+
+      const normalizedAllowedApps = normalizeUserApps(usuario.allowedApps);
 
       if (!normalizedAllowedApps.includes(tokenApp)) {
         return res.status(403).json({
@@ -163,29 +217,36 @@ export class AuthMiddleware {
         });
       }
 
+      const resolvedPermissions = await resolveApplicationPermissions(
+        usuario,
+        tokenApp,
+      );
+
       const authRequest = req as AuthenticatedRequest;
 
       authRequest.uid = usuario.id;
       authRequest.authApp = tokenApp;
-
       authRequest.usuario = {
         id: usuario.id,
         nombre: usuario.nombre,
         apellido: usuario.apellido,
         rol: normalizedRole,
-        parkings: normalizeUserParkings(
-          (usuario as { parkings?: unknown }).parkings,
-        ),
-        modules: normalizeUserModules(
-          (usuario as { modules?: unknown }).modules,
-        ),
+        parkings: normalizeUserParkings(usuario.parkings),
+        permissionProfileId: resolvedPermissions.permissionProfileId,
+        modules: resolvedPermissions.modules,
         allowedApps: normalizedAllowedApps,
       };
 
-      next();
-    } catch (_error) {
-      return res.status(401).json({
-        error: "Unauthorized",
+      return next();
+    } catch (error) {
+      const normalizedError = CustomError.fromUnknown(
+        error,
+        "No se pudo validar la sesión",
+      );
+
+      return res.status(normalizedError.statusCode).json({
+        error: normalizedError.message,
+        code: normalizedError.code,
       });
     }
   };
@@ -206,7 +267,7 @@ export class AuthMiddleware {
         });
       }
 
-      next();
+      return next();
     };
   };
 
@@ -220,16 +281,42 @@ export class AuthMiddleware {
         });
       }
 
-      const userRole = authRequest.usuario.rol;
-
-      if (!userRole || !allowedRoles.includes(userRole)) {
+      if (!allowedRoles.includes(authRequest.usuario.rol)) {
         return res.status(403).json({
           error: "Forbidden",
         });
       }
 
-      next();
+      return next();
     };
+  };
+
+  static protectSuperUser = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    const actor = getAuthenticatedRequestUser(req);
+    if (!actor) return res.status(401).json({ error: "Unauthorized" });
+    if (actor.rol === "SUPER_ROLE") return next();
+
+    if (req.body?.rol === "SUPER_ROLE") {
+      return res.status(403).json({
+        error: "Solo un super administrador puede asignar SUPER_ROLE",
+      });
+    }
+
+    const targetId = String(req.params.id ?? "").trim();
+    if (!targetId) return next();
+
+    const target = await authRepository.findById(targetId);
+    if (target?.rol === "SUPER_ROLE") {
+      return res.status(403).json({
+        error: "Solo un super administrador puede modificar esta cuenta",
+      });
+    }
+
+    return next();
   };
 
   static requireModules = (...allowedModules: UserModuleAccess[]) => {
@@ -251,6 +338,7 @@ export class AuthMiddleware {
       }
 
       const userModules = normalizeUserModules(authRequest.usuario.modules);
+
       const hasAccess = allowedModules.some((module) =>
         hasUserModuleAccess(userModules, module),
       );
@@ -261,7 +349,7 @@ export class AuthMiddleware {
         });
       }
 
-      next();
+      return next();
     };
   };
 }

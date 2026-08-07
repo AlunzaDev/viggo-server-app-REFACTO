@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { CreateUsuarioDto } from "../../../domain/dtos/auth/create-usuario.dto";
 import { UpdateUsuarioDto } from "../../../domain/dtos/auth/update-usuario.dto";
-import { ErrorService } from "../../services/error.service";
 import { UsuarioService } from "../../services/auth/usuario.service";
+import { ErrorService } from "../../services/error.service";
 import { deleteManagedUserImage } from "../../utils/user-image.util";
 
 const parseArrayField = (value: unknown): unknown => {
@@ -28,8 +28,15 @@ const parseBooleanField = (value: unknown): boolean | undefined => {
   if (typeof value !== "string") return undefined;
 
   const normalized = value.trim().toLowerCase();
-  if (["true", "1", "yes", "on"].includes(normalized)) return true;
-  if (["false", "0", "no", "off"].includes(normalized)) return false;
+
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
   return undefined;
 };
 
@@ -38,7 +45,10 @@ const parseCoordinatesField = (value: unknown): unknown => {
   if (typeof value !== "string") return value;
 
   const normalized = value.trim();
-  if (!normalized) return undefined;
+
+  if (!normalized) {
+    return undefined;
+  }
 
   try {
     const parsed = JSON.parse(normalized);
@@ -48,19 +58,26 @@ const parseCoordinatesField = (value: unknown): unknown => {
   }
 };
 
-const normalizeUsuarioRequestBody = (body: Record<string, unknown>) => {
+const normalizeUsuarioRequestBody = (
+  body: Record<string, unknown>,
+): Record<string, unknown> => {
   const normalizedBody: Record<string, unknown> = {
     ...body,
     coordinates: parseCoordinatesField(body.coordinates),
     allowedApps: parseArrayField(body.allowedApps),
+    appPermissions: parseArrayField(body.appPermissions),
     parkings: parseArrayField(body.parkings),
     modules: parseArrayField(body.modules),
   };
 
   const google = parseBooleanField(body.google);
-  if (google !== undefined) normalizedBody.google = google;
+
+  if (google !== undefined) {
+    normalizedBody.google = google;
+  }
 
   const emailValidated = parseBooleanField(body.emailValidated);
+
   if (emailValidated !== undefined) {
     normalizedBody.emailValidated = emailValidated;
   }
@@ -76,21 +93,29 @@ export class UsuarioController {
       const body = normalizeUsuarioRequestBody(
         req.body as Record<string, unknown>,
       );
+
       if (req.file?.filename) {
         body.img = `/uploads/users/${req.file.filename}`;
       }
 
       const [error, createUsuarioDto] = CreateUsuarioDto.create(body);
-      if (error) return res.status(400).json({ error });
 
-      const usuario = await this.usuarioService.createUsuario(
-        createUsuarioDto!,
-      );
-      return res.status(201).json({ usuario });
+      if (error || !createUsuarioDto) {
+        return res.status(400).json({
+          error: error ?? "No se pudo crear el usuario",
+        });
+      }
+
+      const usuario = await this.usuarioService.createUsuario(createUsuarioDto);
+
+      return res.status(201).json({
+        usuario,
+      });
     } catch (error) {
       if (req.file?.filename) {
         deleteManagedUserImage(`/uploads/users/${req.file.filename}`);
       }
+
       return ErrorService.handleApiError(error, res);
     }
   };
@@ -98,7 +123,10 @@ export class UsuarioController {
   getUsuarios = async (_req: Request, res: Response) => {
     try {
       const usuarios = await this.usuarioService.getUsuarios();
-      return res.status(200).json({ usuarios });
+
+      return res.status(200).json({
+        usuarios,
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -106,9 +134,13 @@ export class UsuarioController {
 
   getUsuarioById = async (req: Request, res: Response) => {
     try {
-      const id = String(req.params.id);
-      const usuario = await this.usuarioService.getUsuarioById(id);
-      return res.status(200).json({ usuario });
+      const usuario = await this.usuarioService.getUsuarioById(
+        String(req.params.id),
+      );
+
+      return res.status(200).json({
+        usuario,
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -117,9 +149,11 @@ export class UsuarioController {
   updateUsuario = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
+
       const body = normalizeUsuarioRequestBody(
         req.body as Record<string, unknown>,
       );
+
       const clearImage = parseBooleanField(body.clearImage) === true;
 
       if (req.file?.filename) {
@@ -129,17 +163,26 @@ export class UsuarioController {
       }
 
       const [error, updateUsuarioDto] = UpdateUsuarioDto.create(body);
-      if (error) return res.status(400).json({ error });
+
+      if (error || !updateUsuarioDto) {
+        return res.status(400).json({
+          error: error ?? "No se pudo actualizar el usuario",
+        });
+      }
 
       const usuario = await this.usuarioService.updateUsuario(
         id,
-        updateUsuarioDto!,
+        updateUsuarioDto,
       );
-      return res.status(200).json({ usuario });
+
+      return res.status(200).json({
+        usuario,
+      });
     } catch (error) {
       if (req.file?.filename) {
         deleteManagedUserImage(`/uploads/users/${req.file.filename}`);
       }
+
       return ErrorService.handleApiError(error, res);
     }
   };
@@ -147,14 +190,21 @@ export class UsuarioController {
   updateUsuarioStatus = async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
-      const { estado } = req.body as { estado?: unknown };
+      const { estado } = req.body as {
+        estado?: unknown;
+      };
 
       if (typeof estado !== "boolean") {
-        return res.status(400).json({ error: "'estado' debe ser boolean" });
+        return res.status(400).json({
+          error: "'estado' debe ser boolean",
+        });
       }
 
       const usuario = await this.usuarioService.updateUsuarioStatus(id, estado);
-      return res.status(200).json({ usuario });
+
+      return res.status(200).json({
+        usuario,
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -162,9 +212,13 @@ export class UsuarioController {
 
   deleteUsuario = async (req: Request, res: Response) => {
     try {
-      const id = String(req.params.id);
-      const usuario = await this.usuarioService.deleteUsuario(id);
-      return res.status(200).json({ usuario });
+      const usuario = await this.usuarioService.deleteUsuario(
+        String(req.params.id),
+      );
+
+      return res.status(200).json({
+        usuario,
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

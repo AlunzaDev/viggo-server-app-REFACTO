@@ -2,9 +2,27 @@ import { Schema, model } from "mongoose";
 import {
   AUTH_ROLES,
   AUTH_ROLE_VALUES,
-  AVAILABLE_USER_MODULES,
   USER_APP_VALUES,
 } from "../../../../domain/constants";
+
+const userAppPermissionSchema = new Schema(
+  {
+    app: {
+      type: String,
+      required: [true, "La aplicación es obligatoria"],
+      enum: USER_APP_VALUES,
+    },
+    permissionProfileId: {
+      type: String,
+      required: [true, "El perfil de permisos es obligatorio"],
+      trim: true,
+    },
+  },
+  {
+    _id: false,
+    versionKey: false,
+  },
+);
 
 const usuarioSchema = new Schema(
   {
@@ -67,17 +85,32 @@ const usuarioSchema = new Schema(
     },
     parkings: {
       type: [String],
-      default: [],
+      default: () => [],
     },
-    permissionProfileId: {
-      type: String,
-      default: undefined,
-    },
-    modules: {
+
+    allowedApps: {
       type: [String],
-      default: [],
-      enum: AVAILABLE_USER_MODULES,
+      enum: USER_APP_VALUES,
+      default: () => [],
     },
+    appPermissions: {
+      type: [userAppPermissionSchema],
+      default: () => [],
+      validate: {
+        validator: (
+          permissions: Array<{
+            app?: string;
+            permissionProfileId?: string;
+          }>,
+        ) => {
+          const apps = permissions.map((permission) => permission.app);
+
+          return new Set(apps).size === apps.length;
+        },
+        message: "Solo puede existir un perfil de permisos por aplicación",
+      },
+    },
+
     nacimiento: {
       type: Number,
       required: false,
@@ -94,24 +127,22 @@ const usuarioSchema = new Schema(
       type: Boolean,
       default: false,
     },
-    allowedApps: {
-      type: [String],
-      enum: USER_APP_VALUES,
-      default: [],
-    },
   },
   {
     versionKey: false,
     toJSON: {
       transform: (_doc, ret) => {
         const serialized = ret as Record<string, unknown>;
+
         serialized.id = String(serialized._id);
+
         delete serialized._id;
         delete serialized.password;
         delete serialized.emailValidationToken;
         delete serialized.emailValidationExpiresAt;
         delete serialized.passwordResetToken;
         delete serialized.passwordResetExpiresAt;
+
         return serialized;
       },
     },

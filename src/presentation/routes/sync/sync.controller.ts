@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { isUserAppAccess } from "../../../domain/constants";
 import { SyncRequest } from "../../middlewares/sync-auth.middleware";
 import { ErrorService } from "../../services/error.service";
 import { SyncService } from "../../services/sync/sync.service";
@@ -17,8 +18,16 @@ export class SyncController {
 
   getConfiguration = async (req: Request, res: Response) => {
     try {
-      const result = await this.service.getConfiguration(String(req.params.proyectoId));
-      if (!result) return res.status(404).json({ error: "Proyecto no encontrado" });
+      const result = await this.service.getConfiguration(
+        String(req.params.proyectoId),
+      );
+
+      if (!result) {
+        return res.status(404).json({
+          error: "Proyecto no encontrado",
+        });
+      }
+
       return res.status(200).json(result);
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -28,7 +37,10 @@ export class SyncController {
   getProjectsCatalog = async (_req: Request, res: Response) => {
     try {
       const proyectos = await this.service.getProjectsCatalog();
-      return res.status(200).json({ proyectos });
+
+      return res.status(200).json({
+        proyectos,
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -36,8 +48,16 @@ export class SyncController {
 
   getAccessSnapshot = async (req: Request, res: Response) => {
     try {
-      const result = await this.service.getAccessSnapshot(String(req.params.proyectoId));
-      if (!result) return res.status(404).json({ error: "Proyecto no encontrado" });
+      const result = await this.service.getAccessSnapshot(
+        String(req.params.proyectoId),
+      );
+
+      if (!result) {
+        return res.status(404).json({
+          error: "Proyecto no encontrado",
+        });
+      }
+
       return res.status(200).json(result);
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -46,11 +66,36 @@ export class SyncController {
 
   getAccessUserByCorreo = async (req: Request, res: Response) => {
     try {
-      const correo = String(req.params.correo ?? "").trim().toLowerCase();
-      if (!correo) return res.status(400).json({ error: "correo es requerido" });
-      const user = await this.service.getAccessUserByCorreo(correo);
-      if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-      return res.status(200).json({ user });
+      const correo = String(req.params.correo ?? "")
+        .trim()
+        .toLowerCase();
+
+      const app = String(req.query.app ?? "").trim();
+
+      if (!correo) {
+        return res.status(400).json({
+          error: "correo es requerido",
+        });
+      }
+
+      if (!isUserAppAccess(app)) {
+        return res.status(400).json({
+          error: "app es requerida y debe ser una aplicación válida",
+        });
+      }
+
+      const access = await this.service.getAccessUserByCorreo(correo, app);
+
+      if (!access) {
+        return res.status(404).json({
+          error:
+            "Usuario no encontrado o sin acceso válido a la aplicación solicitada",
+        });
+      }
+
+      return res.status(200).json({
+        ...access,
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -59,10 +104,32 @@ export class SyncController {
   getAccessUserByTelefono = async (req: Request, res: Response) => {
     try {
       const telefono = String(req.params.telefono ?? "").trim();
-      if (!telefono) return res.status(400).json({ error: "telefono es requerido" });
-      const user = await this.service.getAccessUserByTelefono(telefono);
-      if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
-      return res.status(200).json({ user });
+      const app = String(req.query.app ?? "").trim();
+
+      if (!telefono) {
+        return res.status(400).json({
+          error: "telefono es requerido",
+        });
+      }
+
+      if (!isUserAppAccess(app)) {
+        return res.status(400).json({
+          error: "app es requerida y debe ser una aplicación válida",
+        });
+      }
+
+      const access = await this.service.getAccessUserByTelefono(telefono, app);
+
+      if (!access) {
+        return res.status(404).json({
+          error:
+            "Usuario no encontrado o sin acceso válido a la aplicación solicitada",
+        });
+      }
+
+      return res.status(200).json({
+        ...access,
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -72,24 +139,40 @@ export class SyncController {
     try {
       const installationId = (req as SyncRequest).installationId!;
       const body = req.body as Record<string, unknown>;
+
       const proyectoId = String(body.proyectoId ?? "").trim();
-      const installationLinkToken = String(body.installationLinkToken ?? "").trim();
+      const installationLinkToken = String(
+        body.installationLinkToken ?? "",
+      ).trim();
+
       const browserCoordinatesRaw = Array.isArray(body.browserCoordinates)
         ? body.browserCoordinates
         : [];
+
       const browserLongitude = Number(browserCoordinatesRaw[0]);
       const browserLatitude = Number(browserCoordinatesRaw[1]);
+
       const browserCoordinates =
         browserCoordinatesRaw.length === 2 &&
         Number.isFinite(browserLongitude) &&
         Number.isFinite(browserLatitude)
-          ? [browserLongitude, browserLatitude] as [number, number]
+          ? ([browserLongitude, browserLatitude] as [number, number])
           : undefined;
+
       const browserLocationAccuracy = Number(body.browserLocationAccuracy);
+
       const browserLocationCapturedAt = Number(body.browserLocationCapturedAt);
-      if (!proyectoId) return res.status(400).json({ error: "proyectoId es requerido" });
+
+      if (!proyectoId) {
+        return res.status(400).json({
+          error: "proyectoId es requerido",
+        });
+      }
+
       if (!installationLinkToken) {
-        return res.status(400).json({ error: "Token de vinculacion requerido" });
+        return res.status(400).json({
+          error: "Token de vinculacion requerido",
+        });
       }
 
       const result = await this.service.requestInstallationLink({
@@ -111,14 +194,23 @@ export class SyncController {
       });
 
       if (result.status === "missing-project") {
-        return res.status(404).json({ error: "Proyecto no encontrado" });
+        return res.status(404).json({
+          error: "Proyecto no encontrado",
+        });
       }
+
       if (result.status === "missing-token") {
-        return res.status(409).json({ error: "El proyecto no tiene token de vinculacion generado" });
+        return res.status(409).json({
+          error: "El proyecto no tiene token de vinculacion generado",
+        });
       }
+
       if (result.status === "invalid-token") {
-        return res.status(403).json({ error: "Token de vinculacion invalido" });
+        return res.status(403).json({
+          error: "Token de vinculacion invalido",
+        });
       }
+
       if (result.status === "already-approved-other-project") {
         return res.status(409).json({
           error: "Esta instalacion ya fue aprobada para otro proyecto",
@@ -126,7 +218,9 @@ export class SyncController {
         });
       }
 
-      return res.status(202).json({ request: result.request });
+      return res.status(202).json({
+        request: result.request,
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -135,7 +229,10 @@ export class SyncController {
   getInstallationRequestStatus = async (req: Request, res: Response) => {
     try {
       const installationId = (req as SyncRequest).installationId!;
-      const result = await this.service.getInstallationRequestStatus(installationId);
+
+      const result =
+        await this.service.getInstallationRequestStatus(installationId);
+
       return res.status(200).json(result);
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -146,35 +243,53 @@ export class SyncController {
     try {
       const installationId = (req as SyncRequest).installationId!;
       const body = req.body as Record<string, unknown>;
+
       const proyectoId = String(body.proyectoId ?? "").trim();
       const generatedAt = Number(body.generatedAt);
-      const source = String(body.source ?? "operativo-sync").trim() || "operativo-sync";
+      const source =
+        String(body.source ?? "operativo-sync").trim() || "operativo-sync";
+
       const summary =
         body.summary && typeof body.summary === "object"
           ? (body.summary as Record<string, unknown>)
           : null;
+
       const modules = Array.isArray(body.modules)
         ? body.modules.filter(
             (item): item is Record<string, unknown> =>
-              Boolean(item) && typeof item === "object",
+              Boolean(item) && typeof item === "object" && !Array.isArray(item),
           )
         : null;
+
       const metadata =
-        body.metadata && typeof body.metadata === "object"
+        body.metadata &&
+        typeof body.metadata === "object" &&
+        !Array.isArray(body.metadata)
           ? (body.metadata as Record<string, unknown>)
           : undefined;
 
       if (!proyectoId) {
-        return res.status(400).json({ error: "proyectoId es requerido" });
+        return res.status(400).json({
+          error: "proyectoId es requerido",
+        });
       }
+
       if (!Number.isFinite(generatedAt)) {
-        return res.status(400).json({ error: "generatedAt debe ser numerico" });
+        return res.status(400).json({
+          error: "generatedAt debe ser numerico",
+        });
       }
+
       if (!summary) {
-        return res.status(400).json({ error: "summary es requerido" });
+        return res.status(400).json({
+          error: "summary es requerido",
+        });
       }
+
       if (!modules) {
-        return res.status(400).json({ error: "modules debe ser un arreglo" });
+        return res.status(400).json({
+          error: "modules debe ser un arreglo",
+        });
       }
 
       const result = await this.service.receiveHeartbeatSnapshot({
@@ -197,6 +312,7 @@ export class SyncController {
     try {
       const installationId = (req as SyncRequest).installationId!;
       const body = req.body as Record<string, unknown>;
+
       const eventId = String(body.eventId ?? "").trim();
       const proyectoId = String(body.proyectoId ?? "").trim();
       const eventType = String(body.eventType ?? "").trim();
@@ -209,11 +325,17 @@ export class SyncController {
           error: "eventId, proyectoId, eventType y aggregateId son requeridos",
         });
       }
+
       if (!Number.isFinite(occurredAt)) {
-        return res.status(400).json({ error: "occurredAt debe ser numerico" });
+        return res.status(400).json({
+          error: "occurredAt debe ser numerico",
+        });
       }
-      if (!payload || typeof payload !== "object") {
-        return res.status(400).json({ error: "payload debe ser un objeto" });
+
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        return res.status(400).json({
+          error: "payload debe ser un objeto",
+        });
       }
 
       const result = await this.service.receiveEvent({
@@ -229,8 +351,12 @@ export class SyncController {
       return res.status(result.duplicate ? 200 : 202).json(result);
     } catch (error) {
       if ((error as { code?: number }).code === 11000) {
-        return res.status(200).json({ accepted: true, duplicate: true });
+        return res.status(200).json({
+          accepted: true,
+          duplicate: true,
+        });
       }
+
       return ErrorService.handleApiError(error, res);
     }
   };

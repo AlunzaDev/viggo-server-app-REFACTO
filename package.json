@@ -6,6 +6,8 @@
   "main": "dist/app.js",
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "preflight": "node scripts/preflight.mjs",
+    "audit:app-permissions": "node scripts/audit-app-permissions.mjs",
     "backfill:project-codes": "node scripts/backfill-project-codes.mjs",
     "build": "tsc",
     "start": "node dist/app.js",

@@ -15,7 +15,7 @@ export class InstallationsRoutes {
     router.patch("/:id/approve", controller.approveRequest);
     router.patch("/:id/reject", controller.rejectRequest);
     router.patch("/:id/unlink-temporary", controller.unlinkTemporary);
-    router.patch("/:id/unlink-permanent", controller.unlinkPermanent);
+    router.patch("/:id/unlink-permanent", AuthMiddleware.requireRoles(AUTH_ROLES.SUPER), controller.unlinkPermanent);
 
     return router;
   }

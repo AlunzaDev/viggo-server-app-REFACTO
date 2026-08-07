@@ -58,12 +58,66 @@ const authCookieSameSite = parseSameSite(
   env.get("AUTH_COOKIE_SAME_SITE").asString(),
   isProd ? "none" : "lax",
 );
+const jwtSeed = env.get("JWT_SEED").required().asString().trim();
+const installationLinkTokenSecret = env
+  .get("INSTALLATION_LINK_TOKEN_SECRET")
+  .default("")
+  .asString()
+  .trim();
+const syncServiceToken = env.get("SYNC_SERVICE_TOKEN").default("").asString().trim();
+const mailerEmail = env.get("MAILER_EMAIL").default("").asString().trim();
+const mailerSecretKey = env.get("MAILER_SECRET_KEY").default("").asString().trim();
+const mailerHost = env.get("MAILER_HOST").default("").asString().trim();
+const stripeEnabled = env.get("STRIPE_ENABLED").default(isProd ? "true" : "false").asBool();
+const stripeSecretKey = env.get("SECRET_STRIPE_KEY").default("").asString().trim();
+const stripeWebhookSecret = env.get("STRIPE_WEBHOOK_SECRET").default("").asString().trim();
+
+for (const origin of corsAllowedOrigins) {
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    throw new Error(`Invalid CORS origin: ${origin}`);
+  }
+  if (!(["http:", "https:"] as string[]).includes(parsed.protocol) || parsed.origin !== origin) {
+    throw new Error(`CORS origin must be an exact HTTP(S) origin without a path: ${origin}`);
+  }
+}
+
+if (authCookieSameSite === "none" && !authCookieSecure) {
+  throw new Error("AUTH_COOKIE_SECURE must be true when AUTH_COOKIE_SAME_SITE=none.");
+}
+
+if (isProd) {
+  const requireProductionSecret = (name: string, value: string): void => {
+    if (value.length < 32) {
+      throw new Error(`${name} must contain at least 32 characters in production.`);
+    }
+  };
+
+  if (corsAllowedOrigins.length === 0) {
+    throw new Error("CORS_ALLOWED_ORIGINS or WEB_CLIENT_URL is required in production.");
+  }
+  if (!authCookieSecure) {
+    throw new Error("AUTH_COOKIE_SECURE must be true in production.");
+  }
+  requireProductionSecret("JWT_SEED", jwtSeed);
+  requireProductionSecret("INSTALLATION_LINK_TOKEN_SECRET", installationLinkTokenSecret);
+  requireProductionSecret("SYNC_SERVICE_TOKEN", syncServiceToken);
+
+  if (!mailerEmail || !mailerSecretKey || !mailerHost) {
+    throw new Error("MAILER_EMAIL, MAILER_SECRET_KEY and MAILER_HOST are required in production.");
+  }
+  if (stripeEnabled && (!stripeSecretKey || !stripeWebhookSecret)) {
+    throw new Error("SECRET_STRIPE_KEY and STRIPE_WEBHOOK_SECRET are required when Stripe is enabled.");
+  }
+}
 
 export const envs = {
   APP_ENV: appEnv,
   PROD: isProd,
-  JWT_SEED: env.get("JWT_SEED").required().asString(),
-  INSTALLATION_LINK_TOKEN_SECRET: env.get("INSTALLATION_LINK_TOKEN_SECRET").default("").asString(),
+  JWT_SEED: jwtSeed,
+  INSTALLATION_LINK_TOKEN_SECRET: installationLinkTokenSecret,
   MONGO_URL: mongoUrl,
   MONGO_DB_NAME: getConfigValue("MONGO_DB_NAME") ?? "viggo-administrativo",
   MONGO_DISCONNECT_EXIT_DELAY_MS: parseBoundedInteger(
@@ -72,10 +126,10 @@ export const envs = {
     1000,
     300000,
   ),
-  MAILER_EMAIL: env.get("MAILER_EMAIL").default("").asString(),
-  MAILER_SECRET_KEY: env.get("MAILER_SECRET_KEY").default("").asString(),
+  MAILER_EMAIL: mailerEmail,
+  MAILER_SECRET_KEY: mailerSecretKey,
   MAILER_SERVICE: env.get("MAILER_SERVICE").default("").asString(),
-  MAILER_HOST: env.get("MAILER_HOST").default("").asString(),
+  MAILER_HOST: mailerHost,
   MAILER_PORT: env.get("MAILER_PORT").default("465").asPortNumber(),
   MAILER_SECURE: env.get("MAILER_SECURE").default("true").asBool(),
   MAILER_FROM_NAME: env.get("MAILER_FROM_NAME").default("Viggo").asString(),
@@ -92,10 +146,10 @@ export const envs = {
     .get("AUTH_COOKIE_MAX_AGE_MS")
     .default(String(1000 * 60 * 60 * 24 * 2))
     .asIntPositive(),
-  SECRET_STRIPE_KEY: env.get("SECRET_STRIPE_KEY").default("").asString(),
-  STRIPE_WEBHOOK_SECRET: env.get("STRIPE_WEBHOOK_SECRET").default("").asString(),
+  SECRET_STRIPE_KEY: stripeSecretKey,
+  STRIPE_WEBHOOK_SECRET: stripeWebhookSecret,
   STRIPE_CURRENCY: env.get("STRIPE_CURRENCY").default("mxn").asString(),
-  STRIPE_ENABLED: env.get("STRIPE_ENABLED").default(isProd ? "true" : "false").asBool(),
+  STRIPE_ENABLED: stripeEnabled,
   STRIPE_MOCK_ENABLED: env.get("STRIPE_MOCK_ENABLED").default(isProd ? "false" : "true").asBool(),
-  SYNC_SERVICE_TOKEN: env.get("SYNC_SERVICE_TOKEN").default("").asString(),
+  SYNC_SERVICE_TOKEN: syncServiceToken,
 };

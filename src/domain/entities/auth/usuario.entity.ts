@@ -1,12 +1,17 @@
-import { CustomError } from "../../errors/custom.error";
 import {
+  isUserAppAccess,
   isUsuarioRol,
+  normalizeUserApps,
   normalizeUserParkings,
-  normalizeUserModules,
-  type UserModuleAccess,
-  UsuarioRol,
+  type UserAppAccess,
+  type UsuarioRol,
 } from "../../constants";
-import { type UserAppAccess, normalizeUserApps } from "../../constants";
+import { CustomError } from "../../errors/custom.error";
+
+export interface UserAppPermission {
+  app: UserAppAccess;
+  permissionProfileId: string;
+}
 
 export interface UsuarioEntityOptions {
   id: string;
@@ -19,14 +24,51 @@ export interface UsuarioEntityOptions {
   emailValidated: boolean;
   rol: UsuarioRol;
   parkings: string[];
-  permissionProfileId?: string;
-  modules: UserModuleAccess[];
   nacimiento?: number;
   img?: string;
   estado: boolean;
   google: boolean;
   allowedApps: UserAppAccess[];
+  appPermissions: UserAppPermission[];
 }
+
+const normalizeUserAppPermissions = (
+  value: unknown,
+  allowedApps: UserAppAccess[],
+): UserAppPermission[] => {
+  if (!Array.isArray(value)) return [];
+
+  const allowedAppSet = new Set<UserAppAccess>(allowedApps);
+  const permissionsByApp = new Map<UserAppAccess, UserAppPermission>();
+
+  for (const item of value) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      continue;
+    }
+
+    const permission = item as Record<string, unknown>;
+    const app = permission.app;
+    const permissionProfileId =
+      typeof permission.permissionProfileId === "string"
+        ? permission.permissionProfileId.trim()
+        : "";
+
+    if (
+      !isUserAppAccess(app) ||
+      !allowedAppSet.has(app) ||
+      !permissionProfileId
+    ) {
+      continue;
+    }
+
+    permissionsByApp.set(app, {
+      app,
+      permissionProfileId,
+    });
+  }
+
+  return Array.from(permissionsByApp.values());
+};
 
 export class UsuarioEntity {
   public id: string;
@@ -39,13 +81,12 @@ export class UsuarioEntity {
   public emailValidated: boolean;
   public rol: UsuarioRol;
   public parkings: string[];
-  public permissionProfileId?: string;
-  public modules: UserModuleAccess[];
   public nacimiento?: number;
   public img?: string;
   public estado: boolean;
   public google: boolean;
   public allowedApps: UserAppAccess[];
+  public appPermissions: UserAppPermission[];
 
   constructor(options: UsuarioEntityOptions) {
     const {
@@ -59,13 +100,12 @@ export class UsuarioEntity {
       emailValidated,
       rol,
       parkings,
-      permissionProfileId,
-      modules,
       nacimiento,
       img,
       estado,
       google,
       allowedApps,
+      appPermissions,
     } = options;
 
     this.id = id;
@@ -78,16 +118,15 @@ export class UsuarioEntity {
     this.emailValidated = emailValidated;
     this.rol = rol;
     this.parkings = parkings;
-    this.permissionProfileId = permissionProfileId;
-    this.modules = modules;
     this.nacimiento = nacimiento;
     this.img = img;
     this.estado = estado;
     this.google = google;
-    this.allowedApps = options.allowedApps;
+    this.allowedApps = allowedApps;
+    this.appPermissions = appPermissions;
   }
 
-  static fromObject(object: { [key: string]: unknown }): UsuarioEntity {
+  static fromObject(object: Record<string, unknown>): UsuarioEntity {
     const {
       _id,
       id,
@@ -100,33 +139,57 @@ export class UsuarioEntity {
       emailValidated,
       rol,
       parkings,
-      permissionProfileId,
-      modules,
       nacimiento,
       img,
       estado,
       google,
       allowedApps,
+      appPermissions,
     } = object;
 
     const usuarioId = id || (_id ? String(_id) : undefined);
 
-    if (!usuarioId) throw CustomError.badRequest("Missing id");
-    if (!nombre) throw CustomError.badRequest("Missing nombre");
-    if (!apellido) throw CustomError.badRequest("Missing apellido");
-    if (!correo) throw CustomError.badRequest("Missing correo");
-    if (!telefono) throw CustomError.badRequest("Missing telefono");
-    if (!password) throw CustomError.badRequest("Missing password");
-    if (!rol) throw CustomError.badRequest("Missing rol");
+    if (!usuarioId) {
+      throw CustomError.badRequest("Missing id");
+    }
+
+    if (!nombre) {
+      throw CustomError.badRequest("Missing nombre");
+    }
+
+    if (!apellido) {
+      throw CustomError.badRequest("Missing apellido");
+    }
+
+    if (!correo) {
+      throw CustomError.badRequest("Missing correo");
+    }
+
+    if (!telefono) {
+      throw CustomError.badRequest("Missing telefono");
+    }
+
+    if (!password) {
+      throw CustomError.badRequest("Missing password");
+    }
+
+    if (!rol) {
+      throw CustomError.badRequest("Missing rol");
+    }
+
     if (estado === undefined || estado === null) {
       throw CustomError.badRequest("Missing estado");
     }
+
     if (google === undefined || google === null) {
       throw CustomError.badRequest("Missing google");
     }
-    /* if (!Array.isArray(allowedApps)) {
-      throw CustomError.badRequest("Missing allowedApps");
-    } */
+
+    if (!isUsuarioRol(rol)) {
+      throw CustomError.badRequest("Invalid rol");
+    }
+
+    const normalizedAllowedApps = normalizeUserApps(allowedApps);
 
     return new UsuarioEntity({
       id: String(usuarioId),
@@ -139,18 +202,8 @@ export class UsuarioEntity {
         : undefined,
       password: String(password),
       emailValidated: emailValidated === true,
-      rol: isUsuarioRol(rol)
-        ? rol
-        : (() => {
-            throw CustomError.badRequest("Invalid rol");
-          })(),
+      rol,
       parkings: normalizeUserParkings(parkings),
-      permissionProfileId:
-        typeof permissionProfileId === "string" &&
-        permissionProfileId.trim().length > 0
-          ? permissionProfileId.trim()
-          : undefined,
-      modules: normalizeUserModules(modules),
       nacimiento:
         typeof nacimiento === "number"
           ? nacimiento
@@ -160,7 +213,11 @@ export class UsuarioEntity {
       img: typeof img === "string" ? img : undefined,
       estado: Boolean(estado),
       google: Boolean(google),
-      allowedApps: normalizeUserApps(allowedApps),
+      allowedApps: normalizedAllowedApps,
+      appPermissions: normalizeUserAppPermissions(
+        appPermissions,
+        normalizedAllowedApps,
+      ),
     });
   }
 }

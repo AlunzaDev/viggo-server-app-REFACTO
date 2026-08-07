@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { isValidObjectId } from "mongoose";
+
 import { PermissionProfileModel } from "../../../data/mongo/models/auth/permission-profile.schema";
 import { UsuarioModel } from "../../../data/mongo/models/auth/usuario.schema";
 import { ModuloModel } from "../../../data/mongo/models/parking/modulo.schema";
@@ -6,8 +8,15 @@ import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schem
 import { PensionPassModel } from "../../../data/mongo/models/pension/pension-pass.schema";
 import { PensionModel } from "../../../data/mongo/models/pension/pension.schema";
 import { ProjectHeartbeatSnapshotModel } from "../../../data/mongo/models/system/project-heartbeat-snapshot.schema";
-import { InboxEventModel } from "../../../data/mongo/models/sync/inbox-event.schema";
 import { LocalInstallationRequestModel } from "../../../data/mongo/models/system/local-installation-request.schema";
+import { InboxEventModel } from "../../../data/mongo/models/sync/inbox-event.schema";
+
+import {
+  getInvalidUserModulesForApp,
+  normalizeUserApps,
+  normalizeUserModulesForApp,
+  type UserAppAccess,
+} from "../../../domain/constants";
 import {
   SyncDatasource,
   type HeartbeatSnapshotPayload,
@@ -16,10 +25,11 @@ import {
 } from "../../../domain/datasources/sync/sync.datasource";
 
 const USER_SYNC_SELECT =
-  "nombre apellido correo telefono coordinates password emailValidated rol parkings permissionProfileId modules allowedApps nacimiento img estado google";
+  "nombre apellido correo telefono coordinates password emailValidated rol parkings allowedApps appPermissions nacimiento img estado google";
 
-  const hashToken = (token: string) =>
+const hashToken = (token: string): string =>
   createHash("sha256").update(token).digest("hex");
+
 const buildStableVersion = (payload: unknown): number => {
   const hash = createHash("sha256")
     .update(JSON.stringify(payload))
@@ -29,13 +39,143 @@ const buildStableVersion = (payload: unknown): number => {
   return parseInt(hash, 16);
 };
 
+const normalizeProfileId = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  return value.trim();
+};
+
+const getPermissionProfileIds = (users: unknown[]): string[] => {
+  const profileIds = new Set<string>();
+
+  for (const item of users) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      continue;
+    }
+
+    const user = item as Record<string, unknown>;
+    if (!Array.isArray(user.appPermissions)) {
+      continue;
+    }
+
+    for (const itemPermission of user.appPermissions) {
+      if (
+        typeof itemPermission !== "object" ||
+        itemPermission === null ||
+        Array.isArray(itemPermission)
+      ) {
+        continue;
+      }
+
+      const permission = itemPermission as Record<string, unknown>;
+
+      const profileId = normalizeProfileId(permission.permissionProfileId);
+
+      if (profileId) {
+        profileIds.add(profileId);
+      }
+    }
+  }
+
+  return Array.from(profileIds);
+};
+
+const findActiveProfileForApp = async (
+  permissionProfileId: string,
+  app: UserAppAccess,
+) => {
+  if (!isValidObjectId(permissionProfileId)) {
+    return null;
+  }
+
+  return PermissionProfileModel.findOne({
+    _id: permissionProfileId,
+    app,
+    estado: true,
+  }).lean();
+};
+
+const resolveAccessUserForApp = async (
+  user: Record<string, unknown>,
+  app: UserAppAccess,
+) => {
+  const allowedApps = normalizeUserApps(user.allowedApps);
+
+  if (!allowedApps.includes(app)) {
+    return null;
+  }
+
+  const rawAppPermissions = Array.isArray(user.appPermissions)
+    ? user.appPermissions
+    : [];
+
+  const assignment = rawAppPermissions.find((item) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      return false;
+    }
+
+    const permission = item as Record<string, unknown>;
+
+    return (
+      permission.app === app &&
+      normalizeProfileId(permission.permissionProfileId).length > 0
+    );
+  }) as Record<string, unknown> | undefined;
+
+  if (assignment) {
+    const assignedProfileId = normalizeProfileId(
+      assignment.permissionProfileId,
+    );
+
+    const profile = await findActiveProfileForApp(assignedProfileId, app);
+
+    if (!profile) {
+      return null;
+    }
+
+    if (getInvalidUserModulesForApp(profile.modules, app).length > 0) {
+      return null;
+    }
+
+    return {
+      user: {
+        ...user,
+        allowedApps,
+        appPermissions: [
+          {
+            app,
+            permissionProfileId: String(profile._id),
+          },
+        ],
+      },
+      permissionProfile: {
+        ...profile,
+        modules: normalizeUserModulesForApp(profile.modules, app),
+      },
+    };
+  }
+
+  return app === "OPERATIVE_MOBILE"
+    ? {
+        user: {
+          ...user,
+          allowedApps,
+          appPermissions: [],
+        },
+        permissionProfile: null,
+      }
+    : null;
+};
+
 export class SyncMongoDatasource implements SyncDatasource {
   async getConfiguration(proyectoId: string) {
     const proyecto = await ProyectoModel.findById(proyectoId).lean();
+
     if (!proyecto) return null;
 
     const [modulos, pensiones] = await Promise.all([
-      ModuloModel.find({ proyecto: proyectoId })
+      ModuloModel.find({
+        proyecto: proyectoId,
+      })
         .select(
           [
             "nombre",
@@ -61,80 +201,154 @@ export class SyncMongoDatasource implements SyncDatasource {
           ].join(" "),
         )
         .lean(),
-      PensionModel.find({ proyecto: proyectoId }).lean(),
+      PensionModel.find({
+        proyecto: proyectoId,
+      }).lean(),
     ]);
+
     const pensionIds = pensiones.map((item) => String(item._id));
+
     const pensionPasses = await PensionPassModel.find({
-      pension: { $in: pensionIds },
+      pension: {
+        $in: pensionIds,
+      },
     })
       .select(
         "usuario name pension idPass vigent created from to estado antiPassback",
       )
       .lean();
 
-    const snapshot = { proyecto, modulos, pensiones, pensionPasses };
-    return { version: buildStableVersion(snapshot), ...snapshot };
+    const snapshot = {
+      proyecto,
+      modulos,
+      pensiones,
+      pensionPasses,
+    };
+
+    return {
+      version: buildStableVersion(snapshot),
+      ...snapshot,
+    };
   }
 
   getProjectsCatalog() {
-    return ProyectoModel.find({ estado: true })
+    return ProyectoModel.find({
+      estado: true,
+    })
       .select(
         "nombre ciudad direccion identificador codigoProyecto serverIp serverMac localApiBaseUrl img descripcion estado coordinates",
       )
-      .sort({ nombre: 1 })
+      .sort({
+        nombre: 1,
+      })
       .lean();
   }
 
   async getAccessSnapshot(proyectoId: string) {
     const proyecto = await ProyectoModel.findById(proyectoId).lean();
+
     if (!proyecto) return null;
 
     const users = await UsuarioModel.find({
-      $or: [{ parkings: proyectoId }, { rol: "SUPER_ROLE" }],
+      $or: [
+        {
+          parkings: proyectoId,
+        },
+        {
+          rol: "SUPER_ROLE",
+        },
+      ],
     })
       .select(USER_SYNC_SELECT)
       .lean();
 
-    const profileIds = [
-      ...new Set(
-        users
-          .map((user) => user.permissionProfileId)
-          .filter(
-            (profileId): profileId is string => typeof profileId === "string",
-          ),
-      ),
-    ];
-    const permissionProfiles = profileIds.length
-      ? await PermissionProfileModel.find({ _id: { $in: profileIds } }).lean()
-      : [];
+    const profileIds = getPermissionProfileIds(users);
 
-    const snapshot = { proyectoId, users, permissionProfiles };
-    return { version: buildStableVersion(snapshot), ...snapshot };
+    const permissionProfiles =
+      profileIds.length > 0
+        ? await PermissionProfileModel.find({
+            _id: {
+              $in: profileIds,
+            },
+          })
+            .sort({
+              app: 1,
+              nombre: 1,
+            })
+            .lean()
+        : [];
+
+    const snapshot = {
+      proyectoId,
+      users,
+      permissionProfiles,
+    };
+
+    return {
+      version: buildStableVersion(snapshot),
+      ...snapshot,
+    };
   }
 
-  getAccessUserByCorreo(correo: string) {
-    return UsuarioModel.findOne({ correo }).select(USER_SYNC_SELECT).lean();
+  async getAccessUserByCorreo(correo: string, app: UserAppAccess) {
+    const user = await UsuarioModel.findOne({
+      correo,
+    })
+      .select(USER_SYNC_SELECT)
+      .lean();
+
+    if (!user) return null;
+
+    return resolveAccessUserForApp(
+      user as unknown as Record<string, unknown>,
+      app,
+    );
   }
 
-  getAccessUserByTelefono(telefono: string) {
-    return UsuarioModel.findOne({ telefono }).select(USER_SYNC_SELECT).lean();
+  async getAccessUserByTelefono(telefono: string, app: UserAppAccess) {
+    const user = await UsuarioModel.findOne({
+      telefono,
+    })
+      .select(USER_SYNC_SELECT)
+      .lean();
+
+    if (!user) return null;
+
+    return resolveAccessUserForApp(
+      user as unknown as Record<string, unknown>,
+      app,
+    );
   }
 
   async requestInstallationLink(payload: InstallationLinkRequestPayload) {
     const proyecto = await ProyectoModel.findById(payload.proyectoId).lean();
-    if (!proyecto) return { status: "missing-project" as const };
+
+    if (!proyecto) {
+      return {
+        status: "missing-project" as const,
+      };
+    }
 
     const expectedTokenHash = String(
       proyecto.installationLinkTokenHash ?? "",
     ).trim();
-    if (!expectedTokenHash) return { status: "missing-token" as const };
+
+    if (!expectedTokenHash) {
+      return {
+        status: "missing-token" as const,
+      };
+    }
+
     if (hashToken(payload.installationLinkToken) !== expectedTokenHash) {
-      return { status: "invalid-token" as const };
+      return {
+        status: "invalid-token" as const,
+      };
     }
 
     const existing = await LocalInstallationRequestModel.findOne({
       installationId: payload.installationId,
     }).lean();
+
     if (
       existing?.status === "approved" &&
       existing.proyectoId !== payload.proyectoId
@@ -146,8 +360,11 @@ export class SyncMongoDatasource implements SyncDatasource {
     }
 
     const now = Date.now();
+
     const request = await LocalInstallationRequestModel.findOneAndUpdate(
-      { installationId: payload.installationId },
+      {
+        installationId: payload.installationId,
+      },
       {
         installationId: payload.installationId,
         proyectoId: payload.proyectoId,
@@ -173,27 +390,41 @@ export class SyncMongoDatasource implements SyncDatasource {
         reviewNote: existing?.status === "approved" ? existing.reviewNote : "",
         updatedAt: now,
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+      },
     ).lean();
 
-    return { status: "ok" as const, request };
+    return {
+      status: "ok" as const,
+      request,
+    };
   }
 
   async getInstallationRequestStatus(installationId: string) {
     const requestDocument = await LocalInstallationRequestModel.findOne({
       installationId,
     });
+
     const request = requestDocument?.toObject();
+
     const proyecto =
       request?.status === "approved"
         ? await ProyectoModel.findById(request.proyectoId).lean()
         : null;
 
-    return { request, proyecto, oneTimeSyncToken: null };
+    return {
+      request,
+      proyecto,
+      oneTimeSyncToken: null,
+    };
   }
 
   async receiveHeartbeatSnapshot(payload: HeartbeatSnapshotPayload) {
     const proyecto = await ProyectoModel.findById(payload.proyectoId).lean();
+
     if (!proyecto) {
       return {
         accepted: false,
@@ -203,8 +434,11 @@ export class SyncMongoDatasource implements SyncDatasource {
     }
 
     const receivedAt = Date.now();
+
     await ProjectHeartbeatSnapshotModel.findOneAndUpdate(
-      { proyectoId: payload.proyectoId },
+      {
+        proyectoId: payload.proyectoId,
+      },
       {
         proyectoId: payload.proyectoId,
         installationId: payload.installationId,
@@ -237,10 +471,21 @@ export class SyncMongoDatasource implements SyncDatasource {
     const existing = await InboxEventModel.findOne({
       eventId: payload.eventId,
     }).lean();
-    if (existing)
-      return { accepted: true, duplicate: true, eventId: payload.eventId };
+
+    if (existing) {
+      return {
+        accepted: true,
+        duplicate: true,
+        eventId: payload.eventId,
+      };
+    }
 
     await InboxEventModel.create(payload);
-    return { accepted: true, duplicate: false, eventId: payload.eventId };
+
+    return {
+      accepted: true,
+      duplicate: false,
+      eventId: payload.eventId,
+    };
   }
 }

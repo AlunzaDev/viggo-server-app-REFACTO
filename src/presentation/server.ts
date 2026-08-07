@@ -33,8 +33,11 @@ export class Server {
 
     const corsOptions: CorsOptions = {
       origin: (origin, callback) => {
-        if (!origin || envs.CORS_ALLOWED_ORIGINS.length === 0) {
+        if (!origin) {
           return callback(null, true);
+        }
+        if (envs.CORS_ALLOWED_ORIGINS.length === 0) {
+          return callback(null, !envs.PROD);
         }
         return callback(null, envs.CORS_ALLOWED_ORIGINS.includes(origin));
       },

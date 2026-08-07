@@ -37,6 +37,7 @@ export class UsuarioMongoDatasource extends UsuarioDatasource {
 
   async getAll(): Promise<UsuarioEntity[]> {
     const usuarios = await UsuarioModel.find();
+
     return usuarios.map((usuario) =>
       UsuarioEntity.fromObject(usuario.toObject()),
     );
@@ -47,6 +48,7 @@ export class UsuarioMongoDatasource extends UsuarioDatasource {
     usuario: Partial<Omit<UsuarioEntity, "id">>,
   ): Promise<UsuarioEntity | null> {
     const existingUser = await UsuarioModel.findById(id);
+
     if (!existingUser) {
       deleteManagedUserImage(usuario.img);
       return null;
@@ -57,9 +59,14 @@ export class UsuarioMongoDatasource extends UsuarioDatasource {
       typeof usuario.img === "string" ? usuario.img.trim() : undefined;
 
     try {
-      const usuarioDocument = await UsuarioModel.findByIdAndUpdate(id, usuario, {
-        new: true,
-      });
+      const usuarioDocument = await UsuarioModel.findByIdAndUpdate(
+        id,
+        usuario,
+        {
+          new: true,
+          runValidators: true,
+        },
+      );
 
       if (!usuarioDocument) return null;
 
@@ -72,6 +79,7 @@ export class UsuarioMongoDatasource extends UsuarioDatasource {
       if (nextImage && nextImage !== previousImage) {
         deleteManagedUserImage(nextImage);
       }
+
       throw error;
     }
   }

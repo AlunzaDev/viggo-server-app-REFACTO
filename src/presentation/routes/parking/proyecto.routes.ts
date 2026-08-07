@@ -23,8 +23,8 @@ export class ProyectoRoutes {
       uploadProjectImage,
       controller.createProyecto,
     );
-    router.get("/", AuthMiddleware.requireAuth, controller.getProyectos);
-    router.get("/:id", AuthMiddleware.requireAuth, controller.getProyectoById);
+    router.get("/", AuthMiddleware.requireAuth, projectModuleAccess, controller.getProyectos);
+    router.get("/:id", AuthMiddleware.requireAuth, projectModuleAccess, controller.getProyectoById);
     router.get(
       "/:id/installation-link-token",
       AuthMiddleware.requireAuth,
@@ -57,7 +57,7 @@ export class ProyectoRoutes {
     router.delete(
       "/:id",
       AuthMiddleware.requireAuth,
-      adminRoles,
+      AuthMiddleware.requireRoles(AUTH_ROLES.SUPER),
       projectModuleAccess,
       controller.deleteProyecto,
     );

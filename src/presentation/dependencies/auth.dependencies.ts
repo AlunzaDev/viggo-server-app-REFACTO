@@ -14,13 +14,22 @@ import { UsuarioService } from "../services/auth/usuario.service";
 import { EmailService } from "../services/email/email.service";
 
 export const buildAuthController = (): AuthController => {
-  const datasource = new AuthMongoDatasource();
-  const repository = new AuthRepositoryImpl(datasource);
+  const authDatasource = new AuthMongoDatasource();
+  const authRepository = new AuthRepositoryImpl(authDatasource);
+
+  const permissionProfileDatasource = new PermissionProfileMongoDatasource();
+
+  const permissionProfileRepository = new PermissionProfileRepositoryImpl(
+    permissionProfileDatasource,
+  );
+
   const emailService = new EmailService();
+
   const service = new AuthService(
-    repository,
+    authRepository,
     emailService,
     envs.WEB_SERVICE_URL,
+    permissionProfileRepository,
   );
 
   return new AuthController(service);
@@ -28,21 +37,30 @@ export const buildAuthController = (): AuthController => {
 
 export const buildUsuarioController = (): UsuarioController => {
   const usuarioDatasource = new UsuarioMongoDatasource();
-  const repository = new UsuarioRepositoryImpl(usuarioDatasource);
+
+  const usuarioRepository = new UsuarioRepositoryImpl(usuarioDatasource);
+
   const permissionProfileDatasource = new PermissionProfileMongoDatasource();
+
   const permissionProfileRepository = new PermissionProfileRepositoryImpl(
     permissionProfileDatasource,
   );
+
   const authDatasource = new AuthMongoDatasource();
+
   const authRepository = new AuthRepositoryImpl(authDatasource);
+
   const emailService = new EmailService();
+
   const authService = new AuthService(
     authRepository,
     emailService,
     envs.WEB_SERVICE_URL,
+    permissionProfileRepository,
   );
+
   const service = new UsuarioService(
-    repository,
+    usuarioRepository,
     permissionProfileRepository,
     authService,
   );
@@ -52,11 +70,20 @@ export const buildUsuarioController = (): UsuarioController => {
 
 export const buildPermissionProfileController =
   (): PermissionProfileController => {
-    const datasource = new PermissionProfileMongoDatasource();
-    const repository = new PermissionProfileRepositoryImpl(datasource);
+    const permissionProfileDatasource = new PermissionProfileMongoDatasource();
+
+    const permissionProfileRepository = new PermissionProfileRepositoryImpl(
+      permissionProfileDatasource,
+    );
+
     const usuarioDatasource = new UsuarioMongoDatasource();
+
     const usuarioRepository = new UsuarioRepositoryImpl(usuarioDatasource);
-    const service = new PermissionProfileService(repository, usuarioRepository);
+
+    const service = new PermissionProfileService(
+      permissionProfileRepository,
+      usuarioRepository,
+    );
 
     return new PermissionProfileController(service);
   };

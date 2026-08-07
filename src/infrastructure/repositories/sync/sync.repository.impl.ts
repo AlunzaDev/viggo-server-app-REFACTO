@@ -1,3 +1,4 @@
+import type { UserAppAccess } from "../../../domain/constants";
 import type {
   HeartbeatSnapshotPayload,
   InboxEventPayload,
@@ -21,12 +22,12 @@ export class SyncRepositoryImpl implements SyncRepository {
     return this.datasource.getAccessSnapshot(proyectoId);
   }
 
-  getAccessUserByCorreo(correo: string) {
-    return this.datasource.getAccessUserByCorreo(correo);
+  getAccessUserByCorreo(correo: string, app: UserAppAccess) {
+    return this.datasource.getAccessUserByCorreo(correo, app);
   }
 
-  getAccessUserByTelefono(telefono: string) {
-    return this.datasource.getAccessUserByTelefono(telefono);
+  getAccessUserByTelefono(telefono: string, app: UserAppAccess) {
+    return this.datasource.getAccessUserByTelefono(telefono, app);
   }
 
   requestInstallationLink(payload: InstallationLinkRequestPayload) {

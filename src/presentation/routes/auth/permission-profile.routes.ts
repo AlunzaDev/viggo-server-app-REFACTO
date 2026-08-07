@@ -21,7 +21,7 @@ export class PermissionProfileRoutes {
     router.get("/", controller.getProfiles);
     router.get("/:id", controller.getProfileById);
     router.patch("/:id", controller.updateProfile);
-    router.delete("/:id", controller.deleteProfile);
+    router.delete("/:id", AuthMiddleware.requireRoles(AUTH_ROLES.SUPER), controller.deleteProfile);
 
     return router;
   }

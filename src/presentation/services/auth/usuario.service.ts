@@ -1,12 +1,17 @@
 import { bcryptPlugin } from "../../../config/plugins/bcrypt.plugin";
-import { UsuarioEntity } from "../../../domain/entities/auth/usuario.entity";
-import { AUTH_ROLES } from "../../../domain/constants";
+import { AUTH_ROLES, USER_APPS } from "../../../domain/constants";
+import {
+  UsuarioEntity,
+  type UserAppPermission,
+} from "../../../domain/entities/auth/usuario.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { PermissionProfileRepository } from "../../../domain/repository/auth/permission-profile.repository";
 import { UsuarioRepository } from "../../../domain/repository/auth/usuario.repository";
 import { AuthService } from "./auth.service";
 
 type SafeUsuario = Omit<UsuarioEntity, "password">;
+
+type ResolvedAppAccess = Pick<UsuarioEntity, "allowedApps" | "appPermissions">;
 
 export class UsuarioService {
   constructor(
@@ -22,15 +27,17 @@ export class UsuarioService {
   ): Promise<SafeUsuario> {
     await this.validateUniqueFields(undefined, usuario);
     this.validateProjectAssignments(usuario);
-    const resolvedAccess = await this.resolvePermissionModules(usuario);
 
-    const hashedPassword = bcryptPlugin.hash(usuario.password);
+    const resolvedAppAccess = await this.resolveAppAccess(
+      usuario.allowedApps,
+      usuario.appPermissions,
+    );
 
     const usuarioCreated = await this.usuarioRepository.create({
       ...usuario,
-      ...resolvedAccess,
+      ...resolvedAppAccess,
       emailValidated: usuario.emailValidated ?? false,
-      password: hashedPassword,
+      password: bcryptPlugin.hash(usuario.password),
     });
 
     if (usuarioCreated.emailValidated !== true) {
@@ -45,6 +52,7 @@ export class UsuarioService {
 
   async getUsuarios(): Promise<SafeUsuario[]> {
     const usuarios = await this.usuarioRepository.getAll();
+
     return usuarios.map((usuario) => this.toSafeUsuario(usuario));
   }
 
@@ -62,13 +70,32 @@ export class UsuarioService {
     id: string,
     usuario: Partial<Omit<UsuarioEntity, "id">>,
   ): Promise<SafeUsuario> {
+    const currentUsuario = await this.usuarioRepository.findById(id);
+
+    if (!currentUsuario) {
+      throw CustomError.notFound("Usuario no encontrado");
+    }
+
     await this.validateUniqueFields(id, usuario);
-    this.validateProjectAssignments(usuario);
-    const resolvedAccess = await this.resolvePermissionModules(usuario);
+
+    this.validateProjectAssignments({
+      ...currentUsuario,
+      ...usuario,
+    });
+
+    const accessWasUpdated =
+      usuario.allowedApps !== undefined || usuario.appPermissions !== undefined;
+
+    const resolvedAppAccess = accessWasUpdated
+      ? await this.resolveAppAccess(
+          usuario.allowedApps ?? currentUsuario.allowedApps,
+          usuario.appPermissions ?? currentUsuario.appPermissions,
+        )
+      : {};
 
     const usuarioToUpdate = {
       ...usuario,
-      ...resolvedAccess,
+      ...resolvedAppAccess,
       password: usuario.password
         ? bcryptPlugin.hash(usuario.password)
         : undefined,
@@ -91,7 +118,9 @@ export class UsuarioService {
   }
 
   async updateUsuarioStatus(id: string, estado: boolean): Promise<SafeUsuario> {
-    const usuarioUpdated = await this.usuarioRepository.update(id, { estado });
+    const usuarioUpdated = await this.usuarioRepository.update(id, {
+      estado,
+    });
 
     if (!usuarioUpdated) {
       throw CustomError.notFound("Usuario no encontrado");
@@ -113,7 +142,7 @@ export class UsuarioService {
   private async validateUniqueFields(
     id: string | undefined,
     usuario: Partial<Omit<UsuarioEntity, "id">>,
-  ) {
+  ): Promise<void> {
     if (usuario.correo) {
       const userByCorreo = await this.usuarioRepository.findByCorreo(
         usuario.correo,
@@ -137,44 +166,93 @@ export class UsuarioService {
 
   private validateProjectAssignments(
     usuario: Partial<Omit<UsuarioEntity, "id">>,
-  ) {
+  ): void {
     if (!usuario.parkings) return;
 
     const assignedProjects = usuario.parkings.filter(Boolean);
-    const role = usuario.rol;
 
-    if (role && role !== AUTH_ROLES.SUPER && assignedProjects.length > 1) {
+    if (
+      usuario.rol &&
+      usuario.rol !== AUTH_ROLES.SUPER &&
+      assignedProjects.length > 1
+    ) {
       throw CustomError.badRequest(
         "Por ahora solo se permite un proyecto asignado para usuarios que no son super administrador",
       );
     }
   }
 
-  private toSafeUsuario(usuario: UsuarioEntity): SafeUsuario {
-    const { password, ...safeUsuario } = usuario;
-    return safeUsuario;
-  }
+  private async resolveAppAccess(
+    allowedApps: UsuarioEntity["allowedApps"],
+    appPermissions: UserAppPermission[],
+  ): Promise<ResolvedAppAccess> {
+    const allowedAppSet = new Set(allowedApps);
+    const assignedApps = new Set<string>();
 
-  private async resolvePermissionModules(
-    usuario: Partial<Omit<UsuarioEntity, "id">>,
-  ): Promise<Partial<Pick<UsuarioEntity, "permissionProfileId" | "modules">>> {
-    if (!usuario.permissionProfileId) {
-      return usuario.modules ? { modules: usuario.modules } : {};
-    }
-
-    const profile = await this.permissionProfileRepository.findById(
-      usuario.permissionProfileId,
+    const validPermissions = appPermissions.filter((permission) =>
+      allowedAppSet.has(permission.app),
     );
 
-    if (!profile || !profile.estado) {
+    if (validPermissions.length !== appPermissions.length) {
       throw CustomError.badRequest(
-        "El perfil de permisos seleccionado no existe o esta inactivo",
+        "Cada perfil asignado debe corresponder a una aplicación permitida",
       );
     }
 
+    const missingWebProfile = allowedApps.find(
+      (app) =>
+        app !== USER_APPS.OPERATIVE_MOBILE &&
+        !validPermissions.some((permission) => permission.app === app),
+    );
+
+    if (missingWebProfile) {
+      throw CustomError.badRequest(
+        `La aplicación ${missingWebProfile} requiere un perfil de permisos`,
+      );
+    }
+
+    const resolvedPermissions = await Promise.all(
+      validPermissions.map(async (permission): Promise<UserAppPermission> => {
+        if (assignedApps.has(permission.app)) {
+          throw CustomError.badRequest(
+            "Solo puede asignarse un perfil por aplicación",
+          );
+        }
+
+        assignedApps.add(permission.app);
+
+        const profile = await this.permissionProfileRepository.findById(
+          permission.permissionProfileId,
+        );
+
+        if (!profile || !profile.estado) {
+          throw CustomError.badRequest(
+            "Uno de los perfiles de permisos seleccionados no existe o está inactivo",
+          );
+        }
+
+        if (profile.app !== permission.app) {
+          throw CustomError.badRequest(
+            `El perfil '${profile.nombre}' no pertenece a la aplicación ${permission.app}`,
+          );
+        }
+
+        return {
+          app: permission.app,
+          permissionProfileId: profile.id,
+        };
+      }),
+    );
+
     return {
-      permissionProfileId: profile.id,
-      modules: profile.modules,
+      allowedApps,
+      appPermissions: resolvedPermissions,
     };
+  }
+
+  private toSafeUsuario(usuario: UsuarioEntity): SafeUsuario {
+    const { password, ...safeUsuario } = usuario;
+
+    return safeUsuario;
   }
 }

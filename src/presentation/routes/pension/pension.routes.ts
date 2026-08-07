@@ -21,13 +21,14 @@ export class PensionRoutes {
       pensionModuleAccess,
       controller.createPension,
     );
-    router.get("/", AuthMiddleware.requireAuth, controller.getPensiones);
+    router.get("/", AuthMiddleware.requireAuth, pensionModuleAccess, controller.getPensiones);
     router.get(
       "/proyecto/:proyectoId",
       AuthMiddleware.requireAuth,
+      pensionModuleAccess,
       controller.getPensionesByProyecto,
     );
-    router.get("/:id", AuthMiddleware.requireAuth, controller.getPensionById);
+    router.get("/:id", AuthMiddleware.requireAuth, pensionModuleAccess, controller.getPensionById);
     router.patch(
       "/:id/status",
       AuthMiddleware.requireAuth,
@@ -45,7 +46,7 @@ export class PensionRoutes {
     router.delete(
       "/:id",
       AuthMiddleware.requireAuth,
-      adminRoles,
+      AuthMiddleware.requireRoles(AUTH_ROLES.SUPER),
       pensionModuleAccess,
       controller.deletePension,
     );

@@ -14,6 +14,8 @@ import {
   parsePaginationDateQuery,
 } from "../../services/shared/pagination-query";
 
+type AuthenticatedRequest = Request & { uid?: string };
+
 const normalizeText = (value: string) =>
   value
     .normalize("NFD")
@@ -186,7 +188,9 @@ export class PensionController {
       if (!canAccessProjectFromRequest(req, currentPension.proyecto)) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const pension = await this.pensionService.deletePension(id);
+      const uid = String((req as AuthenticatedRequest).uid ?? "");
+      const reason = String(req.body?.reason ?? "Cancelacion administrativa").trim();
+      const pension = await this.pensionService.deletePension(id, uid, reason);
       return res.status(200).json({ pension });
     } catch (error) {
       return ErrorService.handleApiError(error, res);

@@ -1,4 +1,7 @@
-import type { LocalProjectSnapshotPayload } from "../../../domain/datasources/local-projects/local-projects.datasource";
+import type {
+  LocalDeviceBindingActionPayload,
+  LocalProjectSnapshotPayload,
+} from "../../../domain/datasources/local-projects/local-projects.datasource";
 import { LocalProjectsRepository } from "../../../domain/repository/local-projects/local-projects.repository";
 
 export class LocalProjectsService {
@@ -10,5 +13,13 @@ export class LocalProjectsService {
 
   getHeartbeat(projectId: string) {
     return this.repository.getHeartbeat(projectId);
+  }
+
+  approveDeviceBinding(payload: LocalDeviceBindingActionPayload) {
+    return this.repository.approveDeviceBinding(payload);
+  }
+
+  rejectDeviceBinding(payload: LocalDeviceBindingActionPayload) {
+    return this.repository.rejectDeviceBinding(payload);
   }
 }

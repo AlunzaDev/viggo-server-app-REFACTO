@@ -8,8 +8,16 @@ import {
 } from "../../middlewares";
 import { ErrorService } from "../../services/error.service";
 import { PensionPassService } from "../../services/pension/pension-pass.service";
+import { PaymentModel } from "../../../data/mongo/models/payments/payment.schema";
+import { envs } from "../../../config";
+import { StripePlugin } from "../../../config/plugins/stripe.plugin";
+import { CustomError } from "../../../domain/errors/custom.error";
+import { PensionPassModel } from "../../../data/mongo/models/pension/pension-pass.schema";
+import { PensionModel } from "../../../data/mongo/models/pension/pension.schema";
 
 type AuthenticatedRequest = Request & { uid?: string };
+
+const getIdempotencyKey = (req: Request) => String(req.header("Idempotency-Key") ?? "").trim();
 
 export class PensionPassController {
   constructor(private readonly service: PensionPassService) {}
@@ -109,7 +117,7 @@ export class PensionPassController {
       const contractMonths = Number((req.body as { contractMonths?: unknown }).contractMonths ?? 1);
       if (!pensionId) return res.status(400).json({ error: "'pensionId' es requerido" });
       return res.status(200).json({
-        pensionPass: await this.service.precontractPensionPass(uid, pensionId, contractMonths),
+        pensionPass: await this.service.precontractPensionPass(uid, pensionId, contractMonths, getIdempotencyKey(req)),
       });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -121,8 +129,12 @@ export class PensionPassController {
       const uid = (req as AuthenticatedRequest).uid;
       if (!uid) return res.status(401).json({ error: "Unauthorized" });
       const contractMonths = Number((req.body as { contractMonths?: unknown }).contractMonths ?? 1);
+      const paymentIntentId = String(req.body?.paymentIntentId ?? "").trim();
+      const operationKey = getIdempotencyKey(req);
+      if (!/^[A-Za-z0-9._:-]{16,128}$/.test(operationKey)) return res.status(400).json({ error: "Idempotency-Key invalida" });
+      await this.requireSucceededPayment(uid, String(req.params.id), "renewal", paymentIntentId, contractMonths, operationKey);
       return res.status(200).json({
-        pensionPass: await this.service.renewPensionPass(uid, String(req.params.id), contractMonths),
+        pensionPass: await this.service.renewPensionPass(uid, String(req.params.id), contractMonths, operationKey),
       });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -133,8 +145,12 @@ export class PensionPassController {
     try {
       const uid = (req as AuthenticatedRequest).uid;
       if (!uid) return res.status(401).json({ error: "Unauthorized" });
+      const paymentIntentId = String(req.body?.paymentIntentId ?? "").trim();
+      const operationKey = getIdempotencyKey(req);
+      if (!/^[A-Za-z0-9._:-]{16,128}$/.test(operationKey)) return res.status(400).json({ error: "Idempotency-Key invalida" });
+      await this.requireSucceededPayment(uid, String(req.params.id), "pension", paymentIntentId, 1, operationKey);
       return res.status(200).json({
-        pensionPass: await this.service.contractPensionPass(uid, String(req.params.id)),
+        pensionPass: await this.service.contractPensionPass(uid, String(req.params.id), operationKey),
       });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -199,9 +215,68 @@ export class PensionPassController {
       if (!canAccessProjectFromRequest(req, projectId)) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      return res.status(200).json({ pensionPass: await this.service.deletePensionPass(id) });
+      const uid = String((req as AuthenticatedRequest).uid ?? "");
+      const reason = String(req.body?.reason ?? "Cancelacion administrativa").trim();
+      return res.status(200).json({ pensionPass: await this.service.deletePensionPass(id, uid, reason) });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
   };
+
+  getMyPensionPassById = async (req: Request, res: Response) => {
+    try {
+      const uid = (req as AuthenticatedRequest).uid;
+      if (!uid) return res.status(401).json({ error: "Unauthorized" });
+      const pensionPass = await this.service.getPensionPassById(String(req.params.id));
+      if (pensionPass.usuario !== uid) return res.status(404).json({ error: "PensionPass no encontrado" });
+      return res.status(200).json({ pensionPass });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  private async requireSucceededPayment(
+    userId: string,
+    pensionPassId: string,
+    type: "pension" | "renewal",
+    paymentIntentId: string,
+    months: number,
+    operationKey: string,
+  ) {
+    if (!paymentIntentId) throw CustomError.badRequest("paymentIntentId es requerido");
+    const payment = await PaymentModel.findOne({
+      user: userId,
+      type,
+      stripePaymentIntentId: paymentIntentId,
+      "reference.id": pensionPassId,
+    });
+    if (!payment) throw CustomError.forbidden("El pago no pertenece a esta operacion de pension");
+    const pass = await PensionPassModel.findById(pensionPassId).lean();
+    const pension = pass ? await PensionModel.findById(pass.pension).lean() : null;
+    const expectedAmount = Number(pension?.precio) * months;
+    if (!Number.isInteger(months) || months < 1 || months > 24 || !Number.isFinite(expectedAmount) || Number(payment.amount) !== expectedAmount) {
+      throw CustomError.conflict("El monto pagado no corresponde a la vigencia solicitada");
+    }
+    const status = envs.STRIPE_MOCK_ENABLED || !envs.STRIPE_ENABLED
+      ? "succeeded"
+      : (await StripePlugin.client.paymentIntents.retrieve(paymentIntentId)).status;
+    if (status !== "succeeded") throw CustomError.conflict("Stripe aun no confirma el pago");
+    payment.status = "succeeded";
+    payment.rawProviderStatus = status;
+    payment.paidAt = Date.now();
+    await payment.save();
+    const claimed = await PaymentModel.findOneAndUpdate(
+      {
+        _id: payment._id,
+        $or: [
+          { appliedOperationKey: { $exists: false } },
+          { appliedOperationKey: "" },
+          { appliedOperationKey: operationKey },
+        ],
+      },
+      { $set: { appliedOperationKey: operationKey, appliedAt: Date.now() } },
+      { new: true },
+    );
+    if (!claimed) throw CustomError.conflict("Este pago ya fue aplicado a otra operacion");
+  }
 }

@@ -3,6 +3,17 @@ import { isUserAppAccess } from "../../../domain/constants";
 import { SyncRequest } from "../../middlewares/sync-auth.middleware";
 import { ErrorService } from "../../services/error.service";
 import { SyncService } from "../../services/sync/sync.service";
+import { MobileOperationModel } from "../../../data/mongo";
+import { LocalInstallationRequestModel } from "../../../data/mongo/models/system/local-installation-request.schema";
+import { OperationalIncidentService } from "../../services/incidents/operational-incident.service";
+
+const processingTimeoutMs = 60_000;
+const backoffMs = [0, 30_000, 120_000, 300_000, 900_000];
+
+const getNextRetryAt = (attempts: number, now: number) => {
+  const delay = backoffMs[Math.min(Math.max(attempts, 0), backoffMs.length - 1)];
+  return now + delay;
+};
 
 export class SyncController {
   constructor(private readonly service: SyncService) {}
@@ -14,6 +25,157 @@ export class SyncController {
       status: "ok",
       serverTime: Date.now(),
     });
+  };
+
+  claimNextMobileCommand = async (req: Request, res: Response) => {
+    try {
+      const installationId = (req as SyncRequest).installationId!;
+      const now = Date.now();
+      const staleBefore = now - processingTimeoutMs;
+      await LocalInstallationRequestModel.updateOne(
+        { installationId, status: "approved" },
+        { $set: { lastCommandPollAt: now, updatedAt: now } },
+      );
+      await OperationalIncidentService.resolve(`installation-offline:${installationId}`);
+      await MobileOperationModel.updateMany(
+        {
+          installationId,
+          status: { $in: ["pending", "processing", "failed"] },
+          expiresAt: { $lte: now },
+        },
+        {
+          $set: {
+            status: "expired",
+            error: "La operacion expiro antes de llegar al estacionamiento",
+            completedAt: now,
+            updatedAt: now,
+          },
+        },
+      );
+      const deadLetters = await MobileOperationModel.find({
+        installationId,
+        status: "dead_letter",
+        updatedAt: { $gte: now - 5_000 },
+      }).lean();
+      await Promise.all(deadLetters.map((operation) =>
+        OperationalIncidentService.open({
+          incidentKey: `mobile-operation-dead-letter:${operation.operationId}`,
+          type: "MOBILE_OPERATION_DEAD_LETTER",
+          severity: operation.type === "APPLY_TICKET_PAYMENT" ? "critical" : "warning",
+          source: "admin-sync",
+          projectId: String(operation.proyectoId ?? ""),
+          installationId: String(operation.installationId ?? ""),
+          operationId: String(operation.operationId ?? ""),
+          message: `Operacion movil en dead_letter: ${operation.type}`,
+          metadata: {
+            type: operation.type,
+            attempts: operation.attempts,
+            maxAttempts: operation.maxAttempts,
+            error: operation.error,
+          },
+        }),
+      ));
+      await MobileOperationModel.updateMany(
+        {
+          installationId,
+          status: "processing",
+          claimedAt: { $lt: staleBefore },
+          $expr: { $lt: ["$attempts", { $ifNull: ["$maxAttempts", 5] }] },
+          $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: now } }],
+        },
+        {
+          $set: {
+            status: "pending",
+            error: "La operacion quedo en proceso y se liberara para reintento",
+            nextRetryAt: now,
+            updatedAt: now,
+          },
+        },
+      );
+      await MobileOperationModel.updateMany(
+        {
+          installationId,
+          status: { $in: ["pending", "processing", "failed"] },
+          $expr: { $gte: ["$attempts", { $ifNull: ["$maxAttempts", 5] }] },
+        },
+        {
+          $set: {
+            status: "dead_letter",
+            error: "La operacion agoto sus intentos automaticos",
+            completedAt: now,
+            updatedAt: now,
+          },
+        },
+      );
+      const operation = await MobileOperationModel.findOneAndUpdate(
+        {
+          installationId,
+          $and: [
+            { $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: now } }] },
+            { $or: [{ nextRetryAt: { $exists: false } }, { nextRetryAt: { $lte: now } }] },
+            { status: { $in: ["pending", "failed"] } },
+            { $expr: { $lt: ["$attempts", { $ifNull: ["$maxAttempts", 5] }] } },
+          ],
+        },
+        {
+          $set: {
+            status: "processing",
+            claimedAt: now,
+            lastAttemptAt: now,
+            processingDeadlineAt: now + processingTimeoutMs,
+            updatedAt: now,
+          },
+          $inc: { attempts: 1 },
+        },
+        { new: true, sort: { createdAt: 1 } },
+      ).lean();
+      if (!operation) return res.status(204).send();
+      return res.status(200).json({ operation });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  completeMobileCommand = async (req: Request, res: Response) => {
+    try {
+      const installationId = (req as SyncRequest).installationId!;
+      const operationId = String(req.params.operationId ?? "").trim();
+      const now = Date.now();
+      const success = req.body?.success === true;
+      const current = await MobileOperationModel.findOne({
+        operationId,
+        installationId,
+        status: { $in: ["processing", "completed"] },
+      });
+      if (!current) return res.status(404).json({ error: "Operacion no encontrada" });
+      if (current.status === "completed") {
+        return res.status(200).json({ operation: current.toObject() });
+      }
+      const attempts = Number(current.attempts ?? 0);
+      const maxAttempts = Number(current.maxAttempts ?? 5);
+      const retryable = !success && attempts < maxAttempts;
+      const operation = await MobileOperationModel.findOneAndUpdate(
+        { operationId, installationId, status: "processing" },
+        {
+          $set: {
+            status: success ? "completed" : retryable ? "failed" : "dead_letter",
+            result: success && req.body?.result && typeof req.body.result === "object"
+              ? req.body.result
+              : undefined,
+            error: success ? "" : String(req.body?.error ?? "No se pudo ejecutar la operacion"),
+            nextRetryAt: retryable ? getNextRetryAt(attempts, now) : undefined,
+            processingDeadlineAt: undefined,
+            completedAt: success || !retryable ? now : undefined,
+            updatedAt: now,
+          },
+        },
+        { new: true },
+      ).lean();
+      if (!operation) return res.status(404).json({ error: "Operacion no encontrada" });
+      return res.status(200).json({ operation });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
   };
 
   getConfiguration = async (req: Request, res: Response) => {

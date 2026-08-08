@@ -1,8 +1,9 @@
 import cors, { CorsOptions } from "cors";
 import express, { Router } from "express";
 import { envs } from "../config/plugins/envs.plugin";
-import { MongoDatabase } from "../data/mongo";
+import { MobileOperationModel, MongoDatabase } from "../data/mongo";
 import { requestLoggingMiddleware } from "./middlewares/request-logging.middleware";
+import { FinancialReconciliationService } from "./services/payments/financial-reconciliation.service";
 
 interface ServerOptions {
   host?: string;
@@ -30,6 +31,7 @@ export class Server {
       mongoUrl: envs.MONGO_URL,
       dbName: envs.MONGO_DB_NAME,
     });
+    await this.recoverMobileOperations();
 
     const corsOptions: CorsOptions = {
       origin: (origin, callback) => {
@@ -49,11 +51,13 @@ export class Server {
         "X-Requested-With",
         "X-Viggo-Installation-Id",
         "X-Idempotency-Key",
+        "Idempotency-Key",
       ],
     };
 
     this.app.disable("x-powered-by");
     this.app.use(cors(corsOptions));
+    this.app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
     this.app.use(express.json({ limit: "2mb" }));
     this.app.use(express.urlencoded({ extended: true }));
     this.app.use(express.static(this.publicPath));
@@ -67,5 +71,43 @@ export class Server {
     this.app.listen(this.port, this.host, () => {
       console.log(`[ADMINISTRATIVO] Server running on ${this.host}:${this.port}`);
     });
+
+    new FinancialReconciliationService().start();
+  }
+
+  private async recoverMobileOperations(): Promise<void> {
+    const now = Date.now();
+    const staleBefore = now - 60_000;
+    await MobileOperationModel.updateMany(
+      { maxAttempts: { $exists: false } },
+      [
+        {
+          $set: {
+            maxAttempts: {
+              $cond: [{ $eq: ["$type", "APPLY_TICKET_PAYMENT"] }, 12, 3],
+            },
+            nextRetryAt: { $ifNull: ["$nextRetryAt", "$createdAt"] },
+          },
+        },
+      ],
+    );
+    await MobileOperationModel.updateMany(
+      {
+        status: "processing",
+        $or: [
+          { processingDeadlineAt: { $lte: now } },
+          { claimedAt: { $lt: staleBefore } },
+        ],
+      },
+      {
+        $set: {
+          status: "pending",
+          error: "Operacion recuperada al reiniciar Admin API",
+          nextRetryAt: now,
+          processingDeadlineAt: undefined,
+          updatedAt: now,
+        },
+      },
+    );
   }
 }

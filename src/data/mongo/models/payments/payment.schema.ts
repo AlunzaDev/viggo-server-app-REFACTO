@@ -105,6 +105,25 @@ const paymentSchema = new Schema(
       sparse: true,
       trim: true,
     },
+    idempotencyKey: {
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
+    appliedOperationKey: { type: String, required: false, trim: true },
+    appliedAt: { type: Number, required: false },
+    reconciliationStatus: {
+      type: String,
+      enum: ["pending", "reconciled", "failed"],
+      required: false,
+      default: "pending",
+      index: true,
+    },
+    reconciledAt: { type: Number, required: false },
+    reconciliationError: { type: String, required: false, default: "", trim: true },
+    metadata: { type: Schema.Types.Mixed, required: false, default: undefined },
     paymentMethod: {
       type: paymentMethodSchema,
       required: false,
@@ -134,7 +153,11 @@ const paymentSchema = new Schema(
         delete serialized._id;
         delete serialized.user;
         delete serialized.stripePaymentIntentId;
+        delete serialized.idempotencyKey;
+        delete serialized.appliedOperationKey;
         delete serialized.rawProviderStatus;
+        delete serialized.reconciliationError;
+        delete serialized.metadata;
         delete serialized.createdAt;
         delete serialized.updatedAt;
         return serialized;
@@ -144,5 +167,6 @@ const paymentSchema = new Schema(
 );
 
 paymentSchema.index({ user: 1, paidAt: -1 });
+paymentSchema.index({ status: 1, reconciliationStatus: 1, paidAt: 1 });
 
 export const PaymentModel = model("Payment", paymentSchema);

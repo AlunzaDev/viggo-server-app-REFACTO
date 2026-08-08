@@ -28,6 +28,50 @@ export interface ModuloSubmodulo {
   estado: boolean;
 }
 
+export interface ModuloDeviceBinding {
+  fingerprint: string;
+  cpuSerial?: string;
+  machineId?: string;
+  primaryMac?: string;
+  boundAt: Date;
+  lastSeenAt: Date;
+}
+
+export type ModuloDeviceBindingRequestStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED";
+
+export interface ModuloDeviceBindingRequest {
+  fingerprint: string;
+  cpuSerial?: string;
+  machineId?: string;
+  primaryMac?: string;
+  ipAddress?: string;
+  locationLabel?: string;
+  status: ModuloDeviceBindingRequestStatus;
+  requestedAt: Date;
+  resolvedAt?: Date;
+  notes?: string;
+}
+
+export interface ModuloDeviceRuntimeSnapshot {
+  fingerprint?: string;
+  socketId?: string;
+  ipAddress?: string;
+  locationLabel?: string;
+  connectionStatus?: string;
+  heartbeatStatus?: string;
+  isConnected: boolean;
+  isAuthorized: boolean;
+  connectedAt?: Date;
+  lastHeartbeatAt?: Date;
+  lastDisconnectAt?: Date;
+  message?: string;
+  sourceInstallationId?: string;
+  syncedAt?: Date;
+}
+
 export interface ModuloEntityOptions {
   id: string;
   nombre: string;
@@ -40,6 +84,9 @@ export interface ModuloEntityOptions {
   ubicacion?: string;
   coordinates?: [number, number];
   descripcion?: string;
+  deviceBinding?: ModuloDeviceBinding | null;
+  deviceBindingRequests?: ModuloDeviceBindingRequest[];
+  deviceRuntimeSnapshot?: ModuloDeviceRuntimeSnapshot | null;
   submodulos?: ModuloSubmodulo[];
 }
 
@@ -55,6 +102,9 @@ export class ModuloEntity {
   public ubicacion?: string;
   public coordinates?: [number, number];
   public descripcion?: string;
+  public deviceBinding?: ModuloDeviceBinding | null;
+  public deviceBindingRequests?: ModuloDeviceBindingRequest[];
+  public deviceRuntimeSnapshot?: ModuloDeviceRuntimeSnapshot | null;
   public submodulos: ModuloSubmodulo[];
 
   constructor(options: ModuloEntityOptions) {
@@ -69,6 +119,9 @@ export class ModuloEntity {
     this.ubicacion = options.ubicacion;
     this.coordinates = options.coordinates;
     this.descripcion = options.descripcion;
+    this.deviceBinding = options.deviceBinding ?? null;
+    this.deviceBindingRequests = options.deviceBindingRequests ?? [];
+    this.deviceRuntimeSnapshot = options.deviceRuntimeSnapshot ?? null;
     this.submodulos = options.submodulos ?? [];
   }
 
@@ -96,9 +149,112 @@ export class ModuloEntity {
       ubicacion: String(object.ubicacion ?? "").trim() || undefined,
       coordinates: parseCoordinates(object.coordinates),
       descripcion: String(object.descripcion ?? "").trim() || undefined,
+      deviceBinding: parseDeviceBinding(object.deviceBinding),
+      deviceBindingRequests: parseDeviceBindingRequests(
+        object.deviceBindingRequests,
+      ),
+      deviceRuntimeSnapshot: parseDeviceRuntimeSnapshot(
+        object.deviceRuntimeSnapshot,
+      ),
       submodulos: parseSubmodulos(object.submodulos),
     });
   }
+}
+
+function parseDate(value: unknown): Date {
+  const parsed =
+    value instanceof Date
+      ? value
+      : typeof value === "number"
+        ? new Date(value)
+        : new Date(String(value ?? ""));
+
+  return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+}
+
+function normalizeOptionalText(value: unknown): string | undefined {
+  const normalized = String(value ?? "").trim();
+  return normalized || undefined;
+}
+
+function parseDeviceBinding(value: unknown): ModuloDeviceBinding | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const source = value as Record<string, unknown>;
+  const fingerprint = String(source.fingerprint ?? "").trim();
+  if (!fingerprint) return null;
+
+  return {
+    fingerprint,
+    cpuSerial: normalizeOptionalText(source.cpuSerial),
+    machineId: normalizeOptionalText(source.machineId),
+    primaryMac: normalizeOptionalText(source.primaryMac),
+    boundAt: parseDate(source.boundAt),
+    lastSeenAt: parseDate(source.lastSeenAt),
+  };
+}
+
+function parseDeviceBindingRequests(value: unknown): ModuloDeviceBindingRequest[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item): ModuloDeviceBindingRequest | null => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+
+      const source = item as Record<string, unknown>;
+      const fingerprint = String(source.fingerprint ?? "").trim();
+      const status = String(source.status ?? "").trim().toUpperCase();
+
+      if (
+        !fingerprint ||
+        (status !== "PENDING" && status !== "APPROVED" && status !== "REJECTED")
+      ) {
+        return null;
+      }
+
+      return {
+        fingerprint,
+        cpuSerial: normalizeOptionalText(source.cpuSerial),
+        machineId: normalizeOptionalText(source.machineId),
+        primaryMac: normalizeOptionalText(source.primaryMac),
+        ipAddress: normalizeOptionalText(source.ipAddress),
+        locationLabel: normalizeOptionalText(source.locationLabel),
+        status: status as ModuloDeviceBindingRequestStatus,
+        requestedAt: parseDate(source.requestedAt),
+        resolvedAt: source.resolvedAt ? parseDate(source.resolvedAt) : undefined,
+        notes: normalizeOptionalText(source.notes),
+      };
+    })
+    .filter((item): item is ModuloDeviceBindingRequest => item !== null);
+}
+
+function parseDeviceRuntimeSnapshot(
+  value: unknown,
+): ModuloDeviceRuntimeSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const source = value as Record<string, unknown>;
+
+  return {
+    fingerprint: normalizeOptionalText(source.fingerprint),
+    socketId: normalizeOptionalText(source.socketId),
+    ipAddress: normalizeOptionalText(source.ipAddress),
+    locationLabel: normalizeOptionalText(source.locationLabel),
+    connectionStatus: normalizeOptionalText(source.connectionStatus),
+    heartbeatStatus: normalizeOptionalText(source.heartbeatStatus),
+    isConnected: Boolean(source.isConnected),
+    isAuthorized: Boolean(source.isAuthorized),
+    connectedAt: source.connectedAt ? parseDate(source.connectedAt) : undefined,
+    lastHeartbeatAt: source.lastHeartbeatAt
+      ? parseDate(source.lastHeartbeatAt)
+      : undefined,
+    lastDisconnectAt: source.lastDisconnectAt
+      ? parseDate(source.lastDisconnectAt)
+      : undefined,
+    message: normalizeOptionalText(source.message),
+    sourceInstallationId: normalizeOptionalText(source.sourceInstallationId),
+    syncedAt: source.syncedAt ? parseDate(source.syncedAt) : undefined,
+  };
 }
 
 function parseSubmodulos(value: unknown): ModuloSubmodulo[] {

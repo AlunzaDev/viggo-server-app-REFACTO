@@ -3,6 +3,7 @@ import { ProjectHeartbeatSnapshotModel } from "../../../data/mongo/models/system
 import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import {
   LocalProjectsDatasource,
+  type LocalDeviceBindingActionPayload,
   type LocalProjectSnapshotPayload,
 } from "../../../domain/datasources/local-projects/local-projects.datasource";
 
@@ -26,6 +27,49 @@ const fetchLocalHeartbeat = async (baseUrl: string, projectId: string) => {
       ok: false as const,
       localStatus: response.status,
       error: (data as { error?: unknown }).error ?? "OPERATIVO no pudo responder el heartbeat",
+    };
+  }
+
+  return {
+    ok: true as const,
+    data,
+  };
+};
+
+const callLocalDeviceBindingAction = async (
+  baseUrl: string,
+  action: "approve" | "reject",
+  payload: LocalDeviceBindingActionPayload,
+) => {
+  const response = await fetch(
+    buildLocalUrl(
+      baseUrl,
+      `/api/sync/modules/${encodeURIComponent(payload.moduleId)}/device-binding/${action}`,
+    ),
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${envs.SYNC_SERVICE_TOKEN}`,
+        "Content-Type": "application/json",
+        "X-Viggo-Sync-Source": "administrativo-device-binding",
+      },
+      body: JSON.stringify({
+        fingerprint: payload.fingerprint,
+        resolvedByUserId: payload.resolvedByUserId,
+        resolvedByUserName: payload.resolvedByUserName,
+        notes: payload.notes,
+      }),
+    },
+  );
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    return {
+      ok: false as const,
+      localStatus: response.status,
+      error:
+        (data as { error?: unknown }).error ??
+        `OPERATIVO no pudo ${action === "approve" ? "aprobar" : "rechazar"} la vinculacion`,
     };
   }
 
@@ -209,5 +253,48 @@ export class LocalProjectsMongoDatasource implements LocalProjectsDatasource {
           : null,
       };
     }
+  }
+
+  async approveDeviceBinding(payload: LocalDeviceBindingActionPayload) {
+    return this.resolveDeviceBinding("approve", payload);
+  }
+
+  async rejectDeviceBinding(payload: LocalDeviceBindingActionPayload) {
+    return this.resolveDeviceBinding("reject", payload);
+  }
+
+  private async resolveDeviceBinding(
+    action: "approve" | "reject",
+    payload: LocalDeviceBindingActionPayload,
+  ) {
+    const proyecto = await ProyectoModel.findById(payload.projectId).lean();
+    if (!proyecto) return { status: "missing-project" as const };
+
+    const localApiBaseUrl = String(proyecto.localApiBaseUrl ?? "").trim();
+    if (!localApiBaseUrl) return { status: "missing-local-url" as const };
+
+    const result = await callLocalDeviceBindingAction(
+      localApiBaseUrl,
+      action,
+      payload,
+    );
+
+    if (!result.ok) {
+      return {
+        status: "local-error" as const,
+        localStatus: result.localStatus,
+        error: result.error,
+      };
+    }
+
+    const refreshedHeartbeat = await this.getHeartbeat(payload.projectId);
+
+    return {
+      status: "ok" as const,
+      action,
+      local: result.data,
+      heartbeat:
+        refreshedHeartbeat.status === "ok" ? refreshedHeartbeat.data : null,
+    };
   }
 }

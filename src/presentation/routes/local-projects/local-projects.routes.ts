@@ -13,6 +13,14 @@ export class LocalProjectsRoutes {
     );
     router.get("/:projectId/snapshot", controller.getSnapshot);
     router.get("/:projectId/heartbeat", controller.getHeartbeat);
+    router.patch(
+      "/:projectId/modules/:moduleId/device-binding/approve",
+      controller.approveDeviceBinding,
+    );
+    router.patch(
+      "/:projectId/modules/:moduleId/device-binding/reject",
+      controller.rejectDeviceBinding,
+    );
 
     return router;
   }

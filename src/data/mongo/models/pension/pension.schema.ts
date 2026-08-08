@@ -56,6 +56,9 @@ const pensionSchema = new Schema(
             type: Boolean,
             default: true,
         },
+        cancelledAt: { type: Number, default: undefined },
+        cancelledBy: { type: Schema.Types.ObjectId, ref: "Usuario", default: undefined },
+        cancellationReason: { type: String, default: "", trim: true },
     },
     {
         versionKey: false,

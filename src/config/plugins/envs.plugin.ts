@@ -152,4 +152,20 @@ export const envs = {
   STRIPE_ENABLED: stripeEnabled,
   STRIPE_MOCK_ENABLED: env.get("STRIPE_MOCK_ENABLED").default(isProd ? "false" : "true").asBool(),
   SYNC_SERVICE_TOKEN: syncServiceToken,
+  FINANCIAL_RECONCILIATION_WORKER_ENABLED: env
+    .get("FINANCIAL_RECONCILIATION_WORKER_ENABLED")
+    .default("true")
+    .asBool(),
+  FINANCIAL_RECONCILIATION_INTERVAL_MINUTES: parseBoundedInteger(
+    env.get("FINANCIAL_RECONCILIATION_INTERVAL_MINUTES").asString(),
+    15,
+    1,
+    1440,
+  ),
+  FINANCIAL_RECONCILIATION_BATCH_SIZE: parseBoundedInteger(
+    env.get("FINANCIAL_RECONCILIATION_BATCH_SIZE").asString(),
+    50,
+    1,
+    500,
+  ),
 };

@@ -9,3 +9,5 @@ export * from "./models/pension/pension-pass.schema";
 export * from "./models/payments/payment.schema";
 export * from "./models/sync/inbox-event.schema";
 export * from "./models/system/project-heartbeat-snapshot.schema";
+export * from "./models/system/operational-incident.schema";
+export * from "./models/mobile/mobile-operation.schema";

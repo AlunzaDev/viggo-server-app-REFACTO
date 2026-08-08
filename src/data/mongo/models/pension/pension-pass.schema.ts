@@ -50,6 +50,21 @@ const pensionPassSchema = new Schema(
             type: Boolean,
             default: true,
         },
+        financialOperations: {
+            type: [{
+                _id: false,
+                key: { type: String, required: true, trim: true },
+                type: { type: String, enum: ["precontract", "contract", "renew"], required: true },
+                months: { type: Number, default: 0 },
+                from: { type: Number, required: true },
+                to: { type: Number, required: true },
+                processedAt: { type: Number, required: true },
+            }],
+            default: [],
+        },
+        cancelledAt: { type: Number, default: undefined },
+        cancelledBy: { type: Schema.Types.ObjectId, ref: "Usuario", default: undefined },
+        cancellationReason: { type: String, default: "", trim: true },
     },
     {
         versionKey: false,
@@ -63,5 +78,12 @@ const pensionPassSchema = new Schema(
         },
     },
 );
+
+pensionPassSchema.index({ idPass: 1 }, { unique: true });
+pensionPassSchema.index(
+    { usuario: 1, pension: 1 },
+    { unique: true, partialFilterExpression: { usuario: { $type: "objectId" }, estado: true } },
+);
+pensionPassSchema.index({ "financialOperations.key": 1 }, { unique: true, sparse: true });
 
 export const PensionPassModel = model("PensionPass", pensionPassSchema);

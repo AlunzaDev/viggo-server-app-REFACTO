@@ -12,6 +12,7 @@ export class InstallationsRoutes {
 
     router.use(AuthMiddleware.requireAuth, adminRoles, installationsModuleAccess);
     router.get("/", controller.getRequests);
+    router.get("/:installationId/connectivity", controller.getConnectivity);
     router.patch("/:id/approve", controller.approveRequest);
     router.patch("/:id/reject", controller.rejectRequest);
     router.patch("/:id/unlink-temporary", controller.unlinkTemporary);

@@ -43,8 +43,8 @@ export class PensionRoutes {
       pensionModuleAccess,
       controller.updatePension,
     );
-    router.delete(
-      "/:id",
+    router.patch(
+      "/:id/cancel",
       AuthMiddleware.requireAuth,
       AuthMiddleware.requireRoles(AUTH_ROLES.SUPER),
       pensionModuleAccess,

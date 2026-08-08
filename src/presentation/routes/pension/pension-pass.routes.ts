@@ -21,7 +21,7 @@ export class PensionPassRoutes {
     router.post("/", AuthMiddleware.requireAuth, adminRoles, access, controller.createPensionPass);
     router.patch("/:id/status", AuthMiddleware.requireAuth, adminRoles, access, controller.updatePensionPassStatus);
     router.patch("/:id", AuthMiddleware.requireAuth, adminRoles, access, controller.updatePensionPass);
-    router.delete("/:id", AuthMiddleware.requireAuth, AuthMiddleware.requireRoles(AUTH_ROLES.SUPER), access, controller.deletePensionPass);
+    router.patch("/:id/cancel", AuthMiddleware.requireAuth, AuthMiddleware.requireRoles(AUTH_ROLES.SUPER), access, controller.deletePensionPass);
 
     return router;
   }

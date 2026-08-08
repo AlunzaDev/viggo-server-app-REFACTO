@@ -43,6 +43,87 @@ const moduloSubmoduloSchema = new Schema(
   { versionKey: false },
 );
 
+const moduloDeviceBindingSchema = new Schema(
+  {
+    fingerprint: { type: String, required: true, trim: true },
+    cpuSerial: { type: String, default: "", trim: true },
+    machineId: { type: String, default: "", trim: true },
+    primaryMac: { type: String, default: "", trim: true },
+    boundAt: { type: Date, required: true },
+    lastSeenAt: { type: Date, required: true },
+  },
+  { _id: false, versionKey: false },
+);
+
+const moduloDeviceBindingRequestSchema = new Schema(
+  {
+    fingerprint: { type: String, required: true, trim: true },
+    cpuSerial: { type: String, default: "", trim: true },
+    machineId: { type: String, default: "", trim: true },
+    primaryMac: { type: String, default: "", trim: true },
+    ipAddress: { type: String, default: "", trim: true },
+    locationLabel: { type: String, default: "", trim: true },
+    status: {
+      type: String,
+      enum: ["PENDING", "APPROVED", "REJECTED"],
+      required: true,
+      default: "PENDING",
+    },
+    requestedAt: { type: Date, required: true },
+    resolvedAt: { type: Date, required: false },
+    notes: { type: String, default: "", trim: true },
+  },
+  { _id: false, versionKey: false },
+);
+
+const moduloDeviceConnectionAuditSchema = new Schema(
+  {
+    fingerprint: { type: String, default: "", trim: true },
+    cpuSerial: { type: String, default: "", trim: true },
+    machineId: { type: String, default: "", trim: true },
+    primaryMac: { type: String, default: "", trim: true },
+    ipAddress: { type: String, default: "", trim: true },
+    locationLabel: { type: String, default: "", trim: true },
+    socketId: { type: String, default: "", trim: true },
+    status: {
+      type: String,
+      enum: ["APPROVED", "PENDING", "REJECTED"],
+      required: true,
+    },
+    reason: { type: String, default: "", trim: true },
+    attemptedAt: { type: Date, required: true },
+  },
+  { _id: false, versionKey: false },
+);
+
+const moduloDeviceRuntimeSnapshotSchema = new Schema(
+  {
+    fingerprint: { type: String, default: "", trim: true },
+    socketId: { type: String, default: "", trim: true },
+    ipAddress: { type: String, default: "", trim: true },
+    locationLabel: { type: String, default: "", trim: true },
+    connectionStatus: {
+      type: String,
+      enum: ["CONNECTED", "DISCONNECTED", "PENDING", "REJECTED", "MISMATCH"],
+      default: "PENDING",
+    },
+    heartbeatStatus: {
+      type: String,
+      enum: ["online", "offline", "pending"],
+      default: "pending",
+    },
+    isConnected: { type: Boolean, default: false },
+    isAuthorized: { type: Boolean, default: false },
+    connectedAt: { type: Date, required: false },
+    lastHeartbeatAt: { type: Date, required: false },
+    lastDisconnectAt: { type: Date, required: false },
+    message: { type: String, default: "", trim: true },
+    sourceInstallationId: { type: String, default: "", trim: true },
+    syncedAt: { type: Date, required: false },
+  },
+  { _id: false, versionKey: false },
+);
+
 const moduloSchema = new Schema(
   {
     nombre: { type: String, required: true, trim: true },
@@ -77,6 +158,22 @@ const moduloSchema = new Schema(
       },
     },
     descripcion: { type: String, default: "", trim: true },
+    deviceBinding: {
+      type: moduloDeviceBindingSchema,
+      default: null,
+    },
+    deviceBindingRequests: {
+      type: [moduloDeviceBindingRequestSchema],
+      default: [],
+    },
+    deviceConnectionAudit: {
+      type: moduloDeviceConnectionAuditSchema,
+      default: null,
+    },
+    deviceRuntimeSnapshot: {
+      type: moduloDeviceRuntimeSnapshotSchema,
+      default: null,
+    },
     submodulos: { type: [moduloSubmoduloSchema], default: [] },
   },
   {

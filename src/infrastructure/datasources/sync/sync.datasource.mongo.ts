@@ -166,6 +166,175 @@ const resolveAccessUserForApp = async (
     : null;
 };
 
+const toDateOrNull = (value: unknown): Date | null => {
+  const parsed =
+    value instanceof Date
+      ? value
+      : typeof value === "number"
+        ? new Date(value)
+        : new Date(String(value ?? ""));
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const normalizeOptionalText = (value: unknown): string =>
+  String(value ?? "").trim();
+
+const normalizeDeviceBinding = (value: unknown) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const source = value as Record<string, unknown>;
+  const fingerprint = normalizeOptionalText(source.fingerprint);
+  const boundAt = toDateOrNull(source.boundAt);
+  const lastSeenAt = toDateOrNull(source.lastSeenAt);
+
+  if (!fingerprint || !boundAt || !lastSeenAt) return null;
+
+  return {
+    fingerprint,
+    cpuSerial: normalizeOptionalText(source.cpuSerial),
+    machineId: normalizeOptionalText(source.machineId),
+    primaryMac: normalizeOptionalText(source.primaryMac),
+    boundAt,
+    lastSeenAt,
+  };
+};
+
+const normalizeDeviceBindingRequests = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+
+      const source = item as Record<string, unknown>;
+      const fingerprint = normalizeOptionalText(source.fingerprint);
+      const status = normalizeOptionalText(source.status).toUpperCase();
+      const requestedAt = toDateOrNull(source.requestedAt);
+
+      if (
+        !fingerprint ||
+        !requestedAt ||
+        !["PENDING", "APPROVED", "REJECTED"].includes(status)
+      ) {
+        return null;
+      }
+
+      return {
+        fingerprint,
+        cpuSerial: normalizeOptionalText(source.cpuSerial),
+        machineId: normalizeOptionalText(source.machineId),
+        primaryMac: normalizeOptionalText(source.primaryMac),
+        ipAddress: normalizeOptionalText(source.ipAddress),
+        locationLabel: normalizeOptionalText(source.locationLabel),
+        status,
+        requestedAt,
+        resolvedAt: toDateOrNull(source.resolvedAt) ?? undefined,
+        notes: normalizeOptionalText(source.notes),
+      };
+    })
+    .filter(Boolean);
+};
+
+const normalizeDeviceConnectionAudit = (value: unknown) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const source = value as Record<string, unknown>;
+  const status = normalizeOptionalText(source.status).toUpperCase();
+  const attemptedAt = toDateOrNull(source.attemptedAt);
+
+  if (!attemptedAt || !["APPROVED", "PENDING", "REJECTED"].includes(status)) {
+    return null;
+  }
+
+  return {
+    fingerprint: normalizeOptionalText(source.fingerprint),
+    cpuSerial: normalizeOptionalText(source.cpuSerial),
+    machineId: normalizeOptionalText(source.machineId),
+    primaryMac: normalizeOptionalText(source.primaryMac),
+    ipAddress: normalizeOptionalText(source.ipAddress),
+    locationLabel: normalizeOptionalText(source.locationLabel),
+    socketId: normalizeOptionalText(source.socketId),
+    status,
+    reason: normalizeOptionalText(source.reason),
+    attemptedAt,
+  };
+};
+
+const applyDeviceRuntimeSnapshotToModules = async (
+  payload: HeartbeatSnapshotPayload,
+  receivedAt: number,
+) => {
+  const modules = Array.isArray(payload.modules) ? payload.modules : [];
+
+  await Promise.all(
+    modules.map(async (item) => {
+      const source = item as Record<string, unknown>;
+      const moduleId = normalizeOptionalText(source.id);
+      if (!moduleId || !isValidObjectId(moduleId)) return;
+
+      const lastHeartbeatAt = toDateOrNull(source.lastHeartbeatAt);
+      const lastDisconnectAt = toDateOrNull(source.lastDisconnectAt);
+      const connectedAt = toDateOrNull(source.connectedAt);
+      const heartbeatStatus = normalizeOptionalText(source.heartbeatStatus);
+      const connectionStatus = normalizeOptionalText(
+        source.connectionStatus,
+      ).toUpperCase();
+      const runtimeFingerprint =
+        normalizeOptionalText(
+          (source.deviceBinding as Record<string, unknown> | undefined)
+            ?.fingerprint,
+        ) || normalizeOptionalText(source.fingerprint);
+
+      await ModuloModel.updateOne(
+        {
+          _id: moduleId,
+          proyecto: payload.proyectoId,
+        },
+        {
+          $set: {
+            deviceBinding: normalizeDeviceBinding(source.deviceBinding),
+            deviceBindingRequests: normalizeDeviceBindingRequests(
+              source.deviceBindingRequests,
+            ),
+            deviceConnectionAudit: normalizeDeviceConnectionAudit(
+              source.deviceConnectionAudit,
+            ),
+            deviceRuntimeSnapshot: {
+              fingerprint: runtimeFingerprint,
+              socketId: normalizeOptionalText(source.socketId),
+              ipAddress: normalizeOptionalText(source.ipAddress),
+              locationLabel: normalizeOptionalText(source.locationLabel),
+              connectionStatus: [
+                "CONNECTED",
+                "DISCONNECTED",
+                "PENDING",
+                "REJECTED",
+                "MISMATCH",
+              ].includes(connectionStatus)
+                ? connectionStatus
+                : "PENDING",
+              heartbeatStatus: ["online", "offline", "pending"].includes(
+                heartbeatStatus,
+              )
+                ? heartbeatStatus
+                : "pending",
+              isConnected: Boolean(source.isConnected),
+              isAuthorized: Boolean(source.isAuthorized),
+              connectedAt: connectedAt ?? undefined,
+              lastHeartbeatAt: lastHeartbeatAt ?? undefined,
+              lastDisconnectAt: lastDisconnectAt ?? undefined,
+              message: normalizeOptionalText(source.message),
+              sourceInstallationId: payload.installationId,
+              syncedAt: new Date(receivedAt),
+            },
+          },
+        },
+      );
+    }),
+  );
+};
+
 export class SyncMongoDatasource implements SyncDatasource {
   async getConfiguration(proyectoId: string) {
     const proyecto = await ProyectoModel.findById(proyectoId).lean();
@@ -459,6 +628,8 @@ export class SyncMongoDatasource implements SyncDatasource {
         setDefaultsOnInsert: true,
       },
     );
+
+    await applyDeviceRuntimeSnapshotToModules(payload, receivedAt);
 
     return {
       accepted: true,

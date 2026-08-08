@@ -1,6 +1,5 @@
 import { Router } from "express";
 
-import { MongoDatabase } from "../../data/mongo";
 import { USER_APPS } from "../../domain/constants";
 
 import { AuthMiddleware } from "../middlewares";
@@ -22,6 +21,11 @@ import { PensionPassRoutes } from "./pension/pension-pass.routes";
 import { PensionRoutes } from "./pension/pension.routes";
 
 import { SyncRoutes } from "./sync/sync.routes";
+import { MobileOperationRoutes } from "./mobile/mobile-operation.routes";
+import { MobileOperationAdminRoutes } from "./mobile/mobile-operation-admin.routes";
+import { StripeWebhookRoutes } from "./payments/stripe-webhook.routes";
+import { HealthRoutes } from "./health/health.routes";
+import { OperationalIncidentRoutes } from "./incidents/operational-incident.routes";
 
 export class AppRoutes {
   static get routes(): Router {
@@ -36,16 +40,28 @@ export class AppRoutes {
         message: "pong",
       });
     });
-    router.get("/api/health", (_req, res) => {
-      const health = MongoDatabase.getHealthSnapshot();
-
-      res.status(health.status === "ok" ? 200 : 503).json({
-        service: "viggo-administrativo",
-        ...health,
-      });
-    });
+    router.use("/api/health", HealthRoutes.routes);
     router.use("/api/auth", AuthRoutes.routes);
+    router.use("/api/stripe/webhook", StripeWebhookRoutes.routes);
     router.use("/api/sync", SyncRoutes.routes);
+    router.use(
+      "/api/mobile",
+      AuthMiddleware.requireAuth,
+      AuthMiddleware.requireApps(USER_APPS.OPERATIVE_MOBILE),
+      MobileOperationRoutes.routes,
+    );
+    router.use(
+      "/api/mobile-operations",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      MobileOperationAdminRoutes.routes,
+    );
+    router.use(
+      "/api/operational-incidents",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      OperationalIncidentRoutes.routes,
+    );
     router.use(
       "/api/usuarios",
       AuthMiddleware.requireAuth,

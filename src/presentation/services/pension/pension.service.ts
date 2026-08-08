@@ -2,6 +2,7 @@ import { PensionEntity } from "../../../domain/entities/pension/pension.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { PensionRepository } from "../../../domain/repository/pension/pension.repository";
 import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
+import { PensionModel } from "../../../data/mongo/models/pension/pension.schema";
 
 export class PensionService {
   constructor(
@@ -71,13 +72,13 @@ export class PensionService {
     return pensionUpdated;
   }
 
-  async deletePension(id: string): Promise<PensionEntity> {
-    const pensionDeleted = await this.pensionRepository.delete(id);
-
-    if (!pensionDeleted) {
-      throw CustomError.notFound("Pension no encontrada");
-    }
-
-    return pensionDeleted;
+  async deletePension(id: string, cancelledBy: string, reason: string): Promise<PensionEntity> {
+    const pension = await PensionModel.findOneAndUpdate(
+      { _id: id, estado: true },
+      { $set: { estado: false, cancelledAt: Date.now(), cancelledBy, cancellationReason: reason.trim() } },
+      { new: true },
+    );
+    if (!pension) throw CustomError.notFound("Pension no encontrada o ya cancelada");
+    return PensionEntity.fromObject(pension.toObject());
   }
 }

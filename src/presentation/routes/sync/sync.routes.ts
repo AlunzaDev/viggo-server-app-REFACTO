@@ -9,6 +9,8 @@ export class SyncRoutes {
 
     router.use(requireSyncAuth);
     router.get("/status", controller.status);
+    router.get("/mobile-commands/next", controller.claimNextMobileCommand);
+    router.post("/mobile-commands/:operationId/complete", controller.completeMobileCommand);
     router.get("/projects", controller.getProjectsCatalog);
     router.get("/configuration/:proyectoId", controller.getConfiguration);
     router.get("/access-snapshot/:proyectoId", controller.getAccessSnapshot);

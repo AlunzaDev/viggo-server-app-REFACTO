@@ -25,6 +25,10 @@ export class CustomError extends Error {
         return new CustomError(404, message, code, details);
     }
 
+    static conflict(message: string, details?: unknown, code = "CONFLICT") {
+        return new CustomError(409, message, code, details);
+    }
+
     static internalServer(message: string, details?: unknown, code = "INTERNAL_ERROR") {
         return new CustomError(500, message, code, details);
     }

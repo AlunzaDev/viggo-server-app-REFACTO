@@ -2,6 +2,15 @@ import { Request, Response } from "express";
 import { ErrorService } from "../../services/error.service";
 import { LocalProjectsService } from "../../services/local-projects/local-projects.service";
 
+type LocalProjectAuthRequest = Request & {
+  uid?: string;
+  usuario?: {
+    id?: string;
+    nombre?: string;
+    apellido?: string;
+  };
+};
+
 export class LocalProjectsController {
   constructor(private readonly service: LocalProjectsService) {}
 
@@ -81,4 +90,90 @@ export class LocalProjectsController {
       );
     }
   };
+
+  approveDeviceBinding = async (req: Request, res: Response) => {
+    return this.resolveDeviceBinding(req, res, "approve");
+  };
+
+  rejectDeviceBinding = async (req: Request, res: Response) => {
+    return this.resolveDeviceBinding(req, res, "reject");
+  };
+
+  private async resolveDeviceBinding(
+    req: Request,
+    res: Response,
+    action: "approve" | "reject",
+  ) {
+    try {
+      const projectId = String(req.params.projectId ?? "").trim();
+      const moduleId = String(req.params.moduleId ?? "").trim();
+      if (!projectId) return res.status(400).json({ error: "projectId es requerido" });
+      if (!moduleId) return res.status(400).json({ error: "moduleId es requerido" });
+
+      const authReq = req as LocalProjectAuthRequest;
+      const userName = [
+        authReq.usuario?.nombre,
+        authReq.usuario?.apellido,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+      const body = req.body as {
+        fingerprint?: unknown;
+        notes?: unknown;
+      };
+
+      const result =
+        action === "approve"
+          ? await this.service.approveDeviceBinding({
+              projectId,
+              moduleId,
+              fingerprint:
+                typeof body.fingerprint === "string"
+                  ? body.fingerprint.trim()
+                  : undefined,
+              resolvedByUserId: authReq.uid ?? authReq.usuario?.id ?? "",
+              resolvedByUserName: userName || "Administrativo",
+              notes:
+                typeof body.notes === "string"
+                  ? body.notes.trim()
+                  : "Aprobado desde Administrativo",
+            })
+          : await this.service.rejectDeviceBinding({
+              projectId,
+              moduleId,
+              fingerprint:
+                typeof body.fingerprint === "string"
+                  ? body.fingerprint.trim()
+                  : undefined,
+              resolvedByUserId: authReq.uid ?? authReq.usuario?.id ?? "",
+              resolvedByUserName: userName || "Administrativo",
+              notes:
+                typeof body.notes === "string"
+                  ? body.notes.trim()
+                  : "Rechazado desde Administrativo",
+            });
+
+      if (result.status === "missing-project") {
+        return res.status(404).json({ error: "Proyecto no encontrado" });
+      }
+      if (result.status === "missing-local-url") {
+        return res.status(409).json({ error: "El proyecto no tiene localApiBaseUrl configurado" });
+      }
+      if (result.status === "local-error") {
+        return res.status(result.localStatus).json({
+          error: result.error,
+          localStatus: result.localStatus,
+        });
+      }
+
+      return res.status(200).json(result);
+    } catch (_error) {
+      return ErrorService.handleApiError(
+        new Error("No se pudo resolver la vinculacion en la instalacion local"),
+        res,
+      );
+    }
+  }
 }

@@ -17,10 +17,13 @@ export class AuthRoutes {
     });
 
     router.post("/register-user", strictAuthRateLimit, controller.registerUser);
-    router.post("/login-correo", strictAuthRateLimit, controller.loginCorreo);
+    // Temporalmente desactivado en desarrollo para no bloquear pruebas manuales.
+    // Reactivar antes de producción:
+    // router.post("/login-correo", strictAuthRateLimit, controller.loginCorreo);
+    router.post("/login-correo", controller.loginCorreo);
     router.post(
       "/login-telefono",
-      strictAuthRateLimit,
+      // strictAuthRateLimit,
       controller.loginTelefono,
     );
     router.post("/forgot-password", emailRateLimit, controller.forgotPassword);

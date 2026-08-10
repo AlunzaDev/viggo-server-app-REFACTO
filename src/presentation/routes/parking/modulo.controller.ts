@@ -43,6 +43,10 @@ export class ModuloController {
       ubicacion: modulo.ubicacion,
       coordinates: modulo.coordinates,
       descripcion: modulo.descripcion,
+      deviceBinding: modulo.deviceBinding,
+      deviceBindingRequests: modulo.deviceBindingRequests,
+      deviceRuntimeSnapshot: modulo.deviceRuntimeSnapshot,
+      remoteSupport: modulo.remoteSupport,
       submodulos: modulo.submodulos,
     };
   }

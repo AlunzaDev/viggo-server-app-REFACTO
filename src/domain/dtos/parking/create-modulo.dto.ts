@@ -1,4 +1,7 @@
-import { ModuloTipo } from "../../entities/parking/modulo.entity";
+import {
+    ModuloRemoteSupport,
+    ModuloTipo,
+} from "../../entities/parking/modulo.entity";
 import { ModuloSubmodulo } from "../../entities/parking/modulo.entity";
 
 const MODULO_TIPOS: ModuloTipo[] = ["ENTRADA", "SALIDA", "POS"];
@@ -15,6 +18,7 @@ export class CreateModuloDto {
         public readonly ubicacion?: string,
         public readonly coordinates?: [number, number],
         public readonly descripcion?: string,
+        public readonly remoteSupport?: ModuloRemoteSupport | null,
         public readonly submodulos: ModuloSubmodulo[] = [],
     ) {}
 
@@ -42,6 +46,7 @@ export class CreateModuloDto {
             typeof body.descripcion === "string" && body.descripcion.trim().length > 0
                 ? body.descripcion.trim()
                 : undefined;
+        const remoteSupport = parseRemoteSupport(body.remoteSupport);
 
         if (!nombre) return ["'nombre' es requerido"];
         if (!proyecto) return ["'proyecto' es requerido"];
@@ -64,6 +69,7 @@ export class CreateModuloDto {
                 ubicacion,
                 coordinates,
                 descripcion,
+                remoteSupport,
             ),
         ];
     }
@@ -75,4 +81,39 @@ function parseCoordinates(value: unknown): [number, number] | undefined {
     const latitude = Number(value[1]);
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return undefined;
     return [longitude, latitude];
+}
+
+function parseRemoteSupport(value: unknown): ModuloRemoteSupport | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+    const source = value as Record<string, unknown>;
+    const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
+    if (provider !== "MESHCENTRAL") return null;
+
+    return {
+        provider,
+        enabled: Boolean(source.enabled),
+        deviceName: optionalText(source.deviceName),
+        deviceId: optionalText(source.deviceId),
+        groupId: optionalText(source.groupId),
+        baseUrl: optionalText(source.baseUrl),
+        supportUrl: optionalText(source.supportUrl),
+        desktopUrl: optionalText(source.desktopUrl),
+        terminalUrl: optionalText(source.terminalUrl),
+        linkedAt: parseDate(source.linkedAt),
+        updatedAt: parseDate(source.updatedAt) ?? new Date(),
+    };
+}
+
+function optionalText(value: unknown): string | undefined {
+    const text = String(value ?? "").trim();
+    return text || undefined;
+}
+
+function parseDate(value: unknown): Date | undefined {
+    if (value === undefined || value === null || value === "") return undefined;
+    const date = value instanceof Date ? value : new Date(String(value));
+    return Number.isNaN(date.getTime()) ? undefined : date;
 }

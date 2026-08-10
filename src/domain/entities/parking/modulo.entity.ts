@@ -72,6 +72,22 @@ export interface ModuloDeviceRuntimeSnapshot {
   syncedAt?: Date;
 }
 
+export type ModuloRemoteSupportProvider = "MESHCENTRAL";
+
+export interface ModuloRemoteSupport {
+  provider: ModuloRemoteSupportProvider;
+  enabled: boolean;
+  deviceName?: string;
+  deviceId?: string;
+  groupId?: string;
+  baseUrl?: string;
+  supportUrl?: string;
+  desktopUrl?: string;
+  terminalUrl?: string;
+  linkedAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface ModuloEntityOptions {
   id: string;
   nombre: string;
@@ -87,6 +103,7 @@ export interface ModuloEntityOptions {
   deviceBinding?: ModuloDeviceBinding | null;
   deviceBindingRequests?: ModuloDeviceBindingRequest[];
   deviceRuntimeSnapshot?: ModuloDeviceRuntimeSnapshot | null;
+  remoteSupport?: ModuloRemoteSupport | null;
   submodulos?: ModuloSubmodulo[];
 }
 
@@ -105,6 +122,7 @@ export class ModuloEntity {
   public deviceBinding?: ModuloDeviceBinding | null;
   public deviceBindingRequests?: ModuloDeviceBindingRequest[];
   public deviceRuntimeSnapshot?: ModuloDeviceRuntimeSnapshot | null;
+  public remoteSupport?: ModuloRemoteSupport | null;
   public submodulos: ModuloSubmodulo[];
 
   constructor(options: ModuloEntityOptions) {
@@ -122,6 +140,7 @@ export class ModuloEntity {
     this.deviceBinding = options.deviceBinding ?? null;
     this.deviceBindingRequests = options.deviceBindingRequests ?? [];
     this.deviceRuntimeSnapshot = options.deviceRuntimeSnapshot ?? null;
+    this.remoteSupport = options.remoteSupport ?? null;
     this.submodulos = options.submodulos ?? [];
   }
 
@@ -156,6 +175,7 @@ export class ModuloEntity {
       deviceRuntimeSnapshot: parseDeviceRuntimeSnapshot(
         object.deviceRuntimeSnapshot,
       ),
+      remoteSupport: parseRemoteSupport(object.remoteSupport),
       submodulos: parseSubmodulos(object.submodulos),
     });
   }
@@ -254,6 +274,28 @@ function parseDeviceRuntimeSnapshot(
     message: normalizeOptionalText(source.message),
     sourceInstallationId: normalizeOptionalText(source.sourceInstallationId),
     syncedAt: source.syncedAt ? parseDate(source.syncedAt) : undefined,
+  };
+}
+
+function parseRemoteSupport(value: unknown): ModuloRemoteSupport | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const source = value as Record<string, unknown>;
+  const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
+  if (provider !== "MESHCENTRAL") return null;
+
+  return {
+    provider,
+    enabled: Boolean(source.enabled),
+    deviceName: normalizeOptionalText(source.deviceName),
+    deviceId: normalizeOptionalText(source.deviceId),
+    groupId: normalizeOptionalText(source.groupId),
+    baseUrl: normalizeOptionalText(source.baseUrl),
+    supportUrl: normalizeOptionalText(source.supportUrl),
+    desktopUrl: normalizeOptionalText(source.desktopUrl),
+    terminalUrl: normalizeOptionalText(source.terminalUrl),
+    linkedAt: source.linkedAt ? parseDate(source.linkedAt) : undefined,
+    updatedAt: source.updatedAt ? parseDate(source.updatedAt) : undefined,
   };
 }
 

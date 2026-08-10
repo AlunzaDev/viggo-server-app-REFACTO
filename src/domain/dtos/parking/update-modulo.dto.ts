@@ -1,4 +1,7 @@
-import { ModuloTipo } from "../../entities/parking/modulo.entity";
+import {
+    ModuloRemoteSupport,
+    ModuloTipo,
+} from "../../entities/parking/modulo.entity";
 
 const MODULO_TIPOS: ModuloTipo[] = ["ENTRADA", "SALIDA", "POS"];
 
@@ -14,6 +17,7 @@ export class UpdateModuloDto {
         public readonly ubicacion?: string,
         public readonly coordinates?: [number, number],
         public readonly descripcion?: string,
+        public readonly remoteSupport?: ModuloRemoteSupport | null,
     ) {}
 
     static create(body: Record<string, unknown>): [string?, UpdateModuloDto?] {
@@ -40,6 +44,7 @@ export class UpdateModuloDto {
                 typeof body.descripcion === "string"
                     ? body.descripcion.trim()
                     : undefined,
+                parseRemoteSupport(body.remoteSupport),
             ),
         ];
     }
@@ -51,4 +56,39 @@ function parseCoordinates(value: unknown): [number, number] | undefined {
     const latitude = Number(value[1]);
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return undefined;
     return [longitude, latitude];
+}
+
+function parseRemoteSupport(value: unknown): ModuloRemoteSupport | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+    const source = value as Record<string, unknown>;
+    const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
+    if (provider !== "MESHCENTRAL") return null;
+
+    return {
+        provider,
+        enabled: Boolean(source.enabled),
+        deviceName: optionalText(source.deviceName),
+        deviceId: optionalText(source.deviceId),
+        groupId: optionalText(source.groupId),
+        baseUrl: optionalText(source.baseUrl),
+        supportUrl: optionalText(source.supportUrl),
+        desktopUrl: optionalText(source.desktopUrl),
+        terminalUrl: optionalText(source.terminalUrl),
+        linkedAt: parseDate(source.linkedAt),
+        updatedAt: parseDate(source.updatedAt) ?? new Date(),
+    };
+}
+
+function optionalText(value: unknown): string | undefined {
+    const text = String(value ?? "").trim();
+    return text || undefined;
+}
+
+function parseDate(value: unknown): Date | undefined {
+    if (value === undefined || value === null || value === "") return undefined;
+    const date = value instanceof Date ? value : new Date(String(value));
+    return Number.isNaN(date.getTime()) ? undefined : date;
 }

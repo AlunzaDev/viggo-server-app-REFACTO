@@ -124,6 +124,27 @@ const moduloDeviceRuntimeSnapshotSchema = new Schema(
   { _id: false, versionKey: false },
 );
 
+const moduloRemoteSupportSchema = new Schema(
+  {
+    provider: {
+      type: String,
+      enum: ["MESHCENTRAL"],
+      default: "MESHCENTRAL",
+    },
+    enabled: { type: Boolean, default: false },
+    deviceName: { type: String, default: "", trim: true },
+    deviceId: { type: String, default: "", trim: true },
+    groupId: { type: String, default: "", trim: true },
+    baseUrl: { type: String, default: "", trim: true },
+    supportUrl: { type: String, default: "", trim: true },
+    desktopUrl: { type: String, default: "", trim: true },
+    terminalUrl: { type: String, default: "", trim: true },
+    linkedAt: { type: Date, required: false },
+    updatedAt: { type: Date, required: false },
+  },
+  { _id: false, versionKey: false },
+);
+
 const moduloSchema = new Schema(
   {
     nombre: { type: String, required: true, trim: true },
@@ -172,6 +193,10 @@ const moduloSchema = new Schema(
     },
     deviceRuntimeSnapshot: {
       type: moduloDeviceRuntimeSnapshotSchema,
+      default: null,
+    },
+    remoteSupport: {
+      type: moduloRemoteSupportSchema,
       default: null,
     },
     submodulos: { type: [moduloSubmoduloSchema], default: [] },

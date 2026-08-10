@@ -69,6 +69,32 @@ const proyectoSchema = new Schema(
             default: "",
             trim: true,
         },
+        remoteSupport: {
+            provider: {
+                type: String,
+                enum: ["MESHCENTRAL"],
+                required: false,
+                default: "MESHCENTRAL",
+                trim: true,
+                uppercase: true,
+            },
+            enabled: {
+                type: Boolean,
+                required: false,
+                default: false,
+            },
+            baseUrl: {
+                type: String,
+                required: false,
+                default: "",
+                trim: true,
+            },
+            updatedAt: {
+                type: Date,
+                required: false,
+                default: undefined,
+            },
+        },
         installationLinkTokenHash: {
             type: String,
             required: false,

@@ -1,5 +1,13 @@
 import { CustomError } from "../../errors/custom.error";
 
+export type ProyectoRemoteSupportProvider = "MESHCENTRAL";
+
+export interface ProyectoRemoteSupport {
+    provider: ProyectoRemoteSupportProvider;
+    enabled: boolean;
+    baseUrl?: string;
+}
+
 export interface ProyectoEntityOptions {
     id: string;
     nombre: string;
@@ -11,6 +19,7 @@ export interface ProyectoEntityOptions {
     serverIp?: string;
     serverMac?: string;
     localApiBaseUrl?: string;
+    remoteSupport?: ProyectoRemoteSupport | null;
     img?: string;
     descripcion?: string;
     estado: boolean;
@@ -27,12 +36,13 @@ export class ProyectoEntity {
     public serverIp?: string;
     public serverMac?: string;
     public localApiBaseUrl?: string;
+    public remoteSupport?: ProyectoRemoteSupport | null;
     public img?: string;
     public descripcion?: string;
     public estado: boolean;
 
     constructor(options: ProyectoEntityOptions) {
-        const { id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, img, descripcion, estado } =
+        const { id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, remoteSupport, img, descripcion, estado } =
             options;
 
         this.id = id;
@@ -45,13 +55,14 @@ export class ProyectoEntity {
         this.serverIp = serverIp;
         this.serverMac = serverMac;
         this.localApiBaseUrl = localApiBaseUrl;
+        this.remoteSupport = remoteSupport;
         this.img = img;
         this.descripcion = descripcion;
         this.estado = estado;
     }
 
     static fromObject(object: { [key: string]: unknown }): ProyectoEntity {
-        const { _id, id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, img, descripcion, estado } =
+        const { _id, id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, remoteSupport, img, descripcion, estado } =
             object;
 
         const proyectoId = id || (_id ? String(_id) : undefined);
@@ -91,10 +102,29 @@ export class ProyectoEntity {
                 typeof localApiBaseUrl === "string" && localApiBaseUrl.trim().length > 0
                     ? localApiBaseUrl.trim()
                     : undefined,
+            remoteSupport: ProyectoEntity.parseRemoteSupport(remoteSupport),
             img: typeof img === "string" ? img : undefined,
             descripcion: typeof descripcion === "string" ? descripcion : undefined,
             estado: Boolean(estado),
         });
+    }
+
+    private static parseRemoteSupport(value: unknown): ProyectoRemoteSupport | null {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+        const source = value as Record<string, unknown>;
+        const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
+        const baseUrl = typeof source.baseUrl === "string" ? source.baseUrl.trim() : "";
+        const enabled = Boolean(source.enabled) || baseUrl.length > 0;
+
+        if (provider !== "MESHCENTRAL") return null;
+        if (!enabled && !baseUrl) return null;
+
+        return {
+            provider: "MESHCENTRAL",
+            enabled,
+            baseUrl: baseUrl || undefined,
+        };
     }
 
     private static parseCoordinates(value: unknown[]): number[] | number[][] {

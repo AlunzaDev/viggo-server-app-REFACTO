@@ -60,10 +60,24 @@ const parseCoordinatesField = (value: unknown): unknown => {
   }
 };
 
+const parseJsonField = (value: unknown): unknown => {
+  if (typeof value !== "string") return value;
+
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+
+  try {
+    return JSON.parse(normalized);
+  } catch {
+    return value;
+  }
+};
+
 const normalizeProyectoRequestBody = (body: Record<string, unknown>) => {
   const normalizedBody: Record<string, unknown> = {
     ...body,
     coordinates: parseCoordinatesField(body.coordinates),
+    remoteSupport: parseJsonField(body.remoteSupport),
   };
 
   const estado = parseBooleanField(body.estado);

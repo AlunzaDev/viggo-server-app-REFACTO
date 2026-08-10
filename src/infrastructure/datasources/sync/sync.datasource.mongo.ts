@@ -416,7 +416,7 @@ export class SyncMongoDatasource implements SyncDatasource {
       estado: true,
     })
       .select(
-        "nombre ciudad direccion identificador codigoProyecto serverIp serverMac localApiBaseUrl img descripcion estado coordinates",
+        "nombre ciudad direccion identificador codigoProyecto serverIp serverMac localApiBaseUrl remoteSupport.provider remoteSupport.enabled remoteSupport.baseUrl remoteSupport.updatedAt img descripcion estado coordinates",
       )
       .sort({
         nombre: 1,

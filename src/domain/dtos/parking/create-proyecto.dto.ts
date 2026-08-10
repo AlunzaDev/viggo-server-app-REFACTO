@@ -1,4 +1,23 @@
 export class CreateProyectoDto {
+    private static normalizeRemoteSupport(value: unknown) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+
+        const source = value as Record<string, unknown>;
+        const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
+        const baseUrl = typeof source.baseUrl === "string" ? source.baseUrl.trim() : "";
+        const enabled = Boolean(source.enabled) || baseUrl.length > 0;
+
+        if (provider !== "MESHCENTRAL") return undefined;
+        if (!enabled && !baseUrl) return undefined;
+
+        return {
+            provider: "MESHCENTRAL" as const,
+            enabled,
+            baseUrl: baseUrl || undefined,
+            updatedAt: new Date(),
+        };
+    }
+
     private static normalizeCoordinates(value: unknown): number[] | number[][] {
         if (!Array.isArray(value)) return [];
 
@@ -30,6 +49,7 @@ export class CreateProyectoDto {
         public readonly serverIp?: string,
         public readonly serverMac?: string,
         public readonly localApiBaseUrl?: string,
+        public readonly remoteSupport?: ReturnType<typeof CreateProyectoDto.normalizeRemoteSupport>,
         public readonly img?: string,
         public readonly descripcion?: string,
         public readonly estado: boolean = true,
@@ -57,6 +77,7 @@ export class CreateProyectoDto {
             typeof body.localApiBaseUrl === "string" && body.localApiBaseUrl.trim().length > 0
                 ? body.localApiBaseUrl.trim()
                 : undefined;
+        const remoteSupport = CreateProyectoDto.normalizeRemoteSupport(body.remoteSupport);
         const img =
             typeof body.img === "string" && body.img.trim().length > 0
                 ? body.img.trim()
@@ -83,6 +104,7 @@ export class CreateProyectoDto {
                 serverIp,
                 serverMac,
                 localApiBaseUrl,
+                remoteSupport,
                 img,
                 descripcion,
                 estado,

@@ -1,4 +1,22 @@
 export class UpdateProyectoDto {
+    private static normalizeRemoteSupport(value: unknown) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+
+        const source = value as Record<string, unknown>;
+        const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
+        const baseUrl = typeof source.baseUrl === "string" ? source.baseUrl.trim() : "";
+        const enabled = Boolean(source.enabled) || baseUrl.length > 0;
+
+        if (provider !== "MESHCENTRAL") return undefined;
+
+        return {
+            provider: "MESHCENTRAL" as const,
+            enabled,
+            baseUrl: baseUrl || undefined,
+            updatedAt: new Date(),
+        };
+    }
+
     private static normalizeCoordinates(value: unknown): number[] | number[][] | undefined {
         if (!Array.isArray(value)) return undefined;
 
@@ -32,6 +50,7 @@ export class UpdateProyectoDto {
         public readonly serverIp?: string,
         public readonly serverMac?: string,
         public readonly localApiBaseUrl?: string,
+        public readonly remoteSupport?: ReturnType<typeof UpdateProyectoDto.normalizeRemoteSupport>,
         public readonly img?: string,
         public readonly descripcion?: string,
         public readonly estado?: boolean,
@@ -59,6 +78,7 @@ export class UpdateProyectoDto {
                 typeof body.localApiBaseUrl === "string"
                     ? body.localApiBaseUrl.trim()
                     : undefined,
+                UpdateProyectoDto.normalizeRemoteSupport(body.remoteSupport),
                 typeof body.img === "string" ? body.img.trim() : undefined,
                 typeof body.descripcion === "string"
                     ? body.descripcion.trim()

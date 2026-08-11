@@ -5,7 +5,8 @@ export class UpdateProyectoDto {
         const source = value as Record<string, unknown>;
         const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
         const baseUrl = typeof source.baseUrl === "string" ? source.baseUrl.trim() : "";
-        const enabled = Boolean(source.enabled) || baseUrl.length > 0;
+        const groupId = typeof source.groupId === "string" ? source.groupId.trim() : "";
+        const enabled = Boolean(source.enabled) || baseUrl.length > 0 || groupId.length > 0;
 
         if (provider !== "MESHCENTRAL") return undefined;
 
@@ -13,6 +14,7 @@ export class UpdateProyectoDto {
             provider: "MESHCENTRAL" as const,
             enabled,
             baseUrl: baseUrl || undefined,
+            groupId: groupId || undefined,
             updatedAt: new Date(),
         };
     }

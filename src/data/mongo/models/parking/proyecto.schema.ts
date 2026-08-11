@@ -89,6 +89,12 @@ const proyectoSchema = new Schema(
                 default: "",
                 trim: true,
             },
+            groupId: {
+                type: String,
+                required: false,
+                default: "",
+                trim: true,
+            },
             updatedAt: {
                 type: Date,
                 required: false,

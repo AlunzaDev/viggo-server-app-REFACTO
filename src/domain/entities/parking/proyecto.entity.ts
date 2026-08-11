@@ -6,6 +6,7 @@ export interface ProyectoRemoteSupport {
     provider: ProyectoRemoteSupportProvider;
     enabled: boolean;
     baseUrl?: string;
+    groupId?: string;
 }
 
 export interface ProyectoEntityOptions {
@@ -115,7 +116,8 @@ export class ProyectoEntity {
         const source = value as Record<string, unknown>;
         const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
         const baseUrl = typeof source.baseUrl === "string" ? source.baseUrl.trim() : "";
-        const enabled = Boolean(source.enabled) || baseUrl.length > 0;
+        const groupId = typeof source.groupId === "string" ? source.groupId.trim() : "";
+        const enabled = Boolean(source.enabled) || baseUrl.length > 0 || groupId.length > 0;
 
         if (provider !== "MESHCENTRAL") return null;
         if (!enabled && !baseUrl) return null;
@@ -124,6 +126,7 @@ export class ProyectoEntity {
             provider: "MESHCENTRAL",
             enabled,
             baseUrl: baseUrl || undefined,
+            groupId: groupId || undefined,
         };
     }
 

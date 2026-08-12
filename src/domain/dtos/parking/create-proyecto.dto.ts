@@ -1,18 +1,20 @@
+import { parseRemoteSupportProvider } from "../../entities/parking/remote-support.entity";
+
 export class CreateProyectoDto {
     private static normalizeRemoteSupport(value: unknown) {
         if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
 
         const source = value as Record<string, unknown>;
-        const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
+        const provider = parseRemoteSupportProvider(source.provider);
         const baseUrl = typeof source.baseUrl === "string" ? source.baseUrl.trim() : "";
         const groupId = typeof source.groupId === "string" ? source.groupId.trim() : "";
         const enabled = Boolean(source.enabled) || baseUrl.length > 0 || groupId.length > 0;
 
-        if (provider !== "MESHCENTRAL") return undefined;
+        if (!provider) return undefined;
         if (!enabled && !baseUrl) return undefined;
 
         return {
-            provider: "MESHCENTRAL" as const,
+            provider,
             enabled,
             baseUrl: baseUrl || undefined,
             groupId: groupId || undefined,

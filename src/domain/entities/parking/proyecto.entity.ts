@@ -1,6 +1,10 @@
 import { CustomError } from "../../errors/custom.error";
+import {
+    parseRemoteSupportProvider,
+    RemoteSupportProvider,
+} from "./remote-support.entity";
 
-export type ProyectoRemoteSupportProvider = "MESHCENTRAL";
+export type ProyectoRemoteSupportProvider = RemoteSupportProvider;
 
 export interface ProyectoRemoteSupport {
     provider: ProyectoRemoteSupportProvider;
@@ -114,16 +118,16 @@ export class ProyectoEntity {
         if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
         const source = value as Record<string, unknown>;
-        const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
+        const provider = parseRemoteSupportProvider(source.provider);
         const baseUrl = typeof source.baseUrl === "string" ? source.baseUrl.trim() : "";
         const groupId = typeof source.groupId === "string" ? source.groupId.trim() : "";
         const enabled = Boolean(source.enabled) || baseUrl.length > 0 || groupId.length > 0;
 
-        if (provider !== "MESHCENTRAL") return null;
+        if (!provider) return null;
         if (!enabled && !baseUrl) return null;
 
         return {
-            provider: "MESHCENTRAL",
+            provider,
             enabled,
             baseUrl: baseUrl || undefined,
             groupId: groupId || undefined,

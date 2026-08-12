@@ -2,6 +2,7 @@ import {
     ModuloRemoteSupport,
     ModuloTipo,
 } from "../../entities/parking/modulo.entity";
+import { parseRemoteSupportProvider } from "../../entities/parking/remote-support.entity";
 
 const MODULO_TIPOS: ModuloTipo[] = ["ENTRADA", "SALIDA", "POS"];
 
@@ -64,8 +65,8 @@ function parseRemoteSupport(value: unknown): ModuloRemoteSupport | null | undefi
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
     const source = value as Record<string, unknown>;
-    const provider = String(source.provider ?? "MESHCENTRAL").trim().toUpperCase();
-    if (provider !== "MESHCENTRAL") return null;
+    const provider = parseRemoteSupportProvider(source.provider);
+    if (!provider) return null;
 
     return {
         provider,

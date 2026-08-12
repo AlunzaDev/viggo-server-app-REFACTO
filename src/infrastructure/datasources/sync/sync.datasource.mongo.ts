@@ -17,6 +17,7 @@ import {
   normalizeUserModulesForApp,
   type UserAppAccess,
 } from "../../../domain/constants";
+import { parseRemoteSupportProvider } from "../../../domain/entities/parking/remote-support.entity";
 import {
   SyncDatasource,
   type HeartbeatSnapshotPayload,
@@ -261,6 +262,28 @@ const normalizeDeviceConnectionAudit = (value: unknown) => {
   };
 };
 
+const normalizeRemoteSupport = (value: unknown) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const source = value as Record<string, unknown>;
+  const provider = parseRemoteSupportProvider(source.provider);
+  if (!provider) return null;
+
+  return {
+    provider,
+    enabled: Boolean(source.enabled),
+    deviceName: normalizeOptionalText(source.deviceName),
+    deviceId: normalizeOptionalText(source.deviceId),
+    groupId: normalizeOptionalText(source.groupId),
+    baseUrl: normalizeOptionalText(source.baseUrl),
+    supportUrl: normalizeOptionalText(source.supportUrl),
+    desktopUrl: normalizeOptionalText(source.desktopUrl),
+    terminalUrl: normalizeOptionalText(source.terminalUrl),
+    linkedAt: toDateOrNull(source.linkedAt) ?? undefined,
+    updatedAt: toDateOrNull(source.updatedAt) ?? new Date(),
+  };
+};
+
 const applyDeviceRuntimeSnapshotToModules = async (
   payload: HeartbeatSnapshotPayload,
   receivedAt: number,
@@ -285,6 +308,7 @@ const applyDeviceRuntimeSnapshotToModules = async (
           (source.deviceBinding as Record<string, unknown> | undefined)
             ?.fingerprint,
         ) || normalizeOptionalText(source.fingerprint);
+      const remoteSupport = normalizeRemoteSupport(source.remoteSupport);
 
       await ModuloModel.updateOne(
         {
@@ -328,6 +352,7 @@ const applyDeviceRuntimeSnapshotToModules = async (
               sourceInstallationId: payload.installationId,
               syncedAt: new Date(receivedAt),
             },
+            ...(remoteSupport ? { remoteSupport } : {}),
           },
         },
       );

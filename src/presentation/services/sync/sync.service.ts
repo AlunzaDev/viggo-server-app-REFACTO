@@ -4,7 +4,7 @@ import type {
   InboxEventPayload,
   InstallationLinkRequestPayload,
 } from "../../../domain/datasources/sync/sync.datasource";
-import { SyncRepository } from "../../../domain/repository/sync/sync.repository";
+import { SyncRepository } from "../../../domain/repositories/sync/sync.repository";
 
 export class SyncService {
   constructor(private readonly repository: SyncRepository) {}

@@ -1,6 +1,6 @@
 import { PensionDatasource } from "../../../domain/datasources/pension/pension.datasource";
 import { PensionEntity } from "../../../domain/entities/pension/pension.entity";
-import { PensionRepository } from "../../../domain/repository/pension/pension.repository";
+import { PensionRepository } from "../../../domain/repositories/pension/pension.repository";
 
 export class PensionRepositoryImpl implements PensionRepository {
     constructor(private readonly pensionDatasource: PensionDatasource) {}

@@ -4,7 +4,7 @@ import type {
   ProyectoInstallationLinkTokenResult,
 } from "../../../domain/datasources/parking/proyecto.datasource";
 import { CustomError } from "../../../domain/errors/custom.error";
-import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
+import { ProyectoRepository } from "../../../domain/repositories/parking/proyecto.repository";
 
 export class ProyectoService {
   constructor(private readonly proyectoRepository: ProyectoRepository) {}

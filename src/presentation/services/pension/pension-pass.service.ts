@@ -1,7 +1,7 @@
 import { PensionPassEntity } from "../../../domain/entities/pension/pension-pass.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
-import { PensionPassRepository } from "../../../domain/repository/pension/pension-pass.repository";
-import { PensionRepository } from "../../../domain/repository/pension/pension.repository";
+import { PensionPassRepository } from "../../../domain/repositories/pension/pension-pass.repository";
+import { PensionRepository } from "../../../domain/repositories/pension/pension.repository";
 import { PensionPassModel } from "../../../data/mongo/models/pension/pension-pass.schema";
 
 const validKey = (value: string) => /^[A-Za-z0-9._:-]{16,128}$/.test(value);

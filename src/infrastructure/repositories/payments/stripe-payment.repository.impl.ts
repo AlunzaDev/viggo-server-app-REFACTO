@@ -1,5 +1,5 @@
 import type { StripePaymentDatasource } from "../../../domain/datasources/payments/stripe-payment.datasource";
-import { StripePaymentRepository } from "../../../domain/repository/payments/stripe-payment.repository";
+import { StripePaymentRepository } from "../../../domain/repositories/payments/stripe-payment.repository";
 
 export class StripePaymentRepositoryImpl implements StripePaymentRepository {
   constructor(private readonly datasource: StripePaymentDatasource) {}

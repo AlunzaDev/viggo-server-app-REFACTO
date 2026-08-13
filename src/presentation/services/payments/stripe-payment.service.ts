@@ -1,7 +1,7 @@
 import { envs } from "../../../config";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { StripePlugin } from "../../../config/plugins/stripe.plugin";
-import { StripePaymentRepository } from "../../../domain/repository/payments/stripe-payment.repository";
+import { StripePaymentRepository } from "../../../domain/repositories/payments/stripe-payment.repository";
 import { PaymentModel } from "../../../data/mongo/models/payments/payment.schema";
 import { PensionPassModel } from "../../../data/mongo/models/pension/pension-pass.schema";
 import { PensionModel } from "../../../data/mongo/models/pension/pension.schema";

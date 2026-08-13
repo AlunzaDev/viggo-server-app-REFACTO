@@ -5,8 +5,8 @@ import {
 } from "../../../domain/constants";
 import { PermissionProfileEntity } from "../../../domain/entities/auth/permission-profile.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
-import { PermissionProfileRepository } from "../../../domain/repository/auth/permission-profile.repository";
-import { UsuarioRepository } from "../../../domain/repository/auth/usuario.repository";
+import { PermissionProfileRepository } from "../../../domain/repositories/auth/permission-profile.repository";
+import { UsuarioRepository } from "../../../domain/repositories/auth/usuario.repository";
 
 export class PermissionProfileService {
   constructor(

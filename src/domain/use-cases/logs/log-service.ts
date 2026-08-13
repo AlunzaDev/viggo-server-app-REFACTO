@@ -1,5 +1,5 @@
 import { LogEntity } from "../../entities";
-import { LogRepository } from "../../repository";
+import { LogRepository } from "../../repositories";
 
 export class LoggerService {
     private static instance: LoggerService;

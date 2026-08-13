@@ -1,6 +1,6 @@
 import { UsuarioDatasource } from "../../../domain/datasources/auth/usuario.datasource";
 import { UsuarioEntity } from "../../../domain/entities/auth/usuario.entity";
-import { UsuarioRepository } from "../../../domain/repository/auth/usuario.repository";
+import { UsuarioRepository } from "../../../domain/repositories/auth/usuario.repository";
 
 export class UsuarioRepositoryImpl implements UsuarioRepository {
   constructor(private readonly usuarioDatasource: UsuarioDatasource) {}

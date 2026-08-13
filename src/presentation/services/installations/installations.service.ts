@@ -1,5 +1,5 @@
 import { envs } from "../../../config";
-import { InstallationsRepository } from "../../../domain/repository/installations/installations.repository";
+import { InstallationsRepository } from "../../../domain/repositories/installations/installations.repository";
 
 const buildLocalUrl = (baseUrl: string, path: string) =>
   `${baseUrl.replace(/\/+$/, "")}${path}`;

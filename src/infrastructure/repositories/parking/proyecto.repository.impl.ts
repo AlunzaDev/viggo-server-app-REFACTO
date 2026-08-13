@@ -4,7 +4,7 @@ import {
     type ProyectoInstallationLinkTokenResult,
 } from "../../../domain/datasources/parking/proyecto.datasource";
 import { ProyectoEntity } from "../../../domain/entities/parking/proyecto.entity";
-import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
+import { ProyectoRepository } from "../../../domain/repositories/parking/proyecto.repository";
 
 export class ProyectoRepositoryImpl implements ProyectoRepository {
     constructor(private readonly proyectoDatasource: ProyectoDatasource) {}

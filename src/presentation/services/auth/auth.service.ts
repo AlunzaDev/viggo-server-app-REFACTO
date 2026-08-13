@@ -26,8 +26,8 @@ import {
 } from "../../../domain/entities/auth/usuario.entity";
 import type { PermissionProfileEntity } from "../../../domain/entities/auth/permission-profile.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
-import { AuthRepository } from "../../../domain/repository/auth/auth.repository";
-import { PermissionProfileRepository } from "../../../domain/repository/auth/permission-profile.repository";
+import { AuthRepository } from "../../../domain/repositories/auth/auth.repository";
+import { PermissionProfileRepository } from "../../../domain/repositories/auth/permission-profile.repository";
 
 import { EmailService } from "../email/email.service";
 

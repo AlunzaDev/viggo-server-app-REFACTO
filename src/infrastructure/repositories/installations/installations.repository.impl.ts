@@ -3,7 +3,7 @@ import type {
   InstallationReviewPayload,
   InstallationsDatasource,
 } from "../../../domain/datasources/installations/installations.datasource";
-import { InstallationsRepository } from "../../../domain/repository/installations/installations.repository";
+import { InstallationsRepository } from "../../../domain/repositories/installations/installations.repository";
 
 export class InstallationsRepositoryImpl implements InstallationsRepository {
   constructor(private readonly datasource: InstallationsDatasource) {}

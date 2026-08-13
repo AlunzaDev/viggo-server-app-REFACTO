@@ -1,6 +1,6 @@
 import { PaymentDatasource } from "../../../domain/datasources/payments/payment.datasource";
 import { PaymentEntity } from "../../../domain/entities/payments/payment.entity";
-import { PaymentRepository } from "../../../domain/repository/payments/payment.repository";
+import { PaymentRepository } from "../../../domain/repositories/payments/payment.repository";
 
 export class PaymentRepositoryImpl extends PaymentRepository {
   constructor(private readonly paymentDatasource: PaymentDatasource) {

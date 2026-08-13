@@ -2,8 +2,8 @@ import { ModuloFilters } from "../../../domain/datasources/parking/modulo.dataso
 import { ModuloSubmoduloDtoValues } from "../../../domain/dtos/parking/modulo-submodulo.dto";
 import { ModuloEntity, ModuloSubmodulo } from "../../../domain/entities/parking/modulo.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
-import { ModuloRepository } from "../../../domain/repository/parking/modulo.repository";
-import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
+import { ModuloRepository } from "../../../domain/repositories/parking/modulo.repository";
+import { ProyectoRepository } from "../../../domain/repositories/parking/proyecto.repository";
 
 export class ModuloCrudService {
   constructor(

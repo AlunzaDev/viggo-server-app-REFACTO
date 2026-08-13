@@ -1,5 +1,5 @@
 import { CustomError } from "../../../domain/errors/custom.error";
-import { PaymentRepository } from "../../../domain/repository/payments/payment.repository";
+import { PaymentRepository } from "../../../domain/repositories/payments/payment.repository";
 import {
   buildPaginatedResponse,
   parsePaginationDateQuery,

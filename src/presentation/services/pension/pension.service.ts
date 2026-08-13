@@ -1,7 +1,7 @@
 import { PensionEntity } from "../../../domain/entities/pension/pension.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
-import { PensionRepository } from "../../../domain/repository/pension/pension.repository";
-import { ProyectoRepository } from "../../../domain/repository/parking/proyecto.repository";
+import { PensionRepository } from "../../../domain/repositories/pension/pension.repository";
+import { ProyectoRepository } from "../../../domain/repositories/parking/proyecto.repository";
 import { PensionModel } from "../../../data/mongo/models/pension/pension.schema";
 
 export class PensionService {

@@ -1,11 +1,13 @@
 import {
     ModuloRemoteSupport,
-    ModuloTipo,
 } from "../../entities/parking/modulo.entity";
 import { ModuloSubmodulo } from "../../entities/parking/modulo.entity";
+import {
+    MODULO_TIPOS,
+    ModuloTipo,
+    parseModuloTipo,
+} from "../../entities/parking/module-type.entity";
 import { parseRemoteSupportProvider } from "../../entities/parking/remote-support.entity";
-
-const MODULO_TIPOS: ModuloTipo[] = ["ENTRADA", "SALIDA", "POS"];
 
 export class CreateModuloDto {
     private constructor(
@@ -26,7 +28,7 @@ export class CreateModuloDto {
     static create(body: Record<string, unknown>): [string?, CreateModuloDto?] {
         const nombre = typeof body.nombre === "string" ? body.nombre.trim() : "";
         const proyecto = typeof body.proyecto === "string" ? body.proyecto.trim() : "";
-        const tipo = typeof body.tipo === "string" ? body.tipo.trim().toUpperCase() : "";
+        const tipo = parseModuloTipo(body.tipo);
         const identificador =
             typeof body.identificador === "string" ? body.identificador.trim() : "";
         const estado = typeof body.estado === "boolean" ? body.estado : true;
@@ -51,10 +53,8 @@ export class CreateModuloDto {
 
         if (!nombre) return ["'nombre' es requerido"];
         if (!proyecto) return ["'proyecto' es requerido"];
-        if (!tipo) return ["'tipo' es requerido"];
-        if (!MODULO_TIPOS.includes(tipo as ModuloTipo)) {
-            return ["'tipo' no es valido"];
-        }
+        if (!body.tipo) return ["'tipo' es requerido"];
+        if (!tipo) return [`'tipo' debe ser uno de: ${MODULO_TIPOS.join(", ")}`];
         if (!identificador) return ["'identificador' es requerido"];
 
         return [
@@ -62,7 +62,7 @@ export class CreateModuloDto {
             new CreateModuloDto(
                 nombre,
                 proyecto,
-                tipo as ModuloTipo,
+                tipo,
                 identificador,
                 estado,
                 ip,

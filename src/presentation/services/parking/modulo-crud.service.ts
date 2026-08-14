@@ -1,6 +1,11 @@
 import { ModuloFilters } from "../../../domain/datasources/parking/modulo.datasource";
 import { ModuloSubmoduloDtoValues } from "../../../domain/dtos/parking/modulo-submodulo.dto";
-import { ModuloEntity, ModuloSubmodulo } from "../../../domain/entities/parking/modulo.entity";
+import {
+  ModuloCreateValues,
+  ModuloEntity,
+  ModuloSubmodulo,
+  ModuloUpdateValues,
+} from "../../../domain/entities/parking/modulo.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { ModuloRepository } from "../../../domain/repositories/parking/modulo.repository";
 import { ProyectoRepository } from "../../../domain/repositories/parking/proyecto.repository";
@@ -11,11 +16,14 @@ export class ModuloCrudService {
     private readonly proyectoRepository: ProyectoRepository,
   ) {}
 
-  async createModulo(modulo: Omit<ModuloEntity, "id">): Promise<ModuloEntity> {
+  async createModulo(modulo: ModuloCreateValues): Promise<ModuloEntity> {
     const proyecto = await this.proyectoRepository.findById(modulo.proyecto);
-    if (!proyecto) throw CustomError.badRequest("El proyecto asociado no existe");
+    if (!proyecto)
+      throw CustomError.badRequest("El proyecto asociado no existe");
 
-    const moduloExists = await this.moduloRepository.findByIdentificador(modulo.identificador);
+    const moduloExists = await this.moduloRepository.findByIdentificador(
+      modulo.identificador,
+    );
     if (moduloExists) {
       throw CustomError.badRequest(
         `El modulo con identificador '${modulo.identificador}' ya existe`,
@@ -44,7 +52,8 @@ export class ModuloCrudService {
   }
 
   async getModuloByIdentificador(identificador: string): Promise<ModuloEntity> {
-    const modulo = await this.moduloRepository.findByIdentificador(identificador);
+    const modulo =
+      await this.moduloRepository.findByIdentificador(identificador);
     if (!modulo) throw CustomError.notFound("Modulo no encontrado");
     return modulo;
   }
@@ -57,17 +66,23 @@ export class ModuloCrudService {
 
   async updateModulo(
     id: string,
-    modulo: Partial<Omit<ModuloEntity, "id">>,
+    modulo: ModuloUpdateValues,
   ): Promise<ModuloEntity> {
     const current = await this.getModuloById(id);
 
     if (modulo.proyecto && modulo.proyecto !== current.proyecto) {
       const proyecto = await this.proyectoRepository.findById(modulo.proyecto);
-      if (!proyecto) throw CustomError.badRequest("El proyecto asociado no existe");
+      if (!proyecto)
+        throw CustomError.badRequest("El proyecto asociado no existe");
     }
 
-    if (modulo.identificador && modulo.identificador !== current.identificador) {
-      const duplicate = await this.moduloRepository.findByIdentificador(modulo.identificador);
+    if (
+      modulo.identificador &&
+      modulo.identificador !== current.identificador
+    ) {
+      const duplicate = await this.moduloRepository.findByIdentificador(
+        modulo.identificador,
+      );
       if (duplicate && duplicate.id !== id) {
         throw CustomError.badRequest(
           `El modulo con identificador '${modulo.identificador}' ya existe`,
@@ -109,14 +124,24 @@ export class ModuloCrudService {
     submodulo: ModuloSubmoduloDtoValues,
   ): Promise<ModuloSubmodulo> {
     await this.getModuloById(id);
-    const updated = await this.moduloRepository.updateSubmodulo(id, submoduloId, submodulo);
+    const updated = await this.moduloRepository.updateSubmodulo(
+      id,
+      submoduloId,
+      submodulo,
+    );
     if (!updated) throw CustomError.notFound("Submodulo no encontrado");
     return updated;
   }
 
-  async deleteSubmodulo(id: string, submoduloId: string): Promise<ModuloEntity> {
+  async deleteSubmodulo(
+    id: string,
+    submoduloId: string,
+  ): Promise<ModuloEntity> {
     await this.getModuloById(id);
-    const updated = await this.moduloRepository.deleteSubmodulo(id, submoduloId);
+    const updated = await this.moduloRepository.deleteSubmodulo(
+      id,
+      submoduloId,
+    );
     if (!updated) throw CustomError.notFound("Submodulo no encontrado");
     return updated;
   }

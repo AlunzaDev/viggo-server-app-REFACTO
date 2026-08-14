@@ -3,6 +3,7 @@ import {
   DEFAULT_REMOTE_SUPPORT_PROVIDER,
   REMOTE_SUPPORT_PROVIDERS,
 } from "../../../../domain/entities/parking/remote-support.entity";
+import { MODULO_TIPOS } from "../../../../domain/entities/parking/module-type.entity";
 
 const moduloSubmoduloSchema = new Schema(
   {
@@ -161,7 +162,7 @@ const moduloSchema = new Schema(
     tipo: {
       type: String,
       required: true,
-      enum: ["ENTRADA", "SALIDA", "POS"],
+      enum: MODULO_TIPOS,
       index: true,
     },
     estado: { type: Boolean, default: true, index: true },

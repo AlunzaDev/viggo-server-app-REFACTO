@@ -5,7 +5,14 @@ import {
   UpdateModuloSubmoduloDto,
 } from "../../../domain/dtos/parking/modulo-submodulo.dto";
 import { UpdateModuloDto } from "../../../domain/dtos/parking/update-modulo.dto";
-import { ModuloEntity, ModuloSubmodulo } from "../../../domain/entities/parking/modulo.entity";
+import {
+  ModuloEntity,
+  ModuloSubmodulo,
+} from "../../../domain/entities/parking/modulo.entity";
+import {
+  ModuloTipo,
+  parseModuloTipo,
+} from "../../../domain/entities/parking/module-type.entity";
 import {
   canAccessProjectFromRequest,
   getAllowedProjectIdsFromRequest,
@@ -36,6 +43,7 @@ export class ModuloController {
       nombre: modulo.nombre,
       proyecto: modulo.proyecto,
       tipo: modulo.tipo,
+      capabilities: modulo.capabilities,
       estado: modulo.estado,
       identificador: modulo.identificador,
       ip: modulo.ip,
@@ -77,16 +85,12 @@ export class ModuloController {
     return null;
   }
 
-  private parseTipo(value: unknown): ModuloEntity["tipo"] | undefined | null {
+  private parseTipo(value: unknown): ModuloTipo | undefined | null {
     if (value === undefined) return undefined;
-    const normalized = String(value).trim().toUpperCase();
-    if (normalized === "ENTRADA" || normalized === "SALIDA" || normalized === "POS") {
-      return normalized;
-    }
-    return null;
+    return parseModuloTipo(value);
   }
 
-  private parseTipos(value: unknown): ModuloEntity["tipo"][] | null {
+  private parseTipos(value: unknown): ModuloTipo[] | null {
     if (value === undefined) return [];
 
     const rawValues = Array.isArray(value)
@@ -99,7 +103,7 @@ export class ModuloController {
     const parsedValues = rawValues.map((item) => this.parseTipo(item));
     if (parsedValues.some((item) => item === null)) return null;
 
-    return parsedValues.filter((item): item is ModuloEntity["tipo"] => Boolean(item));
+    return parsedValues.filter((item): item is ModuloTipo => Boolean(item));
   }
 
   createModulo = async (req: Request, res: Response) => {
@@ -119,7 +123,10 @@ export class ModuloController {
 
   getModulos = async (req: Request, res: Response) => {
     try {
-      const proyecto = typeof req.query.proyecto === "string" ? req.query.proyecto.trim() : undefined;
+      const proyecto =
+        typeof req.query.proyecto === "string"
+          ? req.query.proyecto.trim()
+          : undefined;
       const tipos = this.parseTipos(req.query.tipos ?? req.query.tipo);
       const estado = this.parseEstado(req.query.estado);
       const search =
@@ -128,8 +135,10 @@ export class ModuloController {
         req.query.page !== undefined || req.query.limit !== undefined;
       const { page, limit } = parsePaginationDateQuery(req.query);
 
-      if (tipos === null) return res.status(400).json({ error: "'tipo' no es valido" });
-      if (estado === null) return res.status(400).json({ error: "'estado' debe ser boolean" });
+      if (tipos === null)
+        return res.status(400).json({ error: "'tipo' no es valido" });
+      if (estado === null)
+        return res.status(400).json({ error: "'estado' debe ser boolean" });
       if (proyecto && !canAccessProjectFromRequest(req, proyecto)) {
         return res.status(403).json({ error: "Forbidden" });
       }
@@ -159,7 +168,9 @@ export class ModuloController {
             modulo.ubicacion ?? "",
             modulo.descripcion ?? "",
             modulo.tipo,
-          ].some((value) => this.normalizeText(String(value ?? "")).includes(normalizedSearch)),
+          ].some((value) =>
+            this.normalizeText(String(value ?? "")).includes(normalizedSearch),
+          ),
         );
       }
 
@@ -168,15 +179,17 @@ export class ModuloController {
         return res.status(200).json({ modulos: sanitized });
       }
 
-      return res.status(200).json(
-        buildPaginatedResponse(
-          "modulos",
-          paginateArray(sanitized, page, limit),
-          sanitized.length,
-          page,
-          limit,
-        ),
-      );
+      return res
+        .status(200)
+        .json(
+          buildPaginatedResponse(
+            "modulos",
+            paginateArray(sanitized, page, limit),
+            sanitized.length,
+            page,
+            limit,
+          ),
+        );
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -189,7 +202,9 @@ export class ModuloController {
         return res.status(403).json({ error: "Forbidden" });
       }
       const modulos = await this.moduloService.getModulosByProyecto(proyectoId);
-      return res.status(200).json({ modulos: modulos.map((item) => this.sanitizeModulo(item)) });
+      return res
+        .status(200)
+        .json({ modulos: modulos.map((item) => this.sanitizeModulo(item)) });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -197,7 +212,9 @@ export class ModuloController {
 
   getModuloByIdentificador = async (req: Request, res: Response) => {
     try {
-      const modulo = await this.moduloService.getModuloByIdentificador(String(req.params.identificador));
+      const modulo = await this.moduloService.getModuloByIdentificador(
+        String(req.params.identificador),
+      );
       if (!canAccessProjectFromRequest(req, modulo.proyecto)) {
         return res.status(403).json({ error: "Forbidden" });
       }
@@ -209,7 +226,9 @@ export class ModuloController {
 
   getModuloById = async (req: Request, res: Response) => {
     try {
-      const modulo = await this.moduloService.getModuloById(String(req.params.id));
+      const modulo = await this.moduloService.getModuloById(
+        String(req.params.id),
+      );
       if (!canAccessProjectFromRequest(req, modulo.proyecto)) {
         return res.status(403).json({ error: "Forbidden" });
       }
@@ -264,7 +283,9 @@ export class ModuloController {
         return res.status(403).json({ error: "Forbidden" });
       }
       const submodulos = await this.moduloService.getSubmodulos(id);
-      return res.status(200).json({ submodulos: submodulos.map((item) => this.sanitizeSubmodulo(item)) });
+      return res.status(200).json({
+        submodulos: submodulos.map((item) => this.sanitizeSubmodulo(item)),
+      });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -280,7 +301,9 @@ export class ModuloController {
       const [error, dto] = CreateModuloSubmoduloDto.create(req.body);
       if (error || !dto) return res.status(400).json({ error });
       const submodulo = await this.moduloService.addSubmodulo(id, dto.values);
-      return res.status(201).json({ submodulo: this.sanitizeSubmodulo(submodulo) });
+      return res
+        .status(201)
+        .json({ submodulo: this.sanitizeSubmodulo(submodulo) });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -296,8 +319,14 @@ export class ModuloController {
       }
       const [error, dto] = UpdateModuloSubmoduloDto.create(req.body);
       if (error || !dto) return res.status(400).json({ error });
-      const submodulo = await this.moduloService.updateSubmodulo(id, submoduloId, dto.values);
-      return res.status(200).json({ submodulo: this.sanitizeSubmodulo(submodulo) });
+      const submodulo = await this.moduloService.updateSubmodulo(
+        id,
+        submoduloId,
+        dto.values,
+      );
+      return res
+        .status(200)
+        .json({ submodulo: this.sanitizeSubmodulo(submodulo) });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

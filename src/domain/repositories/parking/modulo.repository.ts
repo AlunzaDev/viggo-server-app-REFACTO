@@ -1,17 +1,24 @@
 import { ModuloFilters } from "../../datasources/parking/modulo.datasource";
 import { ModuloSubmoduloDtoValues } from "../../dtos/parking/modulo-submodulo.dto";
-import { ModuloEntity, ModuloSubmodulo } from "../../entities/parking/modulo.entity";
+import {
+  ModuloCreateValues,
+  ModuloEntity,
+  ModuloSubmodulo,
+  ModuloUpdateValues,
+} from "../../entities/parking/modulo.entity";
 
 export abstract class ModuloRepository {
-  abstract create(modulo: Omit<ModuloEntity, "id">): Promise<ModuloEntity>;
+  abstract create(modulo: ModuloCreateValues): Promise<ModuloEntity>;
   abstract findById(id: string): Promise<ModuloEntity | null>;
-  abstract findByIdentificador(identificador: string): Promise<ModuloEntity | null>;
+  abstract findByIdentificador(
+    identificador: string,
+  ): Promise<ModuloEntity | null>;
   abstract getAll(): Promise<ModuloEntity[]>;
   abstract getFiltered(filters: ModuloFilters): Promise<ModuloEntity[]>;
   abstract getByProyecto(proyectoId: string): Promise<ModuloEntity[]>;
   abstract update(
     id: string,
-    modulo: Partial<Omit<ModuloEntity, "id">>,
+    modulo: ModuloUpdateValues,
   ): Promise<ModuloEntity | null>;
   abstract getSubmodulos(id: string): Promise<ModuloSubmodulo[] | null>;
   abstract addSubmodulo(
@@ -23,6 +30,9 @@ export abstract class ModuloRepository {
     submoduloId: string,
     submodulo: ModuloSubmoduloDtoValues,
   ): Promise<ModuloSubmodulo | null>;
-  abstract deleteSubmodulo(id: string, submoduloId: string): Promise<ModuloEntity | null>;
+  abstract deleteSubmodulo(
+    id: string,
+    submoduloId: string,
+  ): Promise<ModuloEntity | null>;
   abstract delete(id: string): Promise<ModuloEntity | null>;
 }

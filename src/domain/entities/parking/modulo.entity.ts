@@ -3,8 +3,12 @@ import {
   parseRemoteSupportProvider,
   RemoteSupportProvider,
 } from "./remote-support.entity";
+import { ModuloTipo, parseModuloTipo } from "./module-type.entity";
+import {
+  getModuloTypeCapabilities,
+  ModuloTypeCapabilities,
+} from "./module-type-capabilities.entity";
 
-export type ModuloTipo = "ENTRADA" | "SALIDA" | "POS";
 export const MODULO_SUBMODULO_TIPOS = [
   "QR_SCANNER",
   "PRINTER",
@@ -111,6 +115,10 @@ export interface ModuloEntityOptions {
   submodulos?: ModuloSubmodulo[];
 }
 
+export type ModuloCreateValues = Omit<ModuloEntityOptions, "id">;
+
+export type ModuloUpdateValues = Partial<ModuloCreateValues>;
+
 export class ModuloEntity {
   public id: string;
   public nombre: string;
@@ -148,17 +156,28 @@ export class ModuloEntity {
     this.submodulos = options.submodulos ?? [];
   }
 
+  get capabilities(): ModuloTypeCapabilities {
+    return getModuloTypeCapabilities(this.tipo);
+  }
+
+  get requiresDeviceBinding(): boolean {
+    return this.capabilities.requiresDeviceBinding;
+  }
+
+  get supportsRemoteSupport(): boolean {
+    return this.capabilities.supportsRemoteSupport;
+  }
+
   static fromObject(object: Record<string, unknown>): ModuloEntity {
     const id = object.id ?? (object._id ? String(object._id) : undefined);
-    const tipo = String(object.tipo ?? "").trim().toUpperCase();
+    const tipo = parseModuloTipo(object.tipo);
 
     if (!id) throw CustomError.badRequest("Missing id");
     if (!object.nombre) throw CustomError.badRequest("Missing nombre");
     if (!object.proyecto) throw CustomError.badRequest("Missing proyecto");
-    if (tipo !== "ENTRADA" && tipo !== "SALIDA" && tipo !== "POS") {
-      throw CustomError.badRequest("Invalid tipo");
-    }
-    if (!object.identificador) throw CustomError.badRequest("Missing identificador");
+    if (!tipo) throw CustomError.badRequest("Invalid tipo");
+    if (!object.identificador)
+      throw CustomError.badRequest("Missing identificador");
 
     return new ModuloEntity({
       id: String(id),
@@ -218,7 +237,9 @@ function parseDeviceBinding(value: unknown): ModuloDeviceBinding | null {
   };
 }
 
-function parseDeviceBindingRequests(value: unknown): ModuloDeviceBindingRequest[] {
+function parseDeviceBindingRequests(
+  value: unknown,
+): ModuloDeviceBindingRequest[] {
   if (!Array.isArray(value)) return [];
 
   return value
@@ -227,7 +248,9 @@ function parseDeviceBindingRequests(value: unknown): ModuloDeviceBindingRequest[
 
       const source = item as Record<string, unknown>;
       const fingerprint = String(source.fingerprint ?? "").trim();
-      const status = String(source.status ?? "").trim().toUpperCase();
+      const status = String(source.status ?? "")
+        .trim()
+        .toUpperCase();
 
       if (
         !fingerprint ||
@@ -245,7 +268,9 @@ function parseDeviceBindingRequests(value: unknown): ModuloDeviceBindingRequest[
         locationLabel: normalizeOptionalText(source.locationLabel),
         status: status as ModuloDeviceBindingRequestStatus,
         requestedAt: parseDate(source.requestedAt),
-        resolvedAt: source.resolvedAt ? parseDate(source.resolvedAt) : undefined,
+        resolvedAt: source.resolvedAt
+          ? parseDate(source.resolvedAt)
+          : undefined,
         notes: normalizeOptionalText(source.notes),
       };
     })
@@ -315,9 +340,13 @@ function parseSubmodulo(value: unknown): ModuloSubmodulo | null {
   if (!value || typeof value !== "object") return null;
 
   const source = value as Record<string, unknown>;
-  const submoduloId = String(source.submoduloId ?? source.id ?? source._id ?? "").trim();
+  const submoduloId = String(
+    source.submoduloId ?? source.id ?? source._id ?? "",
+  ).trim();
   const nombre = String(source.nombre ?? source.name ?? "").trim();
-  const tipo = String(source.tipo ?? source.type ?? "OTHER").trim().toUpperCase();
+  const tipo = String(source.tipo ?? source.type ?? "OTHER")
+    .trim()
+    .toUpperCase();
 
   if (!submoduloId || !nombre) return null;
 
@@ -341,6 +370,7 @@ function parseCoordinates(value: unknown): [number, number] | undefined {
   if (!Array.isArray(value) || value.length !== 2) return undefined;
   const longitude = Number(value[0]);
   const latitude = Number(value[1]);
-  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return undefined;
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude))
+    return undefined;
   return [longitude, latitude];
 }

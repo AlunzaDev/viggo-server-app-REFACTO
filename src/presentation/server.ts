@@ -12,6 +12,20 @@ interface ServerOptions {
   routes: Router;
 }
 
+const isDevelopmentLoopbackOrigin = (origin: string): boolean => {
+  if (envs.PROD) return false;
+
+  try {
+    const { protocol, hostname } = new URL(origin);
+    return (
+      (protocol === "http:" || protocol === "https:") &&
+      (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]")
+    );
+  } catch {
+    return false;
+  }
+};
+
 export class Server {
   private readonly app = express();
   private readonly host: string;
@@ -41,7 +55,11 @@ export class Server {
         if (envs.CORS_ALLOWED_ORIGINS.length === 0) {
           return callback(null, !envs.PROD);
         }
-        return callback(null, envs.CORS_ALLOWED_ORIGINS.includes(origin));
+        return callback(
+          null,
+          envs.CORS_ALLOWED_ORIGINS.includes(origin) ||
+            isDevelopmentLoopbackOrigin(origin),
+        );
       },
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

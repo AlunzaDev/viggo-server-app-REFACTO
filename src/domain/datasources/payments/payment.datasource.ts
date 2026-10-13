@@ -1,5 +1,6 @@
 import {
   PaymentEntity,
+  PaymentMethodDetails,
   PaymentParking,
   PaymentReference,
   PaymentStatus,
@@ -29,6 +30,7 @@ export interface PaymentRecord {
   reconciledAt?: number;
   reconciliationError?: string;
   metadata?: Record<string, unknown>;
+  paymentMethod?: PaymentMethodDetails;
   reference: PaymentReference;
   parking?: PaymentParking;
   rawProviderStatus?: string;

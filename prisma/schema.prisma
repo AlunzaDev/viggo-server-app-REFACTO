@@ -362,6 +362,8 @@ model Modulo {
 model Submodulo {
   id            String        @id @default(uuid(7)) @db.Uuid
   moduloId      String        @map("modulo_id") @db.Uuid
+  /// Key the API uses for the sub-module: chosen by the client or generated.
+  submoduloId   String        @map("submodulo_id")
   /// Keeps the order the admin defined.
   position      Int           @default(0)
   nombre        String
@@ -377,6 +379,7 @@ model Submodulo {
 
   modulo Modulo @relation(fields: [moduloId], references: [id], onDelete: Cascade)
 
+  @@unique([moduloId, submoduloId])
   @@index([moduloId, position])
   @@map("submodulos")
 }

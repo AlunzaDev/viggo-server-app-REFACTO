@@ -8,6 +8,7 @@ import { StripePaymentMongoDatasource } from "../../infrastructure/datasources/p
 import { StripePaymentRepositoryImpl } from "../../infrastructure/repositories/payments/stripe-payment.repository.impl";
 import { buildPensionPassService } from "./pension.dependencies";
 import {
+  buildJobLockRepository,
   buildMobileOperationRepository,
   buildPaymentRepository,
   buildPensionPassRepository,
@@ -42,4 +43,5 @@ export const buildFinancialReconciliationService = (): FinancialReconciliationSe
     buildPensionPassRepository(),
     buildPensionRepository(),
     buildPensionPassService(),
+    buildJobLockRepository(),
   );

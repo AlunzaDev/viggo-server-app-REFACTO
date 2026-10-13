@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { isValidObjectId } from "mongoose";
 
 import { PermissionProfileModel } from "../../../data/mongo/models/auth/permission-profile.schema";
@@ -11,13 +10,7 @@ import { ProjectHeartbeatSnapshotModel } from "../../../data/mongo/models/system
 import { LocalInstallationRequestModel } from "../../../data/mongo/models/system/local-installation-request.schema";
 import { InboxEventModel } from "../../../data/mongo/models/sync/inbox-event.schema";
 
-import {
-  getInvalidUserModulesForApp,
-  normalizeUserApps,
-  normalizeUserModulesForApp,
-  type UserAppAccess,
-} from "../../../domain/constants";
-import { parseRemoteSupportProvider } from "../../../domain/entities/parking/remote-support.entity";
+import { type UserAppAccess } from "../../../domain/constants";
 import { UniqueConstraintError } from "../../../domain/errors/unique-constraint.error";
 import {
   SyncDatasource,
@@ -25,61 +18,21 @@ import {
   type InboxEventPayload,
   type InstallationLinkRequestPayload,
 } from "../../../domain/datasources/sync/sync.datasource";
+import {
+  buildStableVersion,
+  getPermissionProfileIds,
+  hashToken,
+  normalizeDeviceBinding,
+  normalizeDeviceBindingRequests,
+  normalizeDeviceConnectionAudit,
+  normalizeOptionalText,
+  normalizeRemoteSupport,
+  resolveAccessUserForApp,
+  toDeviceRuntimeSnapshot,
+} from "./sync.normalizers";
 
 const USER_SYNC_SELECT =
   "nombre apellido correo telefono coordinates password emailValidated rol parkings allowedApps appPermissions nacimiento img estado google";
-
-const hashToken = (token: string): string =>
-  createHash("sha256").update(token).digest("hex");
-
-const buildStableVersion = (payload: unknown): number => {
-  const hash = createHash("sha256")
-    .update(JSON.stringify(payload))
-    .digest("hex")
-    .slice(0, 10);
-
-  return parseInt(hash, 16);
-};
-
-const normalizeProfileId = (value: unknown): string => {
-  if (typeof value !== "string") return "";
-  return value.trim();
-};
-
-const getPermissionProfileIds = (users: unknown[]): string[] => {
-  const profileIds = new Set<string>();
-
-  for (const item of users) {
-    if (typeof item !== "object" || item === null || Array.isArray(item)) {
-      continue;
-    }
-
-    const user = item as Record<string, unknown>;
-    if (!Array.isArray(user.appPermissions)) {
-      continue;
-    }
-
-    for (const itemPermission of user.appPermissions) {
-      if (
-        typeof itemPermission !== "object" ||
-        itemPermission === null ||
-        Array.isArray(itemPermission)
-      ) {
-        continue;
-      }
-
-      const permission = itemPermission as Record<string, unknown>;
-
-      const profileId = normalizeProfileId(permission.permissionProfileId);
-
-      if (profileId) {
-        profileIds.add(profileId);
-      }
-    }
-  }
-
-  return Array.from(profileIds);
-};
 
 const findActiveProfileForApp = async (
   permissionProfileId: string,
@@ -96,195 +49,6 @@ const findActiveProfileForApp = async (
   }).lean();
 };
 
-const resolveAccessUserForApp = async (
-  user: Record<string, unknown>,
-  app: UserAppAccess,
-) => {
-  const allowedApps = normalizeUserApps(user.allowedApps);
-
-  if (!allowedApps.includes(app)) {
-    return null;
-  }
-
-  const rawAppPermissions = Array.isArray(user.appPermissions)
-    ? user.appPermissions
-    : [];
-
-  const assignment = rawAppPermissions.find((item) => {
-    if (typeof item !== "object" || item === null || Array.isArray(item)) {
-      return false;
-    }
-
-    const permission = item as Record<string, unknown>;
-
-    return (
-      permission.app === app &&
-      normalizeProfileId(permission.permissionProfileId).length > 0
-    );
-  }) as Record<string, unknown> | undefined;
-
-  if (assignment) {
-    const assignedProfileId = normalizeProfileId(
-      assignment.permissionProfileId,
-    );
-
-    const profile = await findActiveProfileForApp(assignedProfileId, app);
-
-    if (!profile) {
-      return null;
-    }
-
-    if (getInvalidUserModulesForApp(profile.modules, app).length > 0) {
-      return null;
-    }
-
-    return {
-      user: {
-        ...user,
-        allowedApps,
-        appPermissions: [
-          {
-            app,
-            permissionProfileId: String(profile._id),
-          },
-        ],
-      },
-      permissionProfile: {
-        ...profile,
-        modules: normalizeUserModulesForApp(profile.modules, app),
-      },
-    };
-  }
-
-  return app === "OPERATIVE_MOBILE"
-    ? {
-        user: {
-          ...user,
-          allowedApps,
-          appPermissions: [],
-        },
-        permissionProfile: null,
-      }
-    : null;
-};
-
-const toDateOrNull = (value: unknown): Date | null => {
-  const parsed =
-    value instanceof Date
-      ? value
-      : typeof value === "number"
-        ? new Date(value)
-        : new Date(String(value ?? ""));
-
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const normalizeOptionalText = (value: unknown): string =>
-  String(value ?? "").trim();
-
-const normalizeDeviceBinding = (value: unknown) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-
-  const source = value as Record<string, unknown>;
-  const fingerprint = normalizeOptionalText(source.fingerprint);
-  const boundAt = toDateOrNull(source.boundAt);
-  const lastSeenAt = toDateOrNull(source.lastSeenAt);
-
-  if (!fingerprint || !boundAt || !lastSeenAt) return null;
-
-  return {
-    fingerprint,
-    cpuSerial: normalizeOptionalText(source.cpuSerial),
-    machineId: normalizeOptionalText(source.machineId),
-    primaryMac: normalizeOptionalText(source.primaryMac),
-    boundAt,
-    lastSeenAt,
-  };
-};
-
-const normalizeDeviceBindingRequests = (value: unknown) => {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .map((item) => {
-      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
-
-      const source = item as Record<string, unknown>;
-      const fingerprint = normalizeOptionalText(source.fingerprint);
-      const status = normalizeOptionalText(source.status).toUpperCase();
-      const requestedAt = toDateOrNull(source.requestedAt);
-
-      if (
-        !fingerprint ||
-        !requestedAt ||
-        !["PENDING", "APPROVED", "REJECTED"].includes(status)
-      ) {
-        return null;
-      }
-
-      return {
-        fingerprint,
-        cpuSerial: normalizeOptionalText(source.cpuSerial),
-        machineId: normalizeOptionalText(source.machineId),
-        primaryMac: normalizeOptionalText(source.primaryMac),
-        ipAddress: normalizeOptionalText(source.ipAddress),
-        locationLabel: normalizeOptionalText(source.locationLabel),
-        status,
-        requestedAt,
-        resolvedAt: toDateOrNull(source.resolvedAt) ?? undefined,
-        notes: normalizeOptionalText(source.notes),
-      };
-    })
-    .filter(Boolean);
-};
-
-const normalizeDeviceConnectionAudit = (value: unknown) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-
-  const source = value as Record<string, unknown>;
-  const status = normalizeOptionalText(source.status).toUpperCase();
-  const attemptedAt = toDateOrNull(source.attemptedAt);
-
-  if (!attemptedAt || !["APPROVED", "PENDING", "REJECTED"].includes(status)) {
-    return null;
-  }
-
-  return {
-    fingerprint: normalizeOptionalText(source.fingerprint),
-    cpuSerial: normalizeOptionalText(source.cpuSerial),
-    machineId: normalizeOptionalText(source.machineId),
-    primaryMac: normalizeOptionalText(source.primaryMac),
-    ipAddress: normalizeOptionalText(source.ipAddress),
-    locationLabel: normalizeOptionalText(source.locationLabel),
-    socketId: normalizeOptionalText(source.socketId),
-    status,
-    reason: normalizeOptionalText(source.reason),
-    attemptedAt,
-  };
-};
-
-const normalizeRemoteSupport = (value: unknown) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-
-  const source = value as Record<string, unknown>;
-  const provider = parseRemoteSupportProvider(source.provider);
-  if (!provider) return null;
-
-  return {
-    provider,
-    enabled: Boolean(source.enabled),
-    deviceName: normalizeOptionalText(source.deviceName),
-    deviceId: normalizeOptionalText(source.deviceId),
-    groupId: normalizeOptionalText(source.groupId),
-    baseUrl: normalizeOptionalText(source.baseUrl),
-    supportUrl: normalizeOptionalText(source.supportUrl),
-    desktopUrl: normalizeOptionalText(source.desktopUrl),
-    terminalUrl: normalizeOptionalText(source.terminalUrl),
-    linkedAt: toDateOrNull(source.linkedAt) ?? undefined,
-    updatedAt: toDateOrNull(source.updatedAt) ?? new Date(),
-  };
-};
-
 const applyDeviceRuntimeSnapshotToModules = async (
   payload: HeartbeatSnapshotPayload,
   receivedAt: number,
@@ -297,18 +61,6 @@ const applyDeviceRuntimeSnapshotToModules = async (
       const moduleId = normalizeOptionalText(source.id);
       if (!moduleId || !isValidObjectId(moduleId)) return;
 
-      const lastHeartbeatAt = toDateOrNull(source.lastHeartbeatAt);
-      const lastDisconnectAt = toDateOrNull(source.lastDisconnectAt);
-      const connectedAt = toDateOrNull(source.connectedAt);
-      const heartbeatStatus = normalizeOptionalText(source.heartbeatStatus);
-      const connectionStatus = normalizeOptionalText(
-        source.connectionStatus,
-      ).toUpperCase();
-      const runtimeFingerprint =
-        normalizeOptionalText(
-          (source.deviceBinding as Record<string, unknown> | undefined)
-            ?.fingerprint,
-        ) || normalizeOptionalText(source.fingerprint);
       const remoteSupport = normalizeRemoteSupport(source.remoteSupport);
 
       await ModuloModel.updateOne(
@@ -325,34 +77,7 @@ const applyDeviceRuntimeSnapshotToModules = async (
             deviceConnectionAudit: normalizeDeviceConnectionAudit(
               source.deviceConnectionAudit,
             ),
-            deviceRuntimeSnapshot: {
-              fingerprint: runtimeFingerprint,
-              socketId: normalizeOptionalText(source.socketId),
-              ipAddress: normalizeOptionalText(source.ipAddress),
-              locationLabel: normalizeOptionalText(source.locationLabel),
-              connectionStatus: [
-                "CONNECTED",
-                "DISCONNECTED",
-                "PENDING",
-                "REJECTED",
-                "MISMATCH",
-              ].includes(connectionStatus)
-                ? connectionStatus
-                : "PENDING",
-              heartbeatStatus: ["online", "offline", "pending"].includes(
-                heartbeatStatus,
-              )
-                ? heartbeatStatus
-                : "pending",
-              isConnected: Boolean(source.isConnected),
-              isAuthorized: Boolean(source.isAuthorized),
-              connectedAt: connectedAt ?? undefined,
-              lastHeartbeatAt: lastHeartbeatAt ?? undefined,
-              lastDisconnectAt: lastDisconnectAt ?? undefined,
-              message: normalizeOptionalText(source.message),
-              sourceInstallationId: payload.installationId,
-              syncedAt: new Date(receivedAt),
-            },
+            deviceRuntimeSnapshot: toDeviceRuntimeSnapshot(source, payload.installationId, receivedAt),
             ...(remoteSupport ? { remoteSupport } : {}),
           },
         },
@@ -508,6 +233,7 @@ export class SyncMongoDatasource implements SyncDatasource {
     return resolveAccessUserForApp(
       user as unknown as Record<string, unknown>,
       app,
+      findActiveProfileForApp,
     );
   }
 
@@ -523,6 +249,7 @@ export class SyncMongoDatasource implements SyncDatasource {
     return resolveAccessUserForApp(
       user as unknown as Record<string, unknown>,
       app,
+      findActiveProfileForApp,
     );
   }
 

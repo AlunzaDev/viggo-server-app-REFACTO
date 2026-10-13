@@ -6,7 +6,8 @@ import { MongoDatabase } from "../data/mongo";
 import { PostgresDatabase } from "../data/postgres";
 import { requestLoggingMiddleware } from "./middlewares/request-logging.middleware";
 import { buildFinancialReconciliationService } from "./dependencies";
-import { buildMobileOperationRepository } from "./dependencies/repositories.dependencies";
+import { buildJobLockRepository, buildMobileOperationRepository } from "./dependencies/repositories.dependencies";
+import { INSTANCE_ID } from "./services/system/instance-id";
 
 interface ServerOptions {
   host?: string;
@@ -132,9 +133,16 @@ export class Server {
   }
 
   private async recoverMobileOperations(): Promise<void> {
-    const operations = buildMobileOperationRepository();
-    const now = Date.now();
-    await operations.backfillRetryPolicy();
-    await operations.recoverStaleProcessing(now, now - 60_000);
+    // If several instances start together, one recovery is enough.
+    const locks = buildJobLockRepository();
+    if (!(await locks.tryAcquire("mobile-operations-recovery", INSTANCE_ID, 60_000))) return;
+    try {
+      const operations = buildMobileOperationRepository();
+      const now = Date.now();
+      await operations.backfillRetryPolicy();
+      await operations.recoverStaleProcessing(now, now - 60_000);
+    } finally {
+      await locks.release("mobile-operations-recovery", INSTANCE_ID);
+    }
   }
 }

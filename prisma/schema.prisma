@@ -703,3 +703,14 @@ model OperationalIncident {
   @@index([proyectoId])
   @@map("operational_incidents")
 }
+
+/// Lease that lets only one API instance run a background job at a time.
+/// Expires on its own, so a crashed instance never blocks the job.
+model JobLease {
+  name       String   @id
+  owner      String
+  acquiredAt DateTime @map("acquired_at") @db.Timestamptz(3)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@map("job_leases")
+}

@@ -6,8 +6,12 @@ import type { MobileOperationRepository } from "../../../domain/repositories/mob
 import type { PaymentRepository } from "../../../domain/repositories/payments/payment.repository";
 import type { PensionPassRepository } from "../../../domain/repositories/pension/pension-pass.repository";
 import type { PensionRepository } from "../../../domain/repositories/pension/pension.repository";
+import type { JobLockRepository } from "../../../domain/repositories/system/job-lock.repository";
 import { OperationalIncidentService } from "../incidents/operational-incident.service";
 import { PensionPassService } from "../pension/pension-pass.service";
+import { INSTANCE_ID } from "../system/instance-id";
+
+const LOCK_NAME = "financial-reconciliation";
 
 export class FinancialReconciliationService {
   private static enabled = false;
@@ -24,6 +28,7 @@ export class FinancialReconciliationService {
     private readonly pensionPasses: PensionPassRepository,
     private readonly pensions: PensionRepository,
     private readonly pensionPassService: PensionPassService,
+    private readonly jobLocks: JobLockRepository,
   ) {}
 
   start(): void {
@@ -56,6 +61,9 @@ export class FinancialReconciliationService {
 
   async runOnce(): Promise<void> {
     if (this.running) return;
+    // With several API instances only one reconciles per interval.
+    const ttlMs = envs.FINANCIAL_RECONCILIATION_INTERVAL_MINUTES * 60_000;
+    if (!(await this.jobLocks.tryAcquire(LOCK_NAME, INSTANCE_ID, ttlMs))) return;
     this.running = true;
     FinancialReconciliationService.runningNow = true;
     FinancialReconciliationService.lastRunStartedAt = Date.now();
@@ -79,6 +87,7 @@ export class FinancialReconciliationService {
       this.running = false;
       FinancialReconciliationService.runningNow = false;
       FinancialReconciliationService.lastRunFinishedAt = Date.now();
+      await this.jobLocks.release(LOCK_NAME, INSTANCE_ID);
     }
   }
 

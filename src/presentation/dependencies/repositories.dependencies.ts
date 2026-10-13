@@ -18,6 +18,8 @@ import { ProyectoRepositoryImpl } from "../../infrastructure/repositories/parkin
 import { PaymentRepositoryImpl } from "../../infrastructure/repositories/payments/payment.repository.impl";
 import { PensionPassRepositoryImpl } from "../../infrastructure/repositories/pension/pension-pass.repository.impl";
 import { PensionRepositoryImpl } from "../../infrastructure/repositories/pension/pension.repository.impl";
+import { JobLockMemoryDatasource } from "../../infrastructure/datasources/system/job-lock.datasource.memory";
+import { JobLockRepositoryImpl } from "../../infrastructure/repositories/system/job-lock.repository.impl";
 
 export const buildUsuarioRepository = () =>
   new UsuarioRepositoryImpl(new UsuarioMongoDatasource());
@@ -45,3 +47,7 @@ export const buildMobileOperationRepository = () =>
 
 export const buildOperationalIncidentRepository = () =>
   new OperationalIncidentRepositoryImpl(new OperationalIncidentMongoDatasource());
+
+// One lock store per process (the in-memory one must be shared to mean anything).
+const jobLockRepository = new JobLockRepositoryImpl(new JobLockMemoryDatasource());
+export const buildJobLockRepository = () => jobLockRepository;

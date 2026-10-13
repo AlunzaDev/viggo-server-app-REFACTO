@@ -1,4 +1,6 @@
 import nodemailer from "nodemailer";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { envs } from "../../../config";
 
 export interface SendEmailOptions {
@@ -8,6 +10,13 @@ export interface SendEmailOptions {
 }
 
 export class EmailService {
+  private readonly logoPath = path.resolve(
+    process.cwd(),
+    "public",
+    "email",
+    "viggo-icon-white.png",
+  );
+
   private readonly isMailerConfigured = Boolean(
     envs.MAILER_HOST && envs.MAILER_EMAIL && envs.MAILER_SECRET_KEY,
   );
@@ -42,6 +51,15 @@ export class EmailService {
         to,
         subject,
         html: htmlBody,
+        attachments: existsSync(this.logoPath)
+          ? [
+              {
+                filename: "viggo-icon.png",
+                path: this.logoPath,
+                cid: "viggo-logo",
+              },
+            ]
+          : [],
       });
 
       return true;

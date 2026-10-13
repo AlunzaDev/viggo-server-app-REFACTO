@@ -26,6 +26,8 @@ import { MobileOperationAdminRoutes } from "./mobile/mobile-operation-admin.rout
 import { StripeWebhookRoutes } from "./payments/stripe-webhook.routes";
 import { HealthRoutes } from "./health/health.routes";
 import { OperationalIncidentRoutes } from "./incidents/operational-incident.routes";
+import { TicketLabRoutes } from "./dev/ticket-lab.routes";
+import { envs } from "../../config";
 
 export class AppRoutes {
   static get routes(): Router {
@@ -41,6 +43,9 @@ export class AppRoutes {
       });
     });
     router.use("/api/health", HealthRoutes.routes);
+    if (!envs.PROD) {
+      router.use("/api/dev/ticket-lab", TicketLabRoutes.routes);
+    }
     router.use("/api/auth", AuthRoutes.routes);
     router.use("/api/stripe/webhook", StripeWebhookRoutes.routes);
     router.use("/api/sync", SyncRoutes.routes);

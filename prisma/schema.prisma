@@ -208,15 +208,16 @@ model Usuario {
   emailValidationTokenHash String?   @map("email_validation_token_hash")
   emailValidationExpiresAt DateTime? @map("email_validation_expires_at") @db.Timestamptz(3)
   telefono                 String    @unique
-  longitude                Float?
-  latitude                 Float?
+  /// As sent by the clients (no fixed order or length).
+  coordinates              Float[]   @default([])
   /// bcrypt hash.
   password                 String
   passwordResetTokenHash   String?   @map("password_reset_token_hash")
   passwordResetExpiresAt   DateTime? @map("password_reset_expires_at") @db.Timestamptz(3)
   rol                      String    @default("CLIENT_ROLE")
   allowedApps              UserApp[] @default([]) @map("allowed_apps")
-  nacimiento               DateTime? @db.Date
+  /// Instant sent by the clients (epoch ms in the API).
+  nacimiento               DateTime? @db.Timestamptz(3)
   img                      String    @default("")
   estado                   Boolean   @default(true)
   google                   Boolean   @default(false)

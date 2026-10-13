@@ -9,6 +9,7 @@ interface MongoConnectionOptions {
 export class MongoDatabase {
     private static listenersRegistered = false;
     private static disconnectExitTimer: NodeJS.Timeout | null = null;
+    private static shuttingDown = false;
 
     private static clearDisconnectExitTimer() {
         if (this.disconnectExitTimer) {
@@ -18,7 +19,7 @@ export class MongoDatabase {
     }
 
     private static scheduleDisconnectExit() {
-        if (this.disconnectExitTimer) return;
+        if (this.disconnectExitTimer || this.shuttingDown) return;
 
         const delayMs = envs.MONGO_DISCONNECT_EXIT_DELAY_MS;
         console.error(
@@ -65,6 +66,12 @@ export class MongoDatabase {
             console.log("Database Connection error");
             throw error;
         }
+    }
+
+    static async disconnect() {
+        this.shuttingDown = true;
+        this.clearDisconnectExitTimer();
+        await mongoose.disconnect();
     }
 
     static isHealthy() {

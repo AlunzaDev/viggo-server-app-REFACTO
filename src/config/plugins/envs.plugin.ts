@@ -24,6 +24,9 @@ const corsAllowedOrigins = [
 const mongoUrl = getConfigValue("MONGO_URL") ?? "";
 if (!mongoUrl) throw new Error("MONGO_URL is required.");
 
+const databaseUrl = getConfigValue("DATABASE_URL") ?? "";
+if (!databaseUrl) throw new Error("DATABASE_URL is required.");
+
 const parseBoundedInteger = (
   rawValue: string | undefined,
   fallback: number,
@@ -120,6 +123,13 @@ export const envs = {
   INSTALLATION_LINK_TOKEN_SECRET: installationLinkTokenSecret,
   MONGO_URL: mongoUrl,
   MONGO_DB_NAME: getConfigValue("MONGO_DB_NAME") ?? "viggo-administrativo",
+  DATABASE_URL: databaseUrl,
+  DATABASE_POOL_MAX: parseBoundedInteger(
+    env.get("DATABASE_POOL_MAX").asString(),
+    10,
+    1,
+    100,
+  ),
   MONGO_DISCONNECT_EXIT_DELAY_MS: parseBoundedInteger(
     env.get("MONGO_DISCONNECT_EXIT_DELAY_MS").asString(),
     30000,

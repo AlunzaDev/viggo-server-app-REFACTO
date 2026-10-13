@@ -22,15 +22,42 @@ No contiene ni ejecuta tickets operativos, caja, efectivo, barreras, heartbeat d
 ```bash
 cp .env.example .env.dev
 npm install
+docker compose up -d postgres   # PostgreSQL en 127.0.0.1:5434
+npm run db:migrate              # aplica las migraciones de Prisma
 npm run dev
 ```
 
-La API usa `APP_ENV=dev` de forma predeterminada y carga `.env.dev` cuando existe.
+La API usa `APP_ENV=dev` de forma predeterminada y carga `.env.dev` cuando existe. Mientras dura la migración de MongoDB a PostgreSQL la API necesita ambas bases: `MONGO_URL` y `DATABASE_URL`.
+
+## Base de datos (PostgreSQL + Prisma)
+
+- Esquema: `prisma/schema.prisma`. Configuración (URL, migraciones, seed): `prisma.config.ts`, que carga el mismo `.env.<APP_ENV>` que la API.
+- El cliente se genera en `src/generated/prisma` (no se versiona); `npm run build`, `npm run check` y `npm run dev` lo generan.
+- La conexión vive en `src/data/postgres/postgres.database.ts` (`PostgresDatabase`). `DATABASE_POOL_MAX` limita las conexiones por instancia: mantener `instancias × DATABASE_POOL_MAX` por debajo de `max_connections` de Postgres.
+
+| Script | Uso |
+|---|---|
+| `npm run db:migrate` | Crea/aplica migraciones en desarrollo (`prisma migrate dev`) |
+| `npm run db:migrate:deploy` | Aplica migraciones pendientes sin crear nuevas (producción/CI) |
+| `npm run db:seed` | Carga datos de prueba (nunca con `APP_ENV=prod`) |
+| `npm run db:studio` | Abre Prisma Studio |
+| `npm run db:generate` | Regenera el cliente de Prisma |
+
+## Tests
+
+```bash
+cp .env.test.example .env.test
+docker compose up -d postgres   # crea también la base viggo_administrativo_test
+npm test
+```
+
+Los tests usan `.env.test` y se niegan a correr si la base no termina en `_test`. Antes de correr se aplican las migraciones pendientes (`prisma migrate deploy`); cada test limpia los datos que crea. Unitarios en `tests/unit`, integración contra Postgres en `tests/integration`.
 
 ## Validación y producción
 
 ```bash
-npm run check
+npm run check   # genera el cliente de Prisma y revisa tipos de src y tests
+npm test
 npm run build
 npm start
 ```
@@ -40,6 +67,8 @@ También puede ejecutarse con:
 ```bash
 docker compose up --build
 ```
+
+Docker levanta MongoDB, PostgreSQL, un servicio `migrate` que aplica las migraciones y termina, y la API, que sólo arranca si las migraciones salieron bien. Define un `POSTGRES_PASSWORD` seguro antes del primer arranque. La API cierra conexiones limpiamente al recibir `SIGTERM` (`docker stop`).
 
 ## Rutas principales
 

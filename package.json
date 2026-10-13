@@ -9,11 +9,20 @@
     "preflight": "node scripts/preflight.mjs",
     "audit:app-permissions": "node scripts/audit-app-permissions.mjs",
     "backfill:project-codes": "node scripts/backfill-project-codes.mjs",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/app.js",
-    "check": "tsc --noEmit"
+    "check": "prisma generate && tsc --noEmit && tsc -p tests",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
     "@types/cors": "^2.8.19",
     "@types/multer": "^2.2.0",
     "bcryptjs": "^3.0.3",
@@ -25,6 +34,7 @@
     "mongoose": "^8.16.1",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",
+    "pg": "8.23.1",
     "stripe": "^22.3.1"
   },
   "devDependencies": {
@@ -32,6 +42,15 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.0.10",
     "@types/nodemailer": "^8.0.1",
-    "typescript": "^6.0.3"
+    "@types/pg": "8.23.1",
+    "prisma": "7.10.0",
+    "tsx": "4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "5.0.4"
+  },
+  "allowScripts": {
+    "@prisma/engines@7.10.0": true,
+    "esbuild@0.28.2": true,
+    "prisma@7.10.0": true
   }
 }

@@ -1,6 +1,7 @@
 name: viggo-administrativo
 
 services:
+  # MongoDB stays until every datasource runs on Postgres (#10).
   mongo-db:
     image: mongo:7.0
     container_name: viggo-administrativo-mongo
@@ -20,16 +21,56 @@ services:
       timeout: 5s
       retries: 10
 
+  postgres:
+    image: postgres:17-alpine
+    container_name: viggo-administrativo-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-viggo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-viggo-dev-password}
+      POSTGRES_DB: ${POSTGRES_DB:-viggo_administrativo}
+    ports:
+      # Only reachable from this machine; 5434 avoids clashing with a local Postgres on 5432.
+      - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Applies pending Prisma migrations, then exits. The API starts only if it succeeds.
+  migrate:
+    image: ${MIGRATE_IMAGE:-viggo-server-api-administrativo-migrate:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-prod}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-viggo}:${POSTGRES_PASSWORD:-viggo-dev-password}@postgres:5432/${POSTGRES_DB:-viggo_administrativo}
+    restart: "no"
+
   backend:
     container_name: viggo-administrativo-api
     image: ${BACKEND_IMAGE:-viggo-server-api-administrativo:local}
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
     restart: unless-stopped
     depends_on:
       mongo-db:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     env_file:
       - ${BACKEND_ENV_FILE:-.env.docker}
     environment:
@@ -37,6 +78,7 @@ services:
       PROD: "true"
       MONGO_URL: mongodb://mongo-db:27017/${MONGO_DB_NAME:-viggo-administrativo}?replicaSet=rs0
       MONGO_DB_NAME: ${MONGO_DB_NAME:-viggo-administrativo}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-viggo}:${POSTGRES_PASSWORD:-viggo-dev-password}@postgres:5432/${POSTGRES_DB:-viggo_administrativo}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     healthcheck:
@@ -45,3 +87,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+volumes:
+  postgres-data:

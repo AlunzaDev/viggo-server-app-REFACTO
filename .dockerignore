@@ -13,3 +13,4 @@ pnpm-debug.log*
 .env
 .env.local
 .env.*.local
+src/generated

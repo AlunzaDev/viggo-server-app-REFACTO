@@ -1,7 +1,9 @@
 import cors, { CorsOptions } from "cors";
 import express, { Router } from "express";
+import type { Server as HttpServer } from "node:http";
 import { envs } from "../config/plugins/envs.plugin";
 import { MongoDatabase } from "../data/mongo";
+import { PostgresDatabase } from "../data/postgres";
 import { requestLoggingMiddleware } from "./middlewares/request-logging.middleware";
 import { buildFinancialReconciliationService } from "./dependencies";
 import { buildMobileOperationRepository } from "./dependencies/repositories.dependencies";
@@ -33,6 +35,8 @@ export class Server {
   private readonly port: number;
   private readonly publicPath: string;
   private readonly routes: Router;
+  private httpServer?: HttpServer;
+  private shuttingDown = false;
 
   constructor({ host = "0.0.0.0", port, publicPath = "public", routes }: ServerOptions) {
     this.host = host;
@@ -45,6 +49,10 @@ export class Server {
     await MongoDatabase.connect({
       mongoUrl: envs.MONGO_URL,
       dbName: envs.MONGO_DB_NAME,
+    });
+    await PostgresDatabase.connect({
+      databaseUrl: envs.DATABASE_URL,
+      poolMax: envs.DATABASE_POOL_MAX,
     });
     await this.recoverMobileOperations();
 
@@ -87,11 +95,40 @@ export class Server {
       res.status(404).json({ error: "Ruta no encontrada" });
     });
 
-    this.app.listen(this.port, this.host, () => {
+    this.httpServer = this.app.listen(this.port, this.host, () => {
       console.log(`[ADMINISTRATIVO] Server running on ${this.host}:${this.port}`);
     });
 
     buildFinancialReconciliationService().start();
+
+    process.once("SIGTERM", () => void this.shutdown("SIGTERM"));
+    process.once("SIGINT", () => void this.shutdown("SIGINT"));
+  }
+
+  /** Stops accepting requests, lets in-flight ones finish, then closes the database pools. */
+  private async shutdown(signal: string): Promise<void> {
+    if (this.shuttingDown) return;
+    this.shuttingDown = true;
+    console.log(`[ADMINISTRATIVO] ${signal} received, shutting down`);
+
+    const forceExit = setTimeout(() => {
+      console.error("[ADMINISTRATIVO] Shutdown timed out, forcing exit");
+      process.exit(1);
+    }, 10_000);
+    forceExit.unref();
+
+    try {
+      await new Promise<void>((resolve) => {
+        if (!this.httpServer) return resolve();
+        this.httpServer.close(() => resolve());
+        this.httpServer.closeIdleConnections();
+      });
+      await Promise.allSettled([PostgresDatabase.disconnect(), MongoDatabase.disconnect()]);
+      process.exit(0);
+    } catch (error) {
+      console.error("[ADMINISTRATIVO] Error during shutdown", error);
+      process.exit(1);
+    }
   }
 
   private async recoverMobileOperations(): Promise<void> {

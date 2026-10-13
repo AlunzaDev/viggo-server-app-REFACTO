@@ -3,9 +3,14 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.docker.example
+!.env.test.example
 /mongo/
 *.log
 npm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+
+# Prisma generated client (built by `prisma generate`)
+src/generated/

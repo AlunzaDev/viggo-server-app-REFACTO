@@ -1,0 +1,13 @@
+// PostgreSQL schema for ADMINISTRATIVO.
+// The connection URL lives in prisma.config.ts (Prisma 7 no longer reads it from here).
+// Models are added in the schema design task (#4) as datasources move off MongoDB.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}

@@ -22,6 +22,18 @@ const runNode = (args, options = {}) =>
     ...options,
   });
 
+const prismaBin = resolve(projectRoot, "node_modules", "prisma", "build", "index.js");
+console.log("[DEV] Generando el cliente de Prisma...");
+const prismaGenerate = spawnSync(process.execPath, [prismaBin, "generate"], {
+  cwd: projectRoot,
+  stdio: "inherit",
+});
+
+if (prismaGenerate.status !== 0) {
+  console.error("[DEV] No se pudo generar el cliente de Prisma.");
+  process.exit(prismaGenerate.status ?? 1);
+}
+
 console.log("[DEV] Compilando el proyecto antes de iniciar...");
 const initialBuild = spawnSync(process.execPath, [tscBin], {
   cwd: projectRoot,

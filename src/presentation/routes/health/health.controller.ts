@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { MongoDatabase } from "../../../data/mongo";
+import { PostgresDatabase } from "../../../data/postgres";
 import type { InstallationsRepository } from "../../../domain/repositories/installations/installations.repository";
 import type { MobileOperationRepository } from "../../../domain/repositories/mobile/mobile-operation.repository";
 import { FinancialReconciliationService } from "../../services/payments/financial-reconciliation.service";
@@ -15,7 +16,7 @@ export class HealthController {
   ) {}
 
   summary = async (_req: Request, res: Response) => {
-    const db = MongoDatabase.getHealthSnapshot();
+    const db = await this.getDbSnapshot();
     const sync = await this.getSyncSnapshot();
     const worker = FinancialReconciliationService.getHealthSnapshot();
     const status = db.status === "ok" && sync.status !== "down" ? "ok" : "degraded";
@@ -30,12 +31,24 @@ export class HealthController {
   };
 
   db = async (_req: Request, res: Response) => {
-    const db = MongoDatabase.getHealthSnapshot();
+    const db = await this.getDbSnapshot();
     return res.status(db.status === "ok" ? 200 : 503).json({
       service: "viggo-administrativo",
       ...db,
     });
   };
+
+  // While datasources move to Postgres both databases are required; the Mongo fields
+  // stay at the top level for compatibility until MongoDB is retired (#10).
+  private async getDbSnapshot() {
+    const mongo = MongoDatabase.getHealthSnapshot();
+    const postgres = await PostgresDatabase.getHealthSnapshot();
+    return {
+      ...mongo,
+      status: mongo.status === "ok" && postgres.status === "ok" ? "ok" : "error",
+      postgres,
+    };
+  }
 
   sync = async (_req: Request, res: Response) => {
     const sync = await this.getSyncSnapshot();

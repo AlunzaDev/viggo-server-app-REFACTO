@@ -2,7 +2,6 @@ import cors, { CorsOptions } from "cors";
 import express, { Router } from "express";
 import type { Server as HttpServer } from "node:http";
 import { envs } from "../config/plugins/envs.plugin";
-import { MongoDatabase } from "../data/mongo";
 import { PostgresDatabase } from "../data/postgres";
 import { requestLoggingMiddleware } from "./middlewares/request-logging.middleware";
 import { buildFinancialReconciliationService } from "./dependencies";
@@ -47,10 +46,6 @@ export class Server {
   }
 
   async start(): Promise<void> {
-    await MongoDatabase.connect({
-      mongoUrl: envs.MONGO_URL,
-      dbName: envs.MONGO_DB_NAME,
-    });
     await PostgresDatabase.connect({
       databaseUrl: envs.DATABASE_URL,
       poolMax: envs.DATABASE_POOL_MAX,
@@ -124,7 +119,7 @@ export class Server {
         this.httpServer.close(() => resolve());
         this.httpServer.closeIdleConnections();
       });
-      await Promise.allSettled([PostgresDatabase.disconnect(), MongoDatabase.disconnect()]);
+      await PostgresDatabase.disconnect();
       process.exit(0);
     } catch (error) {
       console.error("[ADMINISTRATIVO] Error during shutdown", error);

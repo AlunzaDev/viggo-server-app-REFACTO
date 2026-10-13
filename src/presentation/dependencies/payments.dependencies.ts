@@ -4,8 +4,6 @@ import { StripeWebhookController } from "../routes/payments/stripe-webhook.contr
 import { FinancialReconciliationService } from "../services/payments/financial-reconciliation.service";
 import { PaymentHistoryService } from "../services/payments/payment-history.service";
 import { StripePaymentService } from "../services/payments/stripe-payment.service";
-import { StripePaymentMongoDatasource } from "../../infrastructure/datasources/payments/stripe-payment.datasource.mongo";
-import { StripePaymentRepositoryImpl } from "../../infrastructure/repositories/payments/stripe-payment.repository.impl";
 import { buildPensionPassService } from "./pension.dependencies";
 import {
   buildJobLockRepository,
@@ -13,12 +11,11 @@ import {
   buildPaymentRepository,
   buildPensionPassRepository,
   buildPensionRepository,
+  buildStripePaymentRepository,
 } from "./repositories.dependencies";
 
 export const buildStripePaymentController = (): StripePaymentController => {
-  const repository = new StripePaymentRepositoryImpl(
-    new StripePaymentMongoDatasource(),
-  );
+  const repository = buildStripePaymentRepository();
   return new StripePaymentController(
     new StripePaymentService(
       repository,

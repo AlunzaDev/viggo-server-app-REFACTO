@@ -41,38 +41,9 @@ export class CustomError extends Error {
         if (error && typeof error === "object") {
             const candidate = error as Record<string, any>;
 
-            if (candidate.name === "ValidationError" && candidate.errors) {
-                const details = Object.values(candidate.errors).map((item: any) => ({
-                    field: item.path,
-                    message: item.message,
-                    value: item.value,
-                }));
-
-                return CustomError.badRequest(
-                    "Hay datos inválidos en la solicitud",
-                    details,
-                    "VALIDATION_ERROR",
-                );
-            }
-
-            if (candidate.name === "CastError") {
-                return CustomError.badRequest(
-                    `El valor enviado para '${candidate.path}' no es válido`,
-                    {
-                        field: candidate.path,
-                        value: candidate.value,
-                        expectedType: candidate.kind,
-                    },
-                    "INVALID_VALUE",
-                );
-            }
-
-            if (error instanceof UniqueConstraintError || candidate.code === 11000) {
-                const unique = error instanceof UniqueConstraintError
-                    ? error
-                    : UniqueConstraintError.fromMongo(error)!;
-                const duplicateFields = unique.fields;
-                const duplicateValues = unique.values;
+            if (error instanceof UniqueConstraintError) {
+                const duplicateFields = error.fields;
+                const duplicateValues = error.values;
                 const fieldLabel = duplicateFields.join(", ") || "el valor";
 
                 return CustomError.badRequest(

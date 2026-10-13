@@ -1,53 +1,78 @@
-// Repository builders shared by controllers, services and middlewares.
+// Repository builders shared by controllers, services and middlewares: the single place
+// that decides which database implementation the API uses.
 // Only infrastructure imports here, so any module can use them without import cycles.
-import { UsuarioMongoDatasource } from "../../infrastructure/datasources/auth/usuario.datasource.mongo";
-import { OperationalIncidentMongoDatasource } from "../../infrastructure/datasources/incidents/operational-incident.datasource.mongo";
-import { InstallationsMongoDatasource } from "../../infrastructure/datasources/installations/installations.datasource.mongo";
-import { MobileOperationMongoDatasource } from "../../infrastructure/datasources/mobile/mobile-operation.datasource.mongo";
-import { ModuloMongoDatasource } from "../../infrastructure/datasources/parking/modulo.datasource.mongo";
-import { ProyectoMongoDatasource } from "../../infrastructure/datasources/parking/proyecto.datasource.mongo";
-import { PaymentMongoDatasource } from "../../infrastructure/datasources/payments/payment.datasource.mongo";
-import { PensionPassMongoDatasource } from "../../infrastructure/datasources/pension/pension-pass.datasource.mongo";
-import { PensionMongoDatasource } from "../../infrastructure/datasources/pension/pension.datasource.mongo";
+import { AuthPostgresDatasource } from "../../infrastructure/datasources/auth/auth.datasource.postgres";
+import { PermissionProfilePostgresDatasource } from "../../infrastructure/datasources/auth/permission-profile.datasource.postgres";
+import { UsuarioPostgresDatasource } from "../../infrastructure/datasources/auth/usuario.datasource.postgres";
+import { OperationalIncidentPostgresDatasource } from "../../infrastructure/datasources/incidents/operational-incident.datasource.postgres";
+import { InstallationsPostgresDatasource } from "../../infrastructure/datasources/installations/installations.datasource.postgres";
+import { LocalProjectsPostgresDatasource } from "../../infrastructure/datasources/local-projects/local-projects.datasource.postgres";
+import { MobileOperationPostgresDatasource } from "../../infrastructure/datasources/mobile/mobile-operation.datasource.postgres";
+import { ModuloPostgresDatasource } from "../../infrastructure/datasources/parking/modulo.datasource.postgres";
+import { ProyectoPostgresDatasource } from "../../infrastructure/datasources/parking/proyecto.datasource.postgres";
+import { PaymentPostgresDatasource } from "../../infrastructure/datasources/payments/payment.datasource.postgres";
+import { StripePaymentPostgresDatasource } from "../../infrastructure/datasources/payments/stripe-payment.datasource.postgres";
+import { PensionPassPostgresDatasource } from "../../infrastructure/datasources/pension/pension-pass.datasource.postgres";
+import { PensionPostgresDatasource } from "../../infrastructure/datasources/pension/pension.datasource.postgres";
+import { SyncPostgresDatasource } from "../../infrastructure/datasources/sync/sync.datasource.postgres";
+import { JobLockPostgresDatasource } from "../../infrastructure/datasources/system/job-lock.datasource.postgres";
+import { AuthRepositoryImpl } from "../../infrastructure/repositories/auth/auth.repository.impl";
+import { PermissionProfileRepositoryImpl } from "../../infrastructure/repositories/auth/permission-profile.repository.impl";
 import { UsuarioRepositoryImpl } from "../../infrastructure/repositories/auth/usuario.repository.impl";
 import { OperationalIncidentRepositoryImpl } from "../../infrastructure/repositories/incidents/operational-incident.repository.impl";
 import { InstallationsRepositoryImpl } from "../../infrastructure/repositories/installations/installations.repository.impl";
+import { LocalProjectsRepositoryImpl } from "../../infrastructure/repositories/local-projects/local-projects.repository.impl";
 import { MobileOperationRepositoryImpl } from "../../infrastructure/repositories/mobile/mobile-operation.repository.impl";
 import { ModuloRepositoryImpl } from "../../infrastructure/repositories/parking/modulo.repository.impl";
 import { ProyectoRepositoryImpl } from "../../infrastructure/repositories/parking/proyecto.repository.impl";
 import { PaymentRepositoryImpl } from "../../infrastructure/repositories/payments/payment.repository.impl";
+import { StripePaymentRepositoryImpl } from "../../infrastructure/repositories/payments/stripe-payment.repository.impl";
 import { PensionPassRepositoryImpl } from "../../infrastructure/repositories/pension/pension-pass.repository.impl";
 import { PensionRepositoryImpl } from "../../infrastructure/repositories/pension/pension.repository.impl";
-import { JobLockMemoryDatasource } from "../../infrastructure/datasources/system/job-lock.datasource.memory";
+import { SyncRepositoryImpl } from "../../infrastructure/repositories/sync/sync.repository.impl";
 import { JobLockRepositoryImpl } from "../../infrastructure/repositories/system/job-lock.repository.impl";
 
+export const buildAuthRepository = () =>
+  new AuthRepositoryImpl(new AuthPostgresDatasource());
+
 export const buildUsuarioRepository = () =>
-  new UsuarioRepositoryImpl(new UsuarioMongoDatasource());
+  new UsuarioRepositoryImpl(new UsuarioPostgresDatasource());
+
+export const buildPermissionProfileRepository = () =>
+  new PermissionProfileRepositoryImpl(new PermissionProfilePostgresDatasource());
 
 export const buildProyectoRepository = () =>
-  new ProyectoRepositoryImpl(new ProyectoMongoDatasource());
+  new ProyectoRepositoryImpl(new ProyectoPostgresDatasource());
 
 export const buildModuloRepository = () =>
-  new ModuloRepositoryImpl(new ModuloMongoDatasource());
+  new ModuloRepositoryImpl(new ModuloPostgresDatasource());
 
 export const buildPensionRepository = () =>
-  new PensionRepositoryImpl(new PensionMongoDatasource());
+  new PensionRepositoryImpl(new PensionPostgresDatasource());
 
 export const buildPensionPassRepository = () =>
-  new PensionPassRepositoryImpl(new PensionPassMongoDatasource());
+  new PensionPassRepositoryImpl(new PensionPassPostgresDatasource());
 
 export const buildPaymentRepository = () =>
-  new PaymentRepositoryImpl(new PaymentMongoDatasource());
+  new PaymentRepositoryImpl(new PaymentPostgresDatasource());
+
+export const buildStripePaymentRepository = () =>
+  new StripePaymentRepositoryImpl(new StripePaymentPostgresDatasource());
 
 export const buildInstallationsRepository = () =>
-  new InstallationsRepositoryImpl(new InstallationsMongoDatasource());
+  new InstallationsRepositoryImpl(new InstallationsPostgresDatasource());
+
+export const buildLocalProjectsRepository = () =>
+  new LocalProjectsRepositoryImpl(new LocalProjectsPostgresDatasource());
+
+export const buildSyncRepository = () =>
+  new SyncRepositoryImpl(new SyncPostgresDatasource());
 
 export const buildMobileOperationRepository = () =>
-  new MobileOperationRepositoryImpl(new MobileOperationMongoDatasource());
+  new MobileOperationRepositoryImpl(new MobileOperationPostgresDatasource());
 
 export const buildOperationalIncidentRepository = () =>
-  new OperationalIncidentRepositoryImpl(new OperationalIncidentMongoDatasource());
+  new OperationalIncidentRepositoryImpl(new OperationalIncidentPostgresDatasource());
 
-// One lock store per process (the in-memory one must be shared to mean anything).
-const jobLockRepository = new JobLockRepositoryImpl(new JobLockMemoryDatasource());
-export const buildJobLockRepository = () => jobLockRepository;
+export const buildJobLockRepository = () =>
+  new JobLockRepositoryImpl(new JobLockPostgresDatasource());

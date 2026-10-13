@@ -1,5 +1,4 @@
 import { Request, Response } from "express";
-import { MongoDatabase } from "../../../data/mongo";
 import { PostgresDatabase } from "../../../data/postgres";
 import type { InstallationsRepository } from "../../../domain/repositories/installations/installations.repository";
 import type { MobileOperationRepository } from "../../../domain/repositories/mobile/mobile-operation.repository";
@@ -38,16 +37,8 @@ export class HealthController {
     });
   };
 
-  // While datasources move to Postgres both databases are required; the Mongo fields
-  // stay at the top level for compatibility until MongoDB is retired (#10).
-  private async getDbSnapshot() {
-    const mongo = MongoDatabase.getHealthSnapshot();
-    const postgres = await PostgresDatabase.getHealthSnapshot();
-    return {
-      ...mongo,
-      status: mongo.status === "ok" && postgres.status === "ok" ? "ok" : "error",
-      postgres,
-    };
+  private getDbSnapshot() {
+    return PostgresDatabase.getHealthSnapshot();
   }
 
   sync = async (_req: Request, res: Response) => {

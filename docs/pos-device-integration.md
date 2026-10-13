@@ -20,7 +20,7 @@ Payload sugerido:
     "source": "pos_agent",
     "deviceMode": "hardware",
     "hardwareDeviceId": "bill-acceptor-cj1",
-    "moduloId": "mongo-modulo-id",
+    "moduloId": "uuid-del-modulo",
     "moduloIdentificador": "CJ1",
     "inputMode": "bill_acceptor",
     "denomination": 100,

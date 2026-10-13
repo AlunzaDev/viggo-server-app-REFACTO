@@ -27,7 +27,9 @@ npm run db:migrate              # aplica las migraciones de Prisma
 npm run dev
 ```
 
-La API usa `APP_ENV=dev` de forma predeterminada y carga `.env.dev` cuando existe. Mientras dura la migración de MongoDB a PostgreSQL la API necesita ambas bases: `MONGO_URL` y `DATABASE_URL`.
+La API usa `APP_ENV=dev` de forma predeterminada y carga `.env.dev` cuando existe. La base de datos es PostgreSQL (`DATABASE_URL`).
+
+Para datos de demostración: `npm run db:seed`. Crea un super admin (`admin@viggo.local`), un perfil de permisos por app, dos estacionamientos con módulos, una pensión mensual con pases libres, un cajero y un cliente. Las contraseñas se toman de `SEED_ADMIN_PASSWORD` / `SEED_USER_PASSWORD` o se generan y se muestran una sola vez. Es idempotente y no corre con `APP_ENV=prod`.
 
 ## Base de datos (PostgreSQL + Prisma)
 
@@ -68,7 +70,7 @@ También puede ejecutarse con:
 docker compose up --build
 ```
 
-Docker levanta MongoDB, PostgreSQL, un servicio `migrate` que aplica las migraciones y termina, y la API, que sólo arranca si las migraciones salieron bien. Define un `POSTGRES_PASSWORD` seguro antes del primer arranque. La API cierra conexiones limpiamente al recibir `SIGTERM` (`docker stop`).
+Docker levanta PostgreSQL, un servicio `migrate` que aplica las migraciones y termina, y la API, que sólo arranca si las migraciones salieron bien. Define un `POSTGRES_PASSWORD` seguro antes del primer arranque. La API cierra conexiones limpiamente al recibir `SIGTERM` (`docker stop`).
 
 ## Rutas principales
 
@@ -127,7 +129,7 @@ Content-Type: application/json
 ```json
 {
   "eventId": "uuid-estable",
-  "proyectoId": "mongo-project-id",
+  "proyectoId": "uuid-del-proyecto",
   "eventType": "ticket.paid",
   "aggregateId": "ticket-id-local",
   "occurredAt": 1784820000000,
@@ -199,11 +201,7 @@ Dashboard/App ───────────────► ADMINISTRATIVO
 ADMINISTRATIVO es autoridad de identidad y configuración. OPERATIVO es autoridad inmediata de la operación física.
 # Nota: codigo corto de proyecto
 
-Cada proyecto nuevo recibe automaticamente un `codigoProyecto` creciente de 4 digitos (`0001` a `9999`). Es distinto al `identificador` existente y sirve como referencia corta, humana y estable para parkings. Para asignar codigos a proyectos existentes sin codigo:
-
-```bash
-npm run backfill:project-codes
-```
+Cada proyecto nuevo recibe automaticamente un `codigoProyecto` creciente de 4 digitos (`0001` a `9999`), asignado por la secuencia `proyecto_codigo_seq` de PostgreSQL. Es distinto al `identificador` existente y sirve como referencia corta, humana y estable para parkings.
 
 # Nota: consulta directa a OPERATIVO
 

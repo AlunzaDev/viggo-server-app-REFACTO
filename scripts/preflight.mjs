@@ -101,7 +101,7 @@ const auditDependencies = (label, cwd) => {
 const verifyTrackedSecrets = () => {
   heading("Archivos rastreados sin secretos evidentes");
   const allowedPlaceholder =
-    /change-me|replace-with|example|dummy|localhost|\$\{|MONGO_PASS/i;
+    /change-me|replace-with|example|dummy|localhost|\$\{|viggo-dev-password/i;
   const findings = [];
   const repositories = [
     ["api", apiDirectory],
@@ -130,10 +130,10 @@ const verifyTrackedSecrets = () => {
         continue;
       }
 
-      for (const match of content.matchAll(/mongodb(?:\+srv)?:\/\/([^\s:@/]+):([^\s@/]+)@/gi)) {
+      for (const match of content.matchAll(/postgres(?:ql)?:\/\/([^\s:@/]+):([^\s@/]+)@/gi)) {
         if (!allowedPlaceholder.test(match[2])) {
           findings.push(
-            `${repositoryName}/${relativePath}: URL MongoDB con contraseña embebida`,
+            `${repositoryName}/${relativePath}: URL PostgreSQL con contraseña embebida`,
           );
         }
       }

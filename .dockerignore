@@ -1,6 +1,5 @@
 node_modules
 dist
-mongo
 logs
 public/uploads
 .git
@@ -14,3 +13,4 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 src/generated
+mongo

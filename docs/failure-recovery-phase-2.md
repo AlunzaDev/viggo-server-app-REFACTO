@@ -31,9 +31,8 @@ Default policy:
 
 ## 2.2 Restart recovery
 
-When ADMINISTRATIVO starts, it:
+When ADMINISTRATIVO starts, one instance (job lease `mobile-operations-recovery`):
 
-- backfills retry fields for old mobile operations;
 - releases stale `processing` operations back to `pending`;
 - sets `nextRetryAt` so the operative server can claim them again.
 

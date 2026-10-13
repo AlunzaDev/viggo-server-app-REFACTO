@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { buildAuthRepository, buildPermissionProfileRepository } from "../dependencies/repositories.dependencies";
 import { JwtPlugin } from "../../config/plugins/jwt.plugin";
 import {
   hasUserModuleAccess,
@@ -14,10 +15,6 @@ import {
 } from "../../domain/constants";
 import type { UsuarioEntity } from "../../domain/entities/auth/usuario.entity";
 import { CustomError } from "../../domain/errors/custom.error";
-import { AuthMongoDatasource } from "../../infrastructure/datasources/auth/auth.datasource.mongo";
-import { PermissionProfileMongoDatasource } from "../../infrastructure/datasources/auth/permission-profile.datasource.mongo";
-import { AuthRepositoryImpl } from "../../infrastructure/repositories/auth/auth.repository.impl";
-import { PermissionProfileRepositoryImpl } from "../../infrastructure/repositories/auth/permission-profile.repository.impl";
 
 type AuthenticatedRequest = Request & {
   uid?: string;
@@ -39,11 +36,9 @@ interface ResolvedApplicationPermissions {
   modules: UserModuleAccess[];
 }
 
-const authRepository = new AuthRepositoryImpl(new AuthMongoDatasource());
+const authRepository = buildAuthRepository();
 
-const permissionProfileRepository = new PermissionProfileRepositoryImpl(
-  new PermissionProfileMongoDatasource(),
-);
+const permissionProfileRepository = buildPermissionProfileRepository();
 
 const normalizeRole = (value: unknown): UsuarioRol | null =>
   isUsuarioRol(value) ? value : null;

@@ -2,9 +2,15 @@ import { randomUUID } from "node:crypto";
 import { Request, Response } from "express";
 import { envs } from "../../../config";
 import { StripePlugin } from "../../../config/plugins/stripe.plugin";
-import { MobileOperationModel, PaymentModel } from "../../../data/mongo";
+import type { MobileOperationRepository } from "../../../domain/repositories/mobile/mobile-operation.repository";
+import type { PaymentRepository } from "../../../domain/repositories/payments/payment.repository";
 
 export class StripeWebhookController {
+  constructor(
+    private readonly payments: PaymentRepository,
+    private readonly operations: MobileOperationRepository,
+  ) {}
+
   handle = async (req: Request, res: Response) => {
     try {
       const signature = req.header("stripe-signature");
@@ -20,49 +26,40 @@ export class StripeWebhookController {
         return res.status(200).json({ received: true });
       }
       const intent = event.data.object;
-      const payment = await PaymentModel.findOne({ stripePaymentIntentId: intent.id });
+      const pending = await this.payments.findRecordByStripePaymentIntentId(intent.id);
+      if (!pending) return res.status(200).json({ received: true, ignored: true });
+      const payment = await this.payments.markSucceeded(pending.id, {
+        rawProviderStatus: intent.status,
+        paidAt: Date.now(),
+      });
       if (!payment) return res.status(200).json({ received: true, ignored: true });
-      payment.status = "succeeded";
-      payment.rawProviderStatus = intent.status;
-      payment.paidAt = Date.now();
-      await payment.save();
 
-      const ticketId = String((payment.reference as { id?: unknown }).id ?? "");
+      const ticketId = String(payment.reference.id ?? "");
       const userId = String(payment.user);
-      const source = await MobileOperationModel.findOne({
-        userId,
-        type: "CREATE_TICKET",
-        "result.ticket.uid": ticketId,
-      }).sort({ createdAt: -1 }).lean();
+      const source = await this.operations.findLatestTicketSource(userId, ticketId);
       if (source) {
         const now = Date.now();
-        await MobileOperationModel.updateOne(
-          { idempotencyKey: `apply:${intent.id}` },
-          {
-            $setOnInsert: {
-              operationId: randomUUID(),
-              idempotencyKey: `apply:${intent.id}`,
-              type: "APPLY_TICKET_PAYMENT",
-              installationId: source.installationId,
-              proyectoId: source.proyectoId,
-              userId,
-              payload: {
-                ticketId,
-                providerReference: intent.id,
-                amount: payment.amount,
-                currency: payment.currency,
-                paidAt: payment.paidAt,
-              },
-              status: "pending",
-              attempts: 0,
-              maxAttempts: 12,
-              nextRetryAt: now,
-              createdAt: now,
-              updatedAt: now,
-            },
+        await this.operations.createIfAbsent({
+          operationId: randomUUID(),
+          idempotencyKey: `apply:${intent.id}`,
+          type: "APPLY_TICKET_PAYMENT",
+          installationId: source.installationId,
+          proyectoId: source.proyectoId,
+          userId,
+          payload: {
+            ticketId,
+            providerReference: intent.id,
+            amount: payment.amount,
+            currency: payment.currency,
+            paidAt: payment.paidAt,
           },
-          { upsert: true },
-        );
+          status: "pending",
+          attempts: 0,
+          maxAttempts: 12,
+          nextRetryAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
       }
       return res.status(200).json({ received: true });
     } catch (error) {

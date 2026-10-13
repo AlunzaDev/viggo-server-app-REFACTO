@@ -2,10 +2,66 @@ import { LocalInstallationRequestModel } from "../../../data/mongo/models/system
 import { ProyectoModel } from "../../../data/mongo/models/parking/proyecto.schema";
 import {
   InstallationsDatasource,
+  type InstallationConnectivitySummary,
   type InstallationReviewPayload,
+  type LocalInstallationRecord,
 } from "../../../domain/datasources/installations/installations.datasource";
 
+const asRecord = (document: unknown) => document as LocalInstallationRecord;
+
 export class InstallationsMongoDatasource implements InstallationsDatasource {
+  async findByInstallationId(installationId: string): Promise<LocalInstallationRecord | null> {
+    return asRecord(await LocalInstallationRequestModel.findOne({ installationId }).lean());
+  }
+
+  async findApprovedByProyectoId(proyectoId: string): Promise<LocalInstallationRecord | null> {
+    return asRecord(
+      await LocalInstallationRequestModel.findOne({ proyectoId, status: "approved" }).lean(),
+    );
+  }
+
+  async findApprovedLinkTokenHash(installationId: string): Promise<string> {
+    const installation = await LocalInstallationRequestModel.findOne({
+      installationId,
+      status: "approved",
+    }).lean();
+    const project = installation
+      ? await ProyectoModel.findById(installation.proyectoId)
+          .select({ installationLinkTokenHash: 1 })
+          .lean()
+      : null;
+    return String(project?.installationLinkTokenHash ?? "");
+  }
+
+  async recordCommandPoll(installationId: string, now: number): Promise<void> {
+    await LocalInstallationRequestModel.updateOne(
+      { installationId, status: "approved" },
+      { $set: { lastCommandPollAt: now, updatedAt: now } },
+    );
+  }
+
+  async getConnectivitySummary(
+    onlineSince: number,
+    degradedSince: number,
+  ): Promise<InstallationConnectivitySummary> {
+    const [approved, online, degraded, offline] = await Promise.all([
+      LocalInstallationRequestModel.countDocuments({ status: "approved" }),
+      LocalInstallationRequestModel.countDocuments({
+        status: "approved",
+        lastCommandPollAt: { $gte: onlineSince },
+      }),
+      LocalInstallationRequestModel.countDocuments({
+        status: "approved",
+        lastCommandPollAt: { $lt: onlineSince, $gte: degradedSince },
+      }),
+      LocalInstallationRequestModel.find({
+        status: "approved",
+        lastCommandPollAt: { $lt: degradedSince },
+      }).lean(),
+    ]);
+    return { approved, online, degraded, offline: offline.map(asRecord) };
+  }
+
   getRequests() {
     return LocalInstallationRequestModel.find().sort({ updatedAt: -1 }).lean();
   }

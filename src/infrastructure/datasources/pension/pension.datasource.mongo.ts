@@ -45,4 +45,28 @@ export class PensionMongoDatasource extends PensionDatasource {
 
         return PensionEntity.fromObject(pensionDocument.toObject());
     }
+
+    async cancel(input: {
+        id: string;
+        cancelledBy: string;
+        reason: string;
+        cancelledAt: number;
+    }): Promise<PensionEntity | null> {
+        const pensionDocument = await PensionModel.findOneAndUpdate(
+            { _id: input.id, estado: true },
+            {
+                $set: {
+                    estado: false,
+                    cancelledAt: input.cancelledAt,
+                    cancelledBy: input.cancelledBy,
+                    cancellationReason: input.reason,
+                },
+            },
+            { new: true },
+        );
+
+        if (!pensionDocument) return null;
+
+        return PensionEntity.fromObject(pensionDocument.toObject());
+    }
 }

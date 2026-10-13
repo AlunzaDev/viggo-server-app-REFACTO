@@ -10,4 +10,10 @@ export abstract class PensionRepository {
         pension: Partial<Omit<PensionEntity, "id">>,
     ): Promise<PensionEntity | null>;
     abstract delete(id: string): Promise<PensionEntity | null>;
+    abstract cancel(input: {
+        id: string;
+        cancelledBy: string;
+        reason: string;
+        cancelledAt: number;
+    }): Promise<PensionEntity | null>;
 }

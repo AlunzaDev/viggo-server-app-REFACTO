@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { getAuthenticatedRequestUser } from "../../middlewares";
 import { ErrorService } from "../../services/error.service";
 import { InstallationsService } from "../../services/installations/installations.service";
-import { LocalInstallationRequestModel } from "../../../data/mongo/models/system/local-installation-request.schema";
+import type { InstallationsRepository } from "../../../domain/repositories/installations/installations.repository";
 
 const getReviewerName = (user: ReturnType<typeof getAuthenticatedRequestUser>) =>
   [user?.nombre, user?.apellido].filter(Boolean).join(" ").trim();
@@ -18,7 +18,10 @@ const getConnectivityStatus = (lastCommandPollAt: number, now: number) => {
 };
 
 export class InstallationsController {
-  constructor(private readonly service: InstallationsService) {}
+  constructor(
+    private readonly service: InstallationsService,
+    private readonly installations: InstallationsRepository,
+  ) {}
 
   getRequests = async (_req: Request, res: Response) => {
     try {
@@ -33,7 +36,7 @@ export class InstallationsController {
     try {
       const installationId = String(req.params.installationId ?? "").trim();
       const now = Date.now();
-      const request = await LocalInstallationRequestModel.findOne({ installationId }).lean();
+      const request = await this.installations.findByInstallationId(installationId);
       if (!request) return res.status(404).json({ error: "Instalacion no encontrada" });
       const lastCommandPollAt = Number(request.lastCommandPollAt ?? 0);
       return res.status(200).json({

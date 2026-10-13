@@ -8,6 +8,26 @@ import { InstallationsRepository } from "../../../domain/repositories/installati
 export class InstallationsRepositoryImpl implements InstallationsRepository {
   constructor(private readonly datasource: InstallationsDatasource) {}
 
+  findByInstallationId(installationId: string) {
+    return this.datasource.findByInstallationId(installationId);
+  }
+
+  findApprovedByProyectoId(proyectoId: string) {
+    return this.datasource.findApprovedByProyectoId(proyectoId);
+  }
+
+  findApprovedLinkTokenHash(installationId: string) {
+    return this.datasource.findApprovedLinkTokenHash(installationId);
+  }
+
+  recordCommandPoll(installationId: string, now: number) {
+    return this.datasource.recordCommandPoll(installationId, now);
+  }
+
+  getConnectivitySummary(onlineSince: number, degradedSince: number) {
+    return this.datasource.getConnectivitySummary(onlineSince, degradedSince);
+  }
+
   getRequests() {
     return this.datasource.getRequests();
   }

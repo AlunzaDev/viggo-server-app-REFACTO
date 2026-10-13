@@ -10,4 +10,11 @@ export abstract class PensionDatasource {
         pension: Partial<Omit<PensionEntity, "id">>,
     ): Promise<PensionEntity | null>;
     abstract delete(id: string): Promise<PensionEntity | null>;
+    /** Soft-cancels an active pension. Returns null if it does not exist or is already cancelled. */
+    abstract cancel(input: {
+        id: string;
+        cancelledBy: string;
+        reason: string;
+        cancelledAt: number;
+    }): Promise<PensionEntity | null>;
 }

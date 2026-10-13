@@ -1,11 +1,14 @@
 import { Router } from "express";
-import { MobileOperationController } from "./mobile-operation.controller";
-import { buildPensionPassController, buildStripePaymentController } from "../../dependencies";
+import {
+  buildMobileOperationController,
+  buildPensionPassController,
+  buildStripePaymentController,
+} from "../../dependencies";
 
 export class MobileOperationRoutes {
   static get routes() {
     const router = Router();
-    const controller = new MobileOperationController();
+    const controller = buildMobileOperationController();
     const pensionController = buildPensionPassController();
     const stripeController = buildStripePaymentController();
     router.post("/tickets", controller.createTicket);

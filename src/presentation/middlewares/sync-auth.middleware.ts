@@ -1,10 +1,12 @@
 import { NextFunction, Request, Response } from "express";
 import { envs } from "../../config";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { LocalInstallationRequestModel } from "../../data/mongo/models/system/local-installation-request.schema";
-import { ProyectoModel } from "../../data/mongo/models/parking/proyecto.schema";
+import type { InstallationsRepository } from "../../domain/repositories/installations/installations.repository";
+import { buildInstallationsRepository } from "../dependencies/repositories.dependencies";
 
 export type SyncRequest = Request & { installationId?: string };
+
+let installations: InstallationsRepository | undefined;
 
 export const requireSyncAuth = async (req: Request, res: Response, next: NextFunction) => {
   const authorization = req.header("Authorization") ?? "";
@@ -20,16 +22,8 @@ export const requireSyncAuth = async (req: Request, res: Response, next: NextFun
 
   let valid = Boolean(envs.SYNC_SERVICE_TOKEN) && token === envs.SYNC_SERVICE_TOKEN;
   if (!valid) {
-    const installation = await LocalInstallationRequestModel.findOne({
-      installationId,
-      status: "approved",
-    }).lean();
-    const project = installation
-      ? await ProyectoModel.findById(installation.proyectoId)
-          .select({ installationLinkTokenHash: 1 })
-          .lean()
-      : null;
-    const expected = String(project?.installationLinkTokenHash ?? "");
+    installations ??= buildInstallationsRepository();
+    const expected = await installations.findApprovedLinkTokenHash(installationId);
     const actual = createHash("sha256").update(token).digest("hex");
     valid = Boolean(expected) && expected.length === actual.length &&
       timingSafeEqual(Buffer.from(expected), Buffer.from(actual));

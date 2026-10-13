@@ -31,4 +31,13 @@ export class PensionRepositoryImpl implements PensionRepository {
     delete(id: string): Promise<PensionEntity | null> {
         return this.pensionDatasource.delete(id);
     }
+
+    cancel(input: {
+        id: string;
+        cancelledBy: string;
+        reason: string;
+        cancelledAt: number;
+    }): Promise<PensionEntity | null> {
+        return this.pensionDatasource.cancel(input);
+    }
 }

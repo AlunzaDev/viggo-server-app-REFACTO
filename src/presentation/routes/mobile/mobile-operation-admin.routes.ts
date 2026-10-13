@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { MobileOperationAdminController } from "./mobile-operation-admin.controller";
+import { buildMobileOperationAdminController } from "../../dependencies";
 
 export class MobileOperationAdminRoutes {
   static get routes(): Router {
     const router = Router();
-    const controller = new MobileOperationAdminController();
+    const controller = buildMobileOperationAdminController();
 
     router.get("/", controller.list);
     router.post("/:operationId/reactivate", controller.reactivate);

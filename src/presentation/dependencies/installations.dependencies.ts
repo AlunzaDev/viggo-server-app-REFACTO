@@ -1,11 +1,8 @@
-import { InstallationsMongoDatasource } from "../../infrastructure/datasources/installations/installations.datasource.mongo";
-import { InstallationsRepositoryImpl } from "../../infrastructure/repositories/installations/installations.repository.impl";
 import { InstallationsController } from "../routes/installations/installations.controller";
 import { InstallationsService } from "../services/installations/installations.service";
+import { buildInstallationsRepository } from "./repositories.dependencies";
 
 export const buildInstallationsController = (): InstallationsController => {
-  const repository = new InstallationsRepositoryImpl(
-    new InstallationsMongoDatasource(),
-  );
-  return new InstallationsController(new InstallationsService(repository));
+  const repository = buildInstallationsRepository();
+  return new InstallationsController(new InstallationsService(repository), repository);
 };

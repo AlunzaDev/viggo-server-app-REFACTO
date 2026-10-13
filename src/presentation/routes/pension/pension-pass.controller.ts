@@ -8,19 +8,24 @@ import {
 } from "../../middlewares";
 import { ErrorService } from "../../services/error.service";
 import { PensionPassService } from "../../services/pension/pension-pass.service";
-import { PaymentModel } from "../../../data/mongo/models/payments/payment.schema";
 import { envs } from "../../../config";
 import { StripePlugin } from "../../../config/plugins/stripe.plugin";
 import { CustomError } from "../../../domain/errors/custom.error";
-import { PensionPassModel } from "../../../data/mongo/models/pension/pension-pass.schema";
-import { PensionModel } from "../../../data/mongo/models/pension/pension.schema";
+import type { PaymentRepository } from "../../../domain/repositories/payments/payment.repository";
+import type { PensionPassRepository } from "../../../domain/repositories/pension/pension-pass.repository";
+import type { PensionRepository } from "../../../domain/repositories/pension/pension.repository";
 
 type AuthenticatedRequest = Request & { uid?: string };
 
 const getIdempotencyKey = (req: Request) => String(req.header("Idempotency-Key") ?? "").trim();
 
 export class PensionPassController {
-  constructor(private readonly service: PensionPassService) {}
+  constructor(
+    private readonly service: PensionPassService,
+    private readonly payments: PaymentRepository,
+    private readonly pensionPasses: PensionPassRepository,
+    private readonly pensions: PensionRepository,
+  ) {}
 
   createPensionPass = async (req: Request, res: Response) => {
     try {
@@ -244,15 +249,15 @@ export class PensionPassController {
     operationKey: string,
   ) {
     if (!paymentIntentId) throw CustomError.badRequest("paymentIntentId es requerido");
-    const payment = await PaymentModel.findOne({
-      user: userId,
+    const payment = await this.payments.findRecordForUser({
+      userId,
       type,
       stripePaymentIntentId: paymentIntentId,
-      "reference.id": pensionPassId,
+      referenceId: pensionPassId,
     });
     if (!payment) throw CustomError.forbidden("El pago no pertenece a esta operacion de pension");
-    const pass = await PensionPassModel.findById(pensionPassId).lean();
-    const pension = pass ? await PensionModel.findById(pass.pension).lean() : null;
+    const pass = await this.pensionPasses.findById(pensionPassId);
+    const pension = pass ? await this.pensions.findById(pass.pension) : null;
     const expectedAmount = Number(pension?.precio) * months;
     if (!Number.isInteger(months) || months < 1 || months > 24 || !Number.isFinite(expectedAmount) || Number(payment.amount) !== expectedAmount) {
       throw CustomError.conflict("El monto pagado no corresponde a la vigencia solicitada");
@@ -261,22 +266,8 @@ export class PensionPassController {
       ? "succeeded"
       : (await StripePlugin.client.paymentIntents.retrieve(paymentIntentId)).status;
     if (status !== "succeeded") throw CustomError.conflict("Stripe aun no confirma el pago");
-    payment.status = "succeeded";
-    payment.rawProviderStatus = status;
-    payment.paidAt = Date.now();
-    await payment.save();
-    const claimed = await PaymentModel.findOneAndUpdate(
-      {
-        _id: payment._id,
-        $or: [
-          { appliedOperationKey: { $exists: false } },
-          { appliedOperationKey: "" },
-          { appliedOperationKey: operationKey },
-        ],
-      },
-      { $set: { appliedOperationKey: operationKey, appliedAt: Date.now() } },
-      { new: true },
-    );
+    await this.payments.markSucceeded(payment.id, { rawProviderStatus: status, paidAt: Date.now() });
+    const claimed = await this.payments.claimForOperation(payment.id, operationKey, Date.now());
     if (!claimed) throw CustomError.conflict("Este pago ya fue aplicado a otra operacion");
   }
 }

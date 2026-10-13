@@ -1,6 +1,41 @@
+import type { PensionPassFinancialOperation } from "../../datasources/pension/pension-pass.datasource";
 import { PensionPassEntity } from "../../entities/pension/pension-pass.entity";
 
 export abstract class PensionPassRepository {
+    abstract findByFinancialOperationKey(
+        key: string,
+        pensionPassId?: string,
+    ): Promise<{ pensionPass: PensionPassEntity; operation: PensionPassFinancialOperation | null } | null>;
+    abstract findActiveByIdAndUsuario(id: string, usuarioId: string): Promise<PensionPassEntity | null>;
+    abstract claimAvailable(input: {
+        pensionId: string;
+        usuarioId: string;
+        from: number;
+        to: number;
+        operation: PensionPassFinancialOperation;
+    }): Promise<PensionPassEntity | null>;
+    abstract applyRenewal(input: {
+        id: string;
+        usuarioId: string;
+        expectedTo: number;
+        from: number;
+        to: number;
+        operation: PensionPassFinancialOperation;
+    }): Promise<PensionPassEntity | null>;
+    abstract applyContract(input: {
+        id: string;
+        usuarioId: string;
+        expectedFrom: number;
+        expectedTo: number;
+        operation: PensionPassFinancialOperation;
+    }): Promise<PensionPassEntity | null>;
+    abstract cancel(input: {
+        id: string;
+        cancelledBy: string;
+        reason: string;
+        cancelledAt: number;
+    }): Promise<PensionPassEntity | null>;
+
     abstract create(pensionPass: Omit<PensionPassEntity, "id">): Promise<PensionPassEntity>;
     abstract findById(id: string): Promise<PensionPassEntity | null>;
     abstract findByIdPass(idPass: string): Promise<PensionPassEntity | null>;

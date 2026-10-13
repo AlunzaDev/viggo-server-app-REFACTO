@@ -18,6 +18,7 @@ import {
   type UserAppAccess,
 } from "../../../domain/constants";
 import { parseRemoteSupportProvider } from "../../../domain/entities/parking/remote-support.entity";
+import { UniqueConstraintError } from "../../../domain/errors/unique-constraint.error";
 import {
   SyncDatasource,
   type HeartbeatSnapshotPayload,
@@ -687,7 +688,11 @@ export class SyncMongoDatasource implements SyncDatasource {
       };
     }
 
-    await InboxEventModel.create(payload);
+    try {
+      await InboxEventModel.create(payload);
+    } catch (error) {
+      throw UniqueConstraintError.fromMongo(error) ?? error;
+    }
 
     return {
       accepted: true,

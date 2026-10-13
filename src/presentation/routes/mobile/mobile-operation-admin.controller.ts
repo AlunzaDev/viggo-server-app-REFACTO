@@ -1,11 +1,14 @@
 import { Request, Response } from "express";
-import { MobileOperationModel } from "../../../data/mongo";
+import { MOBILE_OPERATION_STATUSES } from "../../../domain/datasources/mobile/mobile-operation.datasource";
+import type { MobileOperationRepository } from "../../../domain/repositories/mobile/mobile-operation.repository";
 import { ErrorService } from "../../services/error.service";
 import { OperationalIncidentService } from "../../services/incidents/operational-incident.service";
 
-const validStatuses = new Set(["pending", "processing", "completed", "failed", "expired", "dead_letter"]);
+const validStatuses = new Set<string>(MOBILE_OPERATION_STATUSES);
 
 export class MobileOperationAdminController {
+  constructor(private readonly operations: MobileOperationRepository) {}
+
   list = async (req: Request, res: Response) => {
     try {
       const page = Math.max(1, Number(req.query.page) || 1);
@@ -17,20 +20,10 @@ export class MobileOperationAdminController {
       if (status && !validStatuses.has(status)) {
         return res.status(400).json({ error: "status invalido" });
       }
-      const filter = {
-        ...(status ? { status } : {}),
-        ...(type ? { type } : {}),
-        ...(proyectoId ? { proyectoId } : {}),
-        ...(installationId ? { installationId } : {}),
-      };
-      const [total, operations] = await Promise.all([
-        MobileOperationModel.countDocuments(filter),
-        MobileOperationModel.find(filter)
-          .sort({ updatedAt: -1, createdAt: -1 })
-          .skip((page - 1) * limit)
-          .limit(limit)
-          .lean(),
-      ]);
+      const { total, operations } = await this.operations.list(
+        { status, type, proyectoId, installationId },
+        { page, limit },
+      );
       if (status === "dead_letter") {
         await Promise.all(operations.map((operation) =>
           OperationalIncidentService.open({
@@ -65,24 +58,7 @@ export class MobileOperationAdminController {
   reactivate = async (req: Request, res: Response) => {
     try {
       const operationId = String(req.params.operationId ?? "").trim();
-      const now = Date.now();
-      const operation = await MobileOperationModel.findOneAndUpdate(
-        {
-          operationId,
-          status: { $in: ["dead_letter", "failed", "expired"] },
-        },
-        {
-          $set: {
-            status: "pending",
-            error: "",
-            nextRetryAt: now,
-            processingDeadlineAt: undefined,
-            completedAt: undefined,
-            updatedAt: now,
-          },
-        },
-        { new: true },
-      ).lean();
+      const operation = await this.operations.reactivate(operationId, Date.now());
       if (!operation) {
         return res.status(404).json({ error: "Operacion no encontrada o no reactivable" });
       }

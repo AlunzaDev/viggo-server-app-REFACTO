@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
-import { MongoDatabase, MobileOperationModel } from "../../../data/mongo";
-import { LocalInstallationRequestModel } from "../../../data/mongo/models/system/local-installation-request.schema";
+import { MongoDatabase } from "../../../data/mongo";
+import type { InstallationsRepository } from "../../../domain/repositories/installations/installations.repository";
+import type { MobileOperationRepository } from "../../../domain/repositories/mobile/mobile-operation.repository";
 import { FinancialReconciliationService } from "../../services/payments/financial-reconciliation.service";
 import { OperationalIncidentService } from "../../services/incidents/operational-incident.service";
 
@@ -8,6 +9,11 @@ const onlineThresholdMs = 15_000;
 const degradedThresholdMs = 60_000;
 
 export class HealthController {
+  constructor(
+    private readonly installations: InstallationsRepository,
+    private readonly operations: MobileOperationRepository,
+  ) {}
+
   summary = async (_req: Request, res: Response) => {
     const db = MongoDatabase.getHealthSnapshot();
     const sync = await this.getSyncSnapshot();
@@ -43,24 +49,17 @@ export class HealthController {
 
   private async getSyncSnapshot() {
     const now = Date.now();
-    const [approvedInstallations, onlineInstallations, degradedInstallations, queuedCommands, deadLetterCommands, offlineInstallations] =
-      await Promise.all([
-        LocalInstallationRequestModel.countDocuments({ status: "approved" }),
-        LocalInstallationRequestModel.countDocuments({
-          status: "approved",
-          lastCommandPollAt: { $gte: now - onlineThresholdMs },
-        }),
-        LocalInstallationRequestModel.countDocuments({
-          status: "approved",
-          lastCommandPollAt: { $lt: now - onlineThresholdMs, $gte: now - degradedThresholdMs },
-        }),
-        MobileOperationModel.countDocuments({ status: { $in: ["pending", "failed"] } }),
-        MobileOperationModel.countDocuments({ status: "dead_letter" }),
-        LocalInstallationRequestModel.find({
-          status: "approved",
-          lastCommandPollAt: { $lt: now - degradedThresholdMs },
-        }).lean(),
-      ]);
+    const [connectivity, queuedCommands, deadLetterCommands] = await Promise.all([
+      this.installations.getConnectivitySummary(now - onlineThresholdMs, now - degradedThresholdMs),
+      this.operations.countByStatus(["pending", "failed"]),
+      this.operations.countByStatus(["dead_letter"]),
+    ]);
+    const {
+      approved: approvedInstallations,
+      online: onlineInstallations,
+      degraded: degradedInstallations,
+      offline: offlineInstallations,
+    } = connectivity;
     await Promise.all(offlineInstallations.map((installation) =>
       OperationalIncidentService.open({
         incidentKey: `installation-offline:${installation.installationId}`,

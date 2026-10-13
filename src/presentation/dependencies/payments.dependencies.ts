@@ -1,20 +1,45 @@
-import { PaymentMongoDatasource } from "../../infrastructure/datasources/payments/payment.datasource.mongo";
-import { PaymentRepositoryImpl } from "../../infrastructure/repositories/payments/payment.repository.impl";
 import { PaymentHistoryController } from "../routes/payments/payment-history.controller";
 import { StripePaymentController } from "../routes/payments/stripe-payment.controller";
+import { StripeWebhookController } from "../routes/payments/stripe-webhook.controller";
+import { FinancialReconciliationService } from "../services/payments/financial-reconciliation.service";
 import { PaymentHistoryService } from "../services/payments/payment-history.service";
 import { StripePaymentService } from "../services/payments/stripe-payment.service";
 import { StripePaymentMongoDatasource } from "../../infrastructure/datasources/payments/stripe-payment.datasource.mongo";
 import { StripePaymentRepositoryImpl } from "../../infrastructure/repositories/payments/stripe-payment.repository.impl";
+import { buildPensionPassService } from "./pension.dependencies";
+import {
+  buildMobileOperationRepository,
+  buildPaymentRepository,
+  buildPensionPassRepository,
+  buildPensionRepository,
+} from "./repositories.dependencies";
 
 export const buildStripePaymentController = (): StripePaymentController => {
   const repository = new StripePaymentRepositoryImpl(
     new StripePaymentMongoDatasource(),
   );
-  return new StripePaymentController(new StripePaymentService(repository));
+  return new StripePaymentController(
+    new StripePaymentService(
+      repository,
+      buildPaymentRepository(),
+      buildPensionPassRepository(),
+      buildPensionRepository(),
+    ),
+  );
 };
 
 export const buildPaymentHistoryController = (): PaymentHistoryController => {
-  const repository = new PaymentRepositoryImpl(new PaymentMongoDatasource());
-  return new PaymentHistoryController(new PaymentHistoryService(repository));
+  return new PaymentHistoryController(new PaymentHistoryService(buildPaymentRepository()));
 };
+
+export const buildStripeWebhookController = (): StripeWebhookController =>
+  new StripeWebhookController(buildPaymentRepository(), buildMobileOperationRepository());
+
+export const buildFinancialReconciliationService = (): FinancialReconciliationService =>
+  new FinancialReconciliationService(
+    buildPaymentRepository(),
+    buildMobileOperationRepository(),
+    buildPensionPassRepository(),
+    buildPensionRepository(),
+    buildPensionPassService(),
+  );

@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { HealthController } from "./health.controller";
+import { buildHealthController } from "../../dependencies";
 
 export class HealthRoutes {
   static get routes(): Router {
     const router = Router();
-    const controller = new HealthController();
+    const controller = buildHealthController();
 
     router.get("/", controller.summary);
     router.get("/db", controller.db);

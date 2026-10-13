@@ -1,17 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { envs } from "../../../config";
 import { StripePlugin } from "../../../config/plugins/stripe.plugin";
-import { MobileOperationModel, PaymentModel } from "../../../data/mongo";
-import { PensionModel } from "../../../data/mongo/models/pension/pension.schema";
-import { PensionPassModel } from "../../../data/mongo/models/pension/pension-pass.schema";
-import { PensionPassMongoDatasource } from "../../../infrastructure/datasources/pension/pension-pass.datasource.mongo";
-import { PensionMongoDatasource } from "../../../infrastructure/datasources/pension/pension.datasource.mongo";
-import { PensionPassRepositoryImpl } from "../../../infrastructure/repositories/pension/pension-pass.repository.impl";
-import { PensionRepositoryImpl } from "../../../infrastructure/repositories/pension/pension.repository.impl";
+import type { PaymentRecord } from "../../../domain/datasources/payments/payment.datasource";
+import type { MobileOperationRepository } from "../../../domain/repositories/mobile/mobile-operation.repository";
+import type { PaymentRepository } from "../../../domain/repositories/payments/payment.repository";
+import type { PensionPassRepository } from "../../../domain/repositories/pension/pension-pass.repository";
+import type { PensionRepository } from "../../../domain/repositories/pension/pension.repository";
 import { OperationalIncidentService } from "../incidents/operational-incident.service";
 import { PensionPassService } from "../pension/pension-pass.service";
-
-type PaymentDocument = any;
 
 export class FinancialReconciliationService {
   private static enabled = false;
@@ -21,10 +17,14 @@ export class FinancialReconciliationService {
   private static lastRunError = "";
   private running = false;
   private timer?: NodeJS.Timeout;
-  private readonly pensionPassService = new PensionPassService(
-    new PensionPassRepositoryImpl(new PensionPassMongoDatasource()),
-    new PensionRepositoryImpl(new PensionMongoDatasource()),
-  );
+
+  constructor(
+    private readonly payments: PaymentRepository,
+    private readonly operations: MobileOperationRepository,
+    private readonly pensionPasses: PensionPassRepository,
+    private readonly pensions: PensionRepository,
+    private readonly pensionPassService: PensionPassService,
+  ) {}
 
   start(): void {
     if (!envs.FINANCIAL_RECONCILIATION_WORKER_ENABLED) {
@@ -60,30 +60,17 @@ export class FinancialReconciliationService {
     FinancialReconciliationService.runningNow = true;
     FinancialReconciliationService.lastRunStartedAt = Date.now();
     try {
-      const payments = await PaymentModel.find({
-        stripePaymentIntentId: { $exists: true, $ne: "" },
-        $or: [
-          { status: "pending" },
-          { status: "succeeded", reconciliationStatus: { $ne: "reconciled" } },
-          { status: "succeeded", appliedOperationKey: { $in: [null, ""] } },
-          { status: "succeeded", appliedOperationKey: { $exists: false } },
-        ],
-      })
-        .sort({ paidAt: 1 })
-        .limit(envs.FINANCIAL_RECONCILIATION_BATCH_SIZE);
+      const payments = await this.payments.findPendingReconciliation(
+        envs.FINANCIAL_RECONCILIATION_BATCH_SIZE,
+      );
 
       for (const payment of payments) {
         await this.reconcilePayment(payment).catch(async (error) => {
-          await PaymentModel.updateOne(
-            { _id: payment._id },
-            {
-              $set: {
-                reconciliationStatus: "failed",
-                reconciliationError:
-                  error instanceof Error ? error.message : "Error de conciliacion",
-              },
-            },
-          );
+          await this.payments.updateReconciliation(payment.id, {
+            reconciliationStatus: "failed",
+            reconciliationError:
+              error instanceof Error ? error.message : "Error de conciliacion",
+          });
         });
       }
       FinancialReconciliationService.lastRunError = "";
@@ -108,20 +95,21 @@ export class FinancialReconciliationService {
     };
   }
 
-  private async reconcilePayment(payment: PaymentDocument): Promise<void> {
-    const providerStatus = await this.getProviderStatus(String(payment.stripePaymentIntentId));
+  private async reconcilePayment(pending: PaymentRecord): Promise<void> {
+    const providerStatus = await this.getProviderStatus(String(pending.stripePaymentIntentId));
     if (providerStatus !== "succeeded") {
-      await PaymentModel.updateOne(
-        { _id: payment._id },
-        { $set: { rawProviderStatus: providerStatus, reconciliationStatus: "pending" } },
-      );
+      await this.payments.updateReconciliation(pending.id, {
+        rawProviderStatus: providerStatus,
+        reconciliationStatus: "pending",
+      });
       return;
     }
 
-    payment.status = "succeeded";
-    payment.rawProviderStatus = providerStatus;
-    if (!payment.paidAt) payment.paidAt = Date.now();
-    await payment.save();
+    const payment = await this.payments.markSucceeded(pending.id, {
+      rawProviderStatus: providerStatus,
+      paidAt: pending.paidAt || Date.now(),
+    });
+    if (!payment) return;
 
     if (payment.type === "ticket") {
       await this.reconcileTicketPayment(payment);
@@ -130,86 +118,59 @@ export class FinancialReconciliationService {
     await this.reconcilePensionPayment(payment);
   }
 
-  private async reconcileTicketPayment(payment: PaymentDocument): Promise<void> {
-    const ticketId = String((payment.reference as { id?: unknown }).id ?? "");
+  private async reconcileTicketPayment(payment: PaymentRecord): Promise<void> {
+    const ticketId = String(payment.reference.id ?? "");
     const userId = String(payment.user);
     const intentId = String(payment.stripePaymentIntentId);
-    const source = await MobileOperationModel.findOne({
-      userId,
-      type: "CREATE_TICKET",
-      "result.ticket.uid": ticketId,
-    })
-      .sort({ createdAt: -1 })
-      .lean();
+    const source = await this.operations.findLatestTicketSource(userId, ticketId);
 
     if (!source) {
       throw new Error("No se encontro el ticket movil origen para aplicar el pago");
     }
 
     const now = Date.now();
-    const operation = await MobileOperationModel.findOneAndUpdate(
-      { idempotencyKey: `apply:${intentId}` },
-      {
-        $setOnInsert: {
-          operationId: randomUUID(),
-          idempotencyKey: `apply:${intentId}`,
-          type: "APPLY_TICKET_PAYMENT",
-          installationId: source.installationId,
-          proyectoId: source.proyectoId,
-          userId,
-          payload: {
-            ticketId,
-            providerReference: intentId,
-            amount: payment.amount,
-            currency: payment.currency,
-            paidAt: payment.paidAt,
-          },
-          status: "pending",
-          attempts: 0,
-          maxAttempts: 12,
-          nextRetryAt: now,
-          createdAt: now,
-          updatedAt: now,
-        },
+    const operation = await this.operations.createIfAbsent({
+      operationId: randomUUID(),
+      idempotencyKey: `apply:${intentId}`,
+      type: "APPLY_TICKET_PAYMENT",
+      installationId: source.installationId,
+      proyectoId: source.proyectoId,
+      userId,
+      payload: {
+        ticketId,
+        providerReference: intentId,
+        amount: payment.amount,
+        currency: payment.currency,
+        paidAt: payment.paidAt,
       },
-      { new: true, upsert: true },
-    );
+      status: "pending",
+      attempts: 0,
+      maxAttempts: 12,
+      nextRetryAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
 
-    await PaymentModel.updateOne(
-      { _id: payment._id },
-      {
-        $set: {
-          appliedOperationKey: `apply:${intentId}`,
-          appliedAt: now,
-          reconciliationStatus: operation.status === "completed" ? "reconciled" : "pending",
-          reconciledAt: operation.status === "completed" ? now : undefined,
-          reconciliationError: "",
-        },
-      },
-    );
+    await this.payments.updateReconciliation(payment.id, {
+      appliedOperationKey: `apply:${intentId}`,
+      appliedAt: now,
+      reconciliationStatus: operation.status === "completed" ? "reconciled" : "pending",
+      reconciledAt: operation.status === "completed" ? now : undefined,
+      reconciliationError: "",
+    });
   }
 
-  private async reconcilePensionPayment(payment: PaymentDocument): Promise<void> {
-    const pensionPassId = String((payment.reference as { id?: unknown }).id ?? "");
+  private async reconcilePensionPayment(payment: PaymentRecord): Promise<void> {
+    const pensionPassId = String(payment.reference.id ?? "");
     const userId = String(payment.user);
     const operationKey = `reconcile:${String(payment.stripePaymentIntentId)}`;
-    const claimed = await PaymentModel.findOneAndUpdate(
-      {
-        _id: payment._id,
-        $or: [
-          { appliedOperationKey: { $exists: false } },
-          { appliedOperationKey: "" },
-          { appliedOperationKey: operationKey },
-        ],
-      },
-      { $set: { appliedOperationKey: operationKey, appliedAt: Date.now() } },
-      { new: true },
-    );
+    const claimed = await this.payments.claimForOperation(payment.id, operationKey, Date.now());
     if (!claimed) {
-      await PaymentModel.updateOne(
-        { _id: payment._id },
-        { $set: { reconciliationStatus: "reconciled", reconciledAt: Date.now(), reconciliationError: "" } },
-      );
+      await this.payments.updateReconciliation(payment.id, {
+        reconciliationStatus: "reconciled",
+        reconciledAt: Date.now(),
+        reconciliationError: "",
+      });
       return;
     }
 
@@ -219,22 +180,21 @@ export class FinancialReconciliationService {
     } else {
       await this.pensionPassService.contractPensionPass(userId, pensionPassId, operationKey);
     }
-    await PaymentModel.updateOne(
-      { _id: payment._id },
-      { $set: { reconciliationStatus: "reconciled", reconciledAt: Date.now(), reconciliationError: "" } },
-    );
+    await this.payments.updateReconciliation(payment.id, {
+      reconciliationStatus: "reconciled",
+      reconciledAt: Date.now(),
+      reconciliationError: "",
+    });
   }
 
-  private async resolvePensionMonths(payment: PaymentDocument): Promise<number> {
+  private async resolvePensionMonths(payment: PaymentRecord): Promise<number> {
     const metadata = payment.metadata as { contractMonths?: unknown } | undefined;
     const metadataMonths = Number(metadata?.contractMonths);
     if (Number.isInteger(metadataMonths) && metadataMonths >= 1 && metadataMonths <= 24) {
       return metadataMonths;
     }
-    const pass = await PensionPassModel.findById(
-      String((payment.reference as { id?: unknown }).id ?? ""),
-    ).lean();
-    const pension = pass ? await PensionModel.findById(pass.pension).lean() : null;
+    const pass = await this.pensionPasses.findById(String(payment.reference.id ?? ""));
+    const pension = pass ? await this.pensions.findById(pass.pension) : null;
     const price = Number(pension?.precio);
     const months = Number(payment.amount) / price;
     if (!Number.isInteger(months) || months < 1 || months > 24) {
@@ -245,7 +205,7 @@ export class FinancialReconciliationService {
 
   private async getProviderStatus(paymentIntentId: string): Promise<string> {
     if (envs.STRIPE_MOCK_ENABLED || !envs.STRIPE_ENABLED) {
-      const payment = await PaymentModel.findOne({ stripePaymentIntentId: paymentIntentId }).lean();
+      const payment = await this.payments.findRecordByStripePaymentIntentId(paymentIntentId);
       return String(payment?.status ?? "pending");
     }
     const intent = await StripePlugin.client.paymentIntents.retrieve(paymentIntentId);

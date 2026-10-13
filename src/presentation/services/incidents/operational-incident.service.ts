@@ -1,53 +1,21 @@
-import { OperationalIncidentModel } from "../../../data/mongo";
+import type { OperationalIncidentInput } from "../../../domain/datasources/incidents/operational-incident.datasource";
+import type { OperationalIncidentRepository } from "../../../domain/repositories/incidents/operational-incident.repository";
+import { buildOperationalIncidentRepository } from "../../dependencies/repositories.dependencies";
 
-type IncidentInput = {
-  incidentKey: string;
-  type: "INSTALLATION_OFFLINE" | "MOBILE_OPERATION_DEAD_LETTER" | "FINANCIAL_WORKER_FAILED";
-  severity: "info" | "warning" | "critical";
-  source: string;
-  projectId?: string;
-  installationId?: string;
-  operationId?: string;
-  paymentId?: string;
-  message: string;
-  metadata?: Record<string, unknown>;
-};
-
+// Static facade: incidents are opened/resolved from many places (sync, health,
+// workers). The repository is built lazily so this module has no load-order needs.
 export class OperationalIncidentService {
-  static async open(input: IncidentInput) {
-    const now = Date.now();
-    return OperationalIncidentModel.findOneAndUpdate(
-      { incidentKey: input.incidentKey },
-      {
-        $set: {
-          status: "open",
-          severity: input.severity,
-          source: input.source,
-          projectId: input.projectId ?? "",
-          installationId: input.installationId ?? "",
-          operationId: input.operationId ?? "",
-          paymentId: input.paymentId ?? "",
-          message: input.message,
-          metadata: input.metadata,
-          lastSeenAt: now,
-          resolvedAt: undefined,
-        },
-        $setOnInsert: {
-          incidentKey: input.incidentKey,
-          type: input.type,
-          openedAt: now,
-        },
-      },
-      { upsert: true, new: true },
-    );
+  private static repositoryInstance?: OperationalIncidentRepository;
+
+  private static get repository(): OperationalIncidentRepository {
+    return (this.repositoryInstance ??= buildOperationalIncidentRepository());
+  }
+
+  static async open(input: OperationalIncidentInput) {
+    return this.repository.open(input, Date.now());
   }
 
   static async resolve(incidentKey: string) {
-    const now = Date.now();
-    return OperationalIncidentModel.findOneAndUpdate(
-      { incidentKey, status: "open" },
-      { $set: { status: "resolved", resolvedAt: now, lastSeenAt: now } },
-      { new: true },
-    );
+    return this.repository.resolve(incidentKey, Date.now());
   }
 }

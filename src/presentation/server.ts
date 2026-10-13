@@ -1,9 +1,10 @@
 import cors, { CorsOptions } from "cors";
 import express, { Router } from "express";
 import { envs } from "../config/plugins/envs.plugin";
-import { MobileOperationModel, MongoDatabase } from "../data/mongo";
+import { MongoDatabase } from "../data/mongo";
 import { requestLoggingMiddleware } from "./middlewares/request-logging.middleware";
-import { FinancialReconciliationService } from "./services/payments/financial-reconciliation.service";
+import { buildFinancialReconciliationService } from "./dependencies";
+import { buildMobileOperationRepository } from "./dependencies/repositories.dependencies";
 
 interface ServerOptions {
   host?: string;
@@ -90,42 +91,13 @@ export class Server {
       console.log(`[ADMINISTRATIVO] Server running on ${this.host}:${this.port}`);
     });
 
-    new FinancialReconciliationService().start();
+    buildFinancialReconciliationService().start();
   }
 
   private async recoverMobileOperations(): Promise<void> {
+    const operations = buildMobileOperationRepository();
     const now = Date.now();
-    const staleBefore = now - 60_000;
-    await MobileOperationModel.updateMany(
-      { maxAttempts: { $exists: false } },
-      [
-        {
-          $set: {
-            maxAttempts: {
-              $cond: [{ $eq: ["$type", "APPLY_TICKET_PAYMENT"] }, 12, 3],
-            },
-            nextRetryAt: { $ifNull: ["$nextRetryAt", "$createdAt"] },
-          },
-        },
-      ],
-    );
-    await MobileOperationModel.updateMany(
-      {
-        status: "processing",
-        $or: [
-          { processingDeadlineAt: { $lte: now } },
-          { claimedAt: { $lt: staleBefore } },
-        ],
-      },
-      {
-        $set: {
-          status: "pending",
-          error: "Operacion recuperada al reiniciar Admin API",
-          nextRetryAt: now,
-          processingDeadlineAt: undefined,
-          updatedAt: now,
-        },
-      },
-    );
+    await operations.backfillRetryPolicy();
+    await operations.recoverStaleProcessing(now, now - 60_000);
   }
 }

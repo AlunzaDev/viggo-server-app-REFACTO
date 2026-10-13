@@ -1,8 +1,9 @@
+import type { PensionPassFinancialOperation } from "../../../domain/datasources/pension/pension-pass.datasource";
 import { PensionPassEntity } from "../../../domain/entities/pension/pension-pass.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { PensionPassRepository } from "../../../domain/repositories/pension/pension-pass.repository";
 import { PensionRepository } from "../../../domain/repositories/pension/pension.repository";
-import { PensionPassModel } from "../../../data/mongo/models/pension/pension-pass.schema";
+import { UniqueConstraintError } from "../../../domain/errors/unique-constraint.error";
 
 const validKey = (value: string) => /^[A-Za-z0-9._:-]{16,128}$/.test(value);
 
@@ -85,14 +86,12 @@ export class PensionPassService {
       throw CustomError.badRequest("contractMonths debe estar entre 1 y 24");
     }
     const months = contractMonths;
-    const replay = await PensionPassModel.findOne({ "financialOperations.key": idempotencyKey }).lean();
+    const replay = await this.pensionPassRepository.findByFinancialOperationKey(idempotencyKey);
     if (replay) {
-      const operation = (replay.financialOperations as Array<{ key?: string; type?: string; months?: number }> | undefined)
-        ?.find((item) => item.key === idempotencyKey);
-      if (String(replay.usuario ?? "") !== usuarioId || String(replay.pension) !== pensionId || operation?.type !== "precontract" || operation.months !== months) {
+      if (!this.isSamePrecontract(replay, usuarioId, pensionId, months)) {
         throw CustomError.conflict("La clave ya fue usada para otra operacion");
       }
-      return PensionPassEntity.fromObject(replay);
+      return replay.pensionPass;
     }
     const pension = await this.pensionRepository.findById(pensionId);
     if (!pension || !pension.estado) throw CustomError.notFound("Pension no encontrada");
@@ -110,23 +109,20 @@ export class PensionPassService {
     end.setMonth(end.getMonth() + months);
 
     try {
-      const claimed = await PensionPassModel.findOneAndUpdate(
-        { pension: pensionId, usuario: null, from: -1, to: -1, estado: true },
-        {
-          $set: { usuario: usuarioId, from: now.getTime(), to: end.getTime(), vigent: false },
-          $push: { financialOperations: { key: idempotencyKey, type: "precontract", months, from: now.getTime(), to: end.getTime(), processedAt: Date.now() } },
-        },
-        { new: true },
-      );
+      const claimed = await this.pensionPassRepository.claimAvailable({
+        pensionId,
+        usuarioId,
+        from: now.getTime(),
+        to: end.getTime(),
+        operation: { key: idempotencyKey, type: "precontract", months, from: now.getTime(), to: end.getTime(), processedAt: Date.now() },
+      });
       if (!claimed) throw CustomError.conflict("No hay pension pass disponibles");
-      return PensionPassEntity.fromObject(claimed.toObject());
+      return claimed;
     } catch (error) {
-      if ((error as { code?: number }).code === 11000) {
-        const duplicate = await PensionPassModel.findOne({ "financialOperations.key": idempotencyKey }).lean();
-        const operation = (duplicate?.financialOperations as Array<{ key?: string; type?: string; months?: number }> | undefined)
-          ?.find((item) => item.key === idempotencyKey);
-        if (duplicate && String(duplicate.usuario ?? "") === usuarioId && String(duplicate.pension) === pensionId && operation?.type === "precontract" && operation.months === months) {
-          return PensionPassEntity.fromObject(duplicate);
+      if (error instanceof UniqueConstraintError) {
+        const duplicate = await this.pensionPassRepository.findByFinancialOperationKey(idempotencyKey);
+        if (duplicate && this.isSamePrecontract(duplicate, usuarioId, pensionId, months)) {
+          return duplicate.pensionPass;
         }
         if (duplicate) throw CustomError.conflict("La clave ya fue usada para otra operacion");
         throw CustomError.conflict("El usuario ya tiene una pension pass para esta pension");
@@ -147,8 +143,8 @@ export class PensionPassService {
     }
     const pass = await this.getPensionPassById(pensionPassId);
     this.ensureOwner(pass, usuarioId);
-    const replay = await PensionPassModel.findOne({ _id: pensionPassId, "financialOperations.key": idempotencyKey });
-    if (replay) return PensionPassEntity.fromObject(replay.toObject());
+    const replay = await this.pensionPassRepository.findByFinancialOperationKey(idempotencyKey, pensionPassId);
+    if (replay) return replay.pensionPass;
 
     const months = contractMonths;
     const now = Date.now();
@@ -156,16 +152,17 @@ export class PensionPassService {
     const end = new Date(start);
     end.setMonth(end.getMonth() + months);
 
-    const updated = await PensionPassModel.findOneAndUpdate(
-      { _id: pass.id, usuario: usuarioId, estado: true, to: pass.to, "financialOperations.key": { $ne: idempotencyKey } },
-      {
-        $set: { from: pass.from > 0 ? pass.from : now, to: end.getTime() },
-        $push: { financialOperations: { key: idempotencyKey, type: "renew", months, from: pass.from > 0 ? pass.from : now, to: end.getTime(), processedAt: Date.now() } },
-      },
-      { new: true },
-    );
+    const from = pass.from > 0 ? pass.from : now;
+    const updated = await this.pensionPassRepository.applyRenewal({
+      id: pass.id,
+      usuarioId,
+      expectedTo: pass.to,
+      from,
+      to: end.getTime(),
+      operation: { key: idempotencyKey, type: "renew", months, from, to: end.getTime(), processedAt: Date.now() },
+    });
     if (!updated) throw CustomError.conflict("La pension cambio mientras se procesaba; reintenta con una nueva clave");
-    return PensionPassEntity.fromObject(updated.toObject());
+    return updated;
   }
 
   async contractPensionPass(
@@ -176,21 +173,20 @@ export class PensionPassService {
     if (!validKey(idempotencyKey)) throw CustomError.badRequest("Idempotency-Key invalida");
     const pass = await this.getPensionPassById(pensionPassId);
     this.ensureOwner(pass, usuarioId);
-    const replay = await PensionPassModel.findOne({ _id: pensionPassId, "financialOperations.key": idempotencyKey });
-    if (replay) return PensionPassEntity.fromObject(replay.toObject());
+    const replay = await this.pensionPassRepository.findByFinancialOperationKey(idempotencyKey, pensionPassId);
+    if (replay) return replay.pensionPass;
     if (pass.from < 0 || pass.to < 0) {
       throw CustomError.badRequest("No existe un precontrato vigente");
     }
-    const updated = await PensionPassModel.findOneAndUpdate(
-      { _id: pass.id, usuario: usuarioId, estado: true, vigent: false, from: pass.from, to: pass.to, "financialOperations.key": { $ne: idempotencyKey } },
-      {
-        $set: { vigent: true },
-        $push: { financialOperations: { key: idempotencyKey, type: "contract", months: 0, from: pass.from, to: pass.to, processedAt: Date.now() } },
-      },
-      { new: true },
-    );
+    const updated = await this.pensionPassRepository.applyContract({
+      id: pass.id,
+      usuarioId,
+      expectedFrom: pass.from,
+      expectedTo: pass.to,
+      operation: { key: idempotencyKey, type: "contract", months: 0, from: pass.from, to: pass.to, processedAt: Date.now() },
+    });
     if (!updated) throw CustomError.conflict("La pension ya fue contratada o cambio durante el proceso");
-    return PensionPassEntity.fromObject(updated.toObject());
+    return updated;
   }
 
   async updatePensionPass(
@@ -212,13 +208,26 @@ export class PensionPassService {
   }
 
   async deletePensionPass(id: string, cancelledBy: string, reason: string): Promise<PensionPassEntity> {
-    const cancelled = await PensionPassModel.findOneAndUpdate(
-      { _id: id, estado: true },
-      { $set: { estado: false, vigent: false, cancelledAt: Date.now(), cancelledBy, cancellationReason: reason.trim() } },
-      { new: true },
-    );
+    const cancelled = await this.pensionPassRepository.cancel({
+      id,
+      cancelledBy,
+      reason: reason.trim(),
+      cancelledAt: Date.now(),
+    });
     if (!cancelled) throw CustomError.notFound("PensionPass no encontrado o ya cancelado");
-    return PensionPassEntity.fromObject(cancelled.toObject());
+    return cancelled;
+  }
+
+  private isSamePrecontract(
+    replay: { pensionPass: PensionPassEntity; operation: PensionPassFinancialOperation | null },
+    usuarioId: string,
+    pensionId: string,
+    months: number,
+  ): boolean {
+    return String(replay.pensionPass.usuario ?? "") === usuarioId &&
+      replay.pensionPass.pension === pensionId &&
+      replay.operation?.type === "precontract" &&
+      replay.operation.months === months;
   }
 
   private ensureOwner(pass: PensionPassEntity, usuarioId: string): void {

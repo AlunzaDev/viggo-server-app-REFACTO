@@ -1,3 +1,5 @@
+import { UniqueConstraintError } from "./unique-constraint.error";
+
 export class CustomError extends Error {
     constructor(
         public readonly statusCode: number,
@@ -65,9 +67,12 @@ export class CustomError extends Error {
                 );
             }
 
-            if (candidate.code === 11000) {
-                const duplicateFields = Object.keys(candidate.keyPattern ?? candidate.keyValue ?? {});
-                const duplicateValues = candidate.keyValue ?? {};
+            if (error instanceof UniqueConstraintError || candidate.code === 11000) {
+                const unique = error instanceof UniqueConstraintError
+                    ? error
+                    : UniqueConstraintError.fromMongo(error)!;
+                const duplicateFields = unique.fields;
+                const duplicateValues = unique.values;
                 const fieldLabel = duplicateFields.join(", ") || "el valor";
 
                 return CustomError.badRequest(

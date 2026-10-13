@@ -1,10 +1,21 @@
 import type {
+  InstallationConnectivitySummary,
   InstallationUnlinkPayload,
   InstallationReviewPayload,
   InstallationsDatasource,
+  LocalInstallationRecord,
 } from "../../datasources/installations/installations.datasource";
 
 export abstract class InstallationsRepository {
+  abstract findByInstallationId(installationId: string): Promise<LocalInstallationRecord | null>;
+  abstract findApprovedByProyectoId(proyectoId: string): Promise<LocalInstallationRecord | null>;
+  abstract findApprovedLinkTokenHash(installationId: string): Promise<string>;
+  abstract recordCommandPoll(installationId: string, now: number): Promise<void>;
+  abstract getConnectivitySummary(
+    onlineSince: number,
+    degradedSince: number,
+  ): Promise<InstallationConnectivitySummary>;
+
   abstract getRequests(): Promise<any[]>;
   abstract approveRequest(payload: InstallationReviewPayload): Promise<any>;
   abstract rejectRequest(

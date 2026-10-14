@@ -1,3 +1,4 @@
+import { OperationalInboxScheduler } from "./services/sync/operational-inbox.scheduler";
 import cors, { CorsOptions } from "cors";
 import express, { Router } from "express";
 import type { Server as HttpServer } from "node:http";
@@ -37,6 +38,7 @@ export class Server {
   private readonly routes: Router;
   private httpServer?: HttpServer;
   private shuttingDown = false;
+  private readonly inbox = new OperationalInboxScheduler();
 
   constructor({ host = "0.0.0.0", port, publicPath = "public", routes }: ServerOptions) {
     this.host = host;
@@ -96,6 +98,7 @@ export class Server {
     });
 
     buildFinancialReconciliationService().start();
+    this.inbox.start();
 
     process.once("SIGTERM", () => void this.shutdown("SIGTERM"));
     process.once("SIGINT", () => void this.shutdown("SIGINT"));
@@ -119,6 +122,7 @@ export class Server {
         this.httpServer.close(() => resolve());
         this.httpServer.closeIdleConnections();
       });
+      await this.inbox.stop();
       await PostgresDatabase.disconnect();
       process.exit(0);
     } catch (error) {

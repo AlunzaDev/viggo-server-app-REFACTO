@@ -146,7 +146,7 @@ Los nombres `Proyecto`, `Pension` y `PensionPass` se conservaron para reducir el
 ## Pendientes recomendados
 
 1. crear un registro formal de instalaciones OPERATIVO con credenciales rotables;
-2. procesar la bandeja `SyncInboxEvent` mediante handlers por `eventType`;
+2. versionar los snapshots operativos y supervisar errores pendientes del inbox;
 3. agregar webhook de Stripe y una máquina de estados de pagos;
 4. sustituir la reserva de precontratos por `reservedUntil` y un job persistente;
 5. versionar contratos de sincronización mediante DTOs compartidos.
@@ -220,8 +220,35 @@ Authorization: Bearer <SYNC_SERVICE_TOKEN>
 X-Viggo-Sync-Source: administrativo-direct-query
 ```
 
-Este flujo sirve para estado en vivo cuando existe conexion hacia el servidor local. El inbox de eventos queda disponible como base para una etapa offline-first, pero no es el mecanismo principal de monitoreo en esta fase.
+Este flujo sirve para estado en vivo cuando existe conexion hacia el servidor local. El historial de `/api/local-projects/:projectId/snapshot` se consulta en las tablas espejo de la nube; el heartbeat conserva su consulta en vivo y su fallback almacenado.
 
 # Nota: token por instalacion
 
 Al crear un proyecto, ADMINISTRATIVO genera un token de vinculacion y lo muestra al administrador. ADMINISTRATIVO guarda `installationLinkTokenHash` para validarlo de forma segura, `installationLinkTokenEncrypted` para poder volver a mostrarlo en admin y `installationLinkTokenIssuedAt` como referencia de emision. OPERATIVO debe ingresar ese token para poder solicitar vinculacion; si coincide con el hash del proyecto, la solicitud queda registrada.
+
+## Inbox operativo (#12)
+
+Los eventos `created`/`updated` de `ticket`, `payment`, `cash_payment_session`,
+`cash_register_shift`, `cash_register_movement`, `cash_register_cut` y `pension_move`
+se aplican a tablas `operational_*` de solo lectura. Se conserva el snapshot JSONB
+original de los triggers locales, con claves por proyecto, instalaci?n y agregado;
+las referencias locales permanecen en el snapshot para aceptar hijos antes que padres.
+No se modifica la tabla de pagos de Stripe ni se duplican cobros.
+
+OPERATIVO env?a `sourcePosition` como cadena decimal del BIGSERIAL del outbox.
+Esta posici?n decide qu? snapshot es m?s reciente, incluso con tiempos iguales o
+relojes que retroceden. Para eventos anteriores sin posici?n se usa `occurredAt`,
+con `eventId` como desempate determinista. No se deben reiniciar posiciones de una
+instalaci?n conservando su identidad. Eventos anteriores con el mismo milisegundo
+no permiten reconstruir su orden real; los nuevos env?os s? incluyen la posici?n.
+
+El registro espejo y `processedAt` se guardan en una misma transacci?n. Un fallo
+conserva el recibo con `processingError` y `lastAttemptAt`, y no bloquea la entrega
+local. Un job cada 5 segundos procesa lotes de 100, reintentando fallos despu?s de
+60 segundos. Los tipos desconocidos quedan pendientes para inspecci?n. Los recibos
+anteriores pendientes tambi?n se procesan al iniciar. `accepted` confirma recepci?n
+durable, no necesariamente procesamiento exitoso.
+
+Aplicar `npm run db:migrate:deploy` antes de iniciar ADMINISTRATIVO actualizado.
+`npm test` usa exclusivamente una base con nombre terminado en `_test`; incluye
+concurrencia, duplicados, llegada tard?a, reintentos e historial sin servidor local.

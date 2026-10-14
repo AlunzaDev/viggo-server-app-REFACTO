@@ -429,6 +429,7 @@ export class SyncController {
         eventType,
         aggregateId,
         occurredAt,
+        sourcePosition: body.sourcePosition === undefined ? undefined : String(body.sourcePosition),
         payload,
       });
 

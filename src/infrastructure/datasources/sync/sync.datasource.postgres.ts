@@ -1,3 +1,4 @@
+import { OperationalInboxProcessor } from "./operational-inbox.processor";
 import { PostgresDatabase } from "../../../data/postgres";
 import { Prisma } from "../../../generated/prisma/client";
 import type { UserAppAccess } from "../../../domain/constants";
@@ -210,26 +211,18 @@ export class SyncPostgresDatasource implements SyncDatasource {
   }
 
   async receiveEvent(payload: InboxEventPayload) {
-    const existing = await this.db.inboxEvent.findUnique({ where: { eventId: payload.eventId }, select: { eventId: true } });
-    if (existing) return { accepted: true, duplicate: true, eventId: payload.eventId };
     if (!isUuid(payload.proyectoId)) throw CustomError.badRequest("El proyecto del evento no existe");
-
-    await withPrismaErrors(
-      () =>
-        this.db.inboxEvent.create({
-          data: {
-            eventId: payload.eventId,
-            installationId: payload.installationId,
-            proyectoId: payload.proyectoId,
-            eventType: payload.eventType,
-            aggregateId: payload.aggregateId,
-            occurredAt: new Date(payload.occurredAt),
-            payload: asJson(payload.payload),
-          },
-        }),
-      { foreignKey: CustomError.badRequest("El proyecto del evento no existe") },
-    );
-    return { accepted: true, duplicate: false, eventId: payload.eventId };
+    if (!Number.isFinite(new Date(payload.occurredAt).getTime())) throw CustomError.badRequest("occurredAt invalido");
+    if (payload.sourcePosition !== undefined && (!/^[1-9][0-9]*$/.test(payload.sourcePosition) || BigInt(payload.sourcePosition) > 9223372036854775807n)) {
+      throw CustomError.badRequest("sourcePosition debe ser un entero positivo de 64 bits");
+    }
+    const inserted = await withPrismaErrors(() => this.db.inboxEvent.createMany({
+      skipDuplicates: true,
+      data: { ...payload, occurredAt: new Date(payload.occurredAt), payload: asJson(payload.payload),
+        sourcePosition: payload.sourcePosition ? BigInt(payload.sourcePosition) : null },
+    }), { foreignKey: CustomError.badRequest("El proyecto del evento no existe") });
+    await new OperationalInboxProcessor().processEvent(payload.eventId);
+    return { accepted: true, duplicate: inserted.count === 0, eventId: payload.eventId };
   }
 
   /** Mirrors each reported module's binding and runtime state (modules of other projects are ignored). */

@@ -21,6 +21,7 @@ export type InboxEventPayload = {
   eventType: string;
   aggregateId: string;
   occurredAt: number;
+  sourcePosition?: string;
   payload: object;
 };
 

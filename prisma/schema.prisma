@@ -315,6 +315,14 @@ model Proyecto {
   payments          Payment[]
   incidents         OperationalIncident[]
   inboxEvents       InboxEvent[]
+  operationalTickets OperationalTicket[]
+  operationalPayments OperationalPayment[]
+  operationalCashSessions OperationalCashSession[]
+  operationalCashShifts OperationalCashShift[]
+  operationalCashMovements OperationalCashMovement[]
+  operationalCashCuts OperationalCashCut[]
+  operationalPensionMoves OperationalPensionMove[]
+
   heartbeatSnapshot ProjectHeartbeatSnapshot?
 
   @@index([estado])
@@ -654,6 +662,8 @@ model InboxEvent {
   payload         Json
   receivedAt      DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
   processedAt     DateTime? @map("processed_at") @db.Timestamptz(3)
+  lastAttemptAt   DateTime? @map("last_attempt_at") @db.Timestamptz(3)
+  sourcePosition  BigInt?   @map("source_position")
   processingError String    @default("") @map("processing_error")
 
   proyecto Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Restrict)
@@ -713,4 +723,109 @@ model JobLease {
   expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
 
   @@map("job_leases")
+}
+
+/// Read-only row snapshot owned by OPERATIVO; references stay in the payload so arrivals need no parent ordering.
+model OperationalTicket {
+  proyectoId String @map("proyecto_id") @db.Uuid
+  installationId String @map("installation_id")
+  aggregateId String @map("aggregate_id")
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(3)
+  sourcePosition BigInt? @map("source_position")
+  eventId String @map("event_id")
+  payload Json
+  @@id([proyectoId, installationId, aggregateId])
+  @@index([proyectoId, occurredAt])
+  @@map("operational_tickets")
+  proyecto Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// Read-only row snapshot owned by OPERATIVO; references stay in the payload so arrivals need no parent ordering.
+model OperationalPayment {
+  proyectoId String @map("proyecto_id") @db.Uuid
+  installationId String @map("installation_id")
+  aggregateId String @map("aggregate_id")
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(3)
+  sourcePosition BigInt? @map("source_position")
+  eventId String @map("event_id")
+  payload Json
+  @@id([proyectoId, installationId, aggregateId])
+  @@index([proyectoId, occurredAt])
+  @@map("operational_payments")
+  proyecto Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// Read-only row snapshot owned by OPERATIVO; references stay in the payload so arrivals need no parent ordering.
+model OperationalCashSession {
+  proyectoId String @map("proyecto_id") @db.Uuid
+  installationId String @map("installation_id")
+  aggregateId String @map("aggregate_id")
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(3)
+  sourcePosition BigInt? @map("source_position")
+  eventId String @map("event_id")
+  payload Json
+  @@id([proyectoId, installationId, aggregateId])
+  @@index([proyectoId, occurredAt])
+  @@map("operational_cash_payment_sessions")
+  proyecto Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// Read-only row snapshot owned by OPERATIVO; references stay in the payload so arrivals need no parent ordering.
+model OperationalCashShift {
+  proyectoId String @map("proyecto_id") @db.Uuid
+  installationId String @map("installation_id")
+  aggregateId String @map("aggregate_id")
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(3)
+  sourcePosition BigInt? @map("source_position")
+  eventId String @map("event_id")
+  payload Json
+  @@id([proyectoId, installationId, aggregateId])
+  @@index([proyectoId, occurredAt])
+  @@map("operational_cash_register_shifts")
+  proyecto Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// Read-only row snapshot owned by OPERATIVO; references stay in the payload so arrivals need no parent ordering.
+model OperationalCashMovement {
+  proyectoId String @map("proyecto_id") @db.Uuid
+  installationId String @map("installation_id")
+  aggregateId String @map("aggregate_id")
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(3)
+  sourcePosition BigInt? @map("source_position")
+  eventId String @map("event_id")
+  payload Json
+  @@id([proyectoId, installationId, aggregateId])
+  @@index([proyectoId, occurredAt])
+  @@map("operational_cash_register_movements")
+  proyecto Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// Read-only row snapshot owned by OPERATIVO; references stay in the payload so arrivals need no parent ordering.
+model OperationalCashCut {
+  proyectoId String @map("proyecto_id") @db.Uuid
+  installationId String @map("installation_id")
+  aggregateId String @map("aggregate_id")
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(3)
+  sourcePosition BigInt? @map("source_position")
+  eventId String @map("event_id")
+  payload Json
+  @@id([proyectoId, installationId, aggregateId])
+  @@index([proyectoId, occurredAt])
+  @@map("operational_cash_register_cuts")
+  proyecto Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// Read-only row snapshot owned by OPERATIVO; references stay in the payload so arrivals need no parent ordering.
+model OperationalPensionMove {
+  proyectoId String @map("proyecto_id") @db.Uuid
+  installationId String @map("installation_id")
+  aggregateId String @map("aggregate_id")
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(3)
+  sourcePosition BigInt? @map("source_position")
+  eventId String @map("event_id")
+  payload Json
+  @@id([proyectoId, installationId, aggregateId])
+  @@index([proyectoId, occurredAt])
+  @@map("operational_pension_moves")
+  proyecto Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }

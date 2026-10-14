@@ -208,7 +208,12 @@ try {
     localToken = (await call(localUrl, "/api/auth/login-correo", null, { correo: email, password, app: "OPERATIVE_WEB" })).token;
     assert(localToken);
   });
-  const offlineTicket = (await step("issue ticket while offline", () => call(localUrl, "/api/tickets/createTicket", localToken, { moduleToken }, "POST", { "Idempotency-Key": randomUUID() }))).ticket;
+  const entryKey = randomUUID();
+  const offlineTicket = (await step("issue ticket while offline", () => call(localUrl, "/api/tickets/createTicket", localToken, { moduleToken }, "POST", { "Idempotency-Key": entryKey }))).ticket;
+  await step("retried entry returns the same ticket", async () => {
+    const retried = (await call(localUrl, "/api/tickets/createTicket", localToken, { moduleToken }, "POST", { "Idempotency-Key": entryKey })).ticket;
+    assert.equal(retried.idBoleto, offlineTicket.idBoleto);
+  });
   const offlineId = uuid(offlineTicket.ticketId ?? id(offlineTicket));
   await step("open cash shift while offline", () => call(localUrl, "/api/cash-register/shifts/open", localToken, { moduloId: posId, openingAmount: 100 }));
   await step("resolve and quote cash ticket QR while offline", () => call(localUrl, "/api/cash-payments/tickets/resolve-qr", localToken, { qrValue: offlineTicket.idBoleto }));

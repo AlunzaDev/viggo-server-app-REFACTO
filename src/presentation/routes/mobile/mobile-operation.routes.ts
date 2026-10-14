@@ -1,6 +1,8 @@
 import { Router } from "express";
 import {
   buildMobileOperationController,
+  buildProyectoController,
+  buildPensionController,
   buildPensionPassController,
   buildStripePaymentController,
 } from "../../dependencies";
@@ -11,6 +13,13 @@ export class MobileOperationRoutes {
     const controller = buildMobileOperationController();
     const pensionController = buildPensionPassController();
     const stripeController = buildStripePaymentController();
+    const projects = buildProyectoController();
+    const pensions = buildPensionController();
+    // Read-only mobile catalogs keep project scoping in their controllers.
+    router.get("/proyectos", projects.getProyectos);
+    router.get("/proyectos/:id", projects.getProyectoById);
+    router.get("/pensiones/proyecto/:proyectoId", pensions.getPensionesByProyecto);
+    router.get("/pensiones/:id", pensions.getPensionById);
     router.post("/tickets", controller.createTicket);
     router.get("/tickets/current", controller.getCurrentTicket);
     router.get("/tickets/history", controller.getTicketHistory);

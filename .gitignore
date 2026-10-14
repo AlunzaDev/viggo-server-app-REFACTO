@@ -16,3 +16,6 @@ src/generated/
 
 # Local MongoDB data from the pre-Postgres setup (never versioned)
 /mongo/
+
+# Local verification report (no credentials)
+smoke-postgres-results.json

@@ -113,9 +113,27 @@ if (isProd) {
   }
 }
 
+/**
+ * Express "trust proxy": false (default, read the socket address), true, a hop count or a
+ * list of trusted addresses. Set it when the API runs behind a reverse proxy so client
+ * addresses come from X-Forwarded-For.
+ */
+const parseTrustProxy = (raw: string | undefined): boolean | number | string => {
+  const value = String(raw ?? "").trim();
+  if (!value || value === "false") return false;
+  if (value === "true") return true;
+  if (/^\d+$/.test(value)) return Number(value);
+  return value;
+};
+
 export const envs = {
   APP_ENV: appEnv,
   PROD: isProd,
+  TRUST_PROXY: parseTrustProxy(env.get("TRUST_PROXY").asString()),
+  // Login brute-force protection (failed attempts only).
+  AUTH_LOGIN_WINDOW_MS: parseBoundedInteger(env.get("AUTH_LOGIN_WINDOW_MS").asString(), 15 * 60 * 1000, 60 * 1000, 24 * 60 * 60 * 1000),
+  AUTH_LOGIN_MAX_FAILURES: parseBoundedInteger(env.get("AUTH_LOGIN_MAX_FAILURES").asString(), 5, 1, 1000),
+  AUTH_LOGIN_IP_MAX_FAILURES: parseBoundedInteger(env.get("AUTH_LOGIN_IP_MAX_FAILURES").asString(), 20, 1, 10000),
   JWT_SEED: jwtSeed,
   INSTALLATION_LINK_TOKEN_SECRET: installationLinkTokenSecret,
   DATABASE_URL: databaseUrl,

@@ -81,6 +81,7 @@ export class Server {
     };
 
     this.app.disable("x-powered-by");
+    this.app.set("trust proxy", envs.TRUST_PROXY);
     this.app.use(cors(corsOptions));
     this.app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
     this.app.use(express.json({ limit: "2mb" }));

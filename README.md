@@ -36,6 +36,7 @@ Para datos de demostración: `npm run db:seed`. Crea un super admin (`admin@vigg
 - Esquema: `prisma/schema.prisma`. Configuración (URL, migraciones, seed): `prisma.config.ts`, que carga el mismo `.env.<APP_ENV>` que la API.
 - El cliente se genera en `src/generated/prisma` (no se versiona); `npm run build`, `npm run check` y `npm run dev` lo generan.
 - La conexión vive en `src/data/postgres/postgres.database.ts` (`PostgresDatabase`). `DATABASE_POOL_MAX` limita las conexiones por instancia: mantener `instancias × DATABASE_POOL_MAX` por debajo de `max_connections` de Postgres.
+- `pg` va fijado en 8.x (versión exacta en `package.json`). Dentro de una transacción, Prisma 7 lanza en paralelo las consultas de un `include` con varias relaciones sobre la misma conexión; `pg@8` las encola con un aviso y `pg@9` las rechazará. Por eso, dentro de una transacción (o en una escritura anidada) no se usa `include` con varias relaciones: se escribe primero y se lee después, o se cargan las relaciones una por una. Los tests fallan si aparece el aviso. `relationLoadStrategy: "join"` lo resolvería, pero en Prisma 7.10 sigue siendo preview (`relationJoins`); revisar al subir a Prisma 8 antes de pasar a `pg@9`.
 
 | Script | Uso |
 |---|---|

@@ -54,7 +54,9 @@ export class ModuloPostgresDatasource extends ModuloDatasource {
 
   async create(modulo: Omit<ModuloEntity, "id">): Promise<ModuloEntity> {
     ensureProyectoId(modulo.proyecto);
-    const row = await withPrismaErrors(
+    // Read back afterwards: an `include` on a nested write runs its relation queries in
+    // parallel on the transaction's single connection, which pg@9 will reject (#12).
+    const { id } = await withPrismaErrors(
       () =>
         this.modulos.create({
           data: {
@@ -71,11 +73,11 @@ export class ModuloPostgresDatasource extends ModuloDatasource {
             },
             ...(modulo.remoteSupport ? { remoteSupport: { create: toRemoteSupportData(modulo.remoteSupport) } } : {}),
           },
-          include: moduloInclude,
+          select: { id: true },
         }),
       { foreignKey: invalidProyecto },
     );
-    return toModuloEntity(row);
+    return (await this.findEntity(id))!;
   }
 
   findById(id: string): Promise<ModuloEntity | null> {
@@ -114,7 +116,7 @@ export class ModuloPostgresDatasource extends ModuloDatasource {
     ensureProyectoId(modulo.proyecto);
     if ((await this.modulos.count({ where: { id } })) === 0) return null;
 
-    const row = await withPrismaErrors(
+    await withPrismaErrors(
       () =>
         PostgresDatabase.client.$transaction(async (tx) => {
           if (modulo.remoteSupport === null) {
@@ -129,11 +131,12 @@ export class ModuloPostgresDatasource extends ModuloDatasource {
               data: modulo.submodulos.map((submodulo, position) => ({ ...toSubmoduloData(submodulo), moduloId: id, position })),
             });
           }
-          return tx.modulo.update({ where: { id }, data: toModuloScalars(modulo), include: moduloInclude });
+          await tx.modulo.update({ where: { id }, data: toModuloScalars(modulo) });
         }),
       { foreignKey: invalidProyecto },
     );
-    return toModuloEntity(row);
+    // Read outside the transaction (see create).
+    return this.findEntity(id);
   }
 
   async getSubmodulos(id: string): Promise<ModuloSubmodulo[] | null> {

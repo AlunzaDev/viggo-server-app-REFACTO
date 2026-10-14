@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { isUserAppAccess } from "../../../domain/constants";
-import { SyncRequest } from "../../middlewares/sync-auth.middleware";
+import { isOwnProject, SyncRequest } from "../../middlewares/sync-auth.middleware";
 import { ErrorService } from "../../services/error.service";
 import { SyncService } from "../../services/sync/sync.service";
 import { UniqueConstraintError } from "../../../domain/errors/unique-constraint.error";
@@ -9,6 +9,9 @@ import type { InstallationsRepository } from "../../../domain/repositories/insta
 import { OperationalIncidentService } from "../../services/incidents/operational-incident.service";
 
 const processingTimeoutMs = 60_000;
+
+const otherProject = (res: Response) =>
+  res.status(403).json({ error: "El proyecto no pertenece a esta instalacion", code: "SYNC_PROJECT_MISMATCH" });
 const backoffMs = [0, 30_000, 120_000, 300_000, 900_000];
 
 const getNextRetryAt = (attempts: number, now: number) => {
@@ -102,9 +105,9 @@ export class SyncController {
 
   getConfiguration = async (req: Request, res: Response) => {
     try {
-      const result = await this.service.getConfiguration(
-        String(req.params.proyectoId),
-      );
+      const proyectoId = String(req.params.proyectoId);
+      if (!isOwnProject(req, proyectoId)) return otherProject(res);
+      const result = await this.service.getConfiguration(proyectoId);
 
       if (!result) {
         return res.status(404).json({
@@ -118,23 +121,11 @@ export class SyncController {
     }
   };
 
-  getProjectsCatalog = async (_req: Request, res: Response) => {
-    try {
-      const proyectos = await this.service.getProjectsCatalog();
-
-      return res.status(200).json({
-        proyectos,
-      });
-    } catch (error) {
-      return ErrorService.handleApiError(error, res);
-    }
-  };
-
   getAccessSnapshot = async (req: Request, res: Response) => {
     try {
-      const result = await this.service.getAccessSnapshot(
-        String(req.params.proyectoId),
-      );
+      const proyectoId = String(req.params.proyectoId);
+      if (!isOwnProject(req, proyectoId)) return otherProject(res);
+      const result = await this.service.getAccessSnapshot(proyectoId);
 
       if (!result) {
         return res.status(404).json({
@@ -168,7 +159,7 @@ export class SyncController {
         });
       }
 
-      const access = await this.service.getAccessUserByCorreo(correo, app);
+      const access = await this.service.getAccessUserByCorreo(correo, app, (req as SyncRequest).proyectoId!);
 
       if (!access) {
         return res.status(404).json({
@@ -202,7 +193,7 @@ export class SyncController {
         });
       }
 
-      const access = await this.service.getAccessUserByTelefono(telefono, app);
+      const access = await this.service.getAccessUserByTelefono(telefono, app, (req as SyncRequest).proyectoId!);
 
       if (!access) {
         return res.status(404).json({
@@ -219,15 +210,16 @@ export class SyncController {
     }
   };
 
+  /** Project the link token belongs to, so the operator can confirm before linking. */
+  previewInstallationLink = async (req: Request, res: Response) => {
+    return res.status(200).json({ proyecto: (req as SyncRequest).linkProject });
+  };
+
   requestInstallationLink = async (req: Request, res: Response) => {
     try {
       const installationId = (req as SyncRequest).installationId!;
+      const proyectoId = (req as SyncRequest).proyectoId!;
       const body = req.body as Record<string, unknown>;
-
-      const proyectoId = String(body.proyectoId ?? "").trim();
-      const installationLinkToken = String(
-        body.installationLinkToken ?? "",
-      ).trim();
 
       const browserCoordinatesRaw = Array.isArray(body.browserCoordinates)
         ? body.browserCoordinates
@@ -247,22 +239,9 @@ export class SyncController {
 
       const browserLocationCapturedAt = Number(body.browserLocationCapturedAt);
 
-      if (!proyectoId) {
-        return res.status(400).json({
-          error: "proyectoId es requerido",
-        });
-      }
-
-      if (!installationLinkToken) {
-        return res.status(400).json({
-          error: "Token de vinculacion requerido",
-        });
-      }
-
       const result = await this.service.requestInstallationLink({
         installationId,
         proyectoId,
-        installationLinkToken,
         localApiBaseUrl: String(body.localApiBaseUrl ?? ""),
         serverIp: String(body.serverIp ?? ""),
         serverMac: String(body.serverMac ?? ""),
@@ -280,18 +259,6 @@ export class SyncController {
       if (result.status === "missing-project") {
         return res.status(404).json({
           error: "Proyecto no encontrado",
-        });
-      }
-
-      if (result.status === "missing-token") {
-        return res.status(409).json({
-          error: "El proyecto no tiene token de vinculacion generado",
-        });
-      }
-
-      if (result.status === "invalid-token") {
-        return res.status(403).json({
-          error: "Token de vinculacion invalido",
         });
       }
 
@@ -314,8 +281,10 @@ export class SyncController {
     try {
       const installationId = (req as SyncRequest).installationId!;
 
-      const result =
-        await this.service.getInstallationRequestStatus(installationId);
+      const result = await this.service.getInstallationRequestStatus(
+        installationId,
+        (req as SyncRequest).proyectoId!,
+      );
 
       return res.status(200).json(result);
     } catch (error) {
@@ -357,6 +326,8 @@ export class SyncController {
           error: "proyectoId es requerido",
         });
       }
+
+      if (!isOwnProject(req, proyectoId)) return otherProject(res);
 
       if (!Number.isFinite(generatedAt)) {
         return res.status(400).json({
@@ -409,6 +380,8 @@ export class SyncController {
           error: "eventId, proyectoId, eventType y aggregateId son requeridos",
         });
       }
+
+      if (!isOwnProject(req, proyectoId)) return otherProject(res);
 
       if (!Number.isFinite(occurredAt)) {
         return res.status(400).json({

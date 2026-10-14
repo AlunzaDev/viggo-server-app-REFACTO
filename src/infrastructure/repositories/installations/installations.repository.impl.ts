@@ -16,8 +16,8 @@ export class InstallationsRepositoryImpl implements InstallationsRepository {
     return this.datasource.findApprovedByProyectoId(proyectoId);
   }
 
-  findApprovedLinkTokenHash(installationId: string) {
-    return this.datasource.findApprovedLinkTokenHash(installationId);
+  findApprovedBySyncTokenHash(installationId: string, syncTokenHash: string) {
+    return this.datasource.findApprovedBySyncTokenHash(installationId, syncTokenHash);
   }
 
   recordCommandPoll(installationId: string, now: number) {

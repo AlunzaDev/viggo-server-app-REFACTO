@@ -130,12 +130,12 @@ export class InstallationsPostgresDatasource implements InstallationsDatasource 
     return row ? toInstallationRecord(row) : null;
   }
 
-  async findApprovedLinkTokenHash(installationId: string): Promise<string> {
-    const row = await this.installations.findFirst({
-      where: { installationId, status: "approved" },
-      select: { proyecto: { select: { installationLinkTokenHash: true } } },
+  async findApprovedBySyncTokenHash(installationId: string, syncTokenHash: string) {
+    if (!installationId || !syncTokenHash) return null;
+    return this.installations.findFirst({
+      where: { installationId, syncTokenHash, status: "approved" },
+      select: { installationId: true, proyectoId: true },
     });
-    return row?.proyecto.installationLinkTokenHash ?? "";
   }
 
   async recordCommandPoll(installationId: string, now: number): Promise<void> {

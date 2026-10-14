@@ -37,7 +37,11 @@ export abstract class InstallationsDatasource {
   abstract findByInstallationId(installationId: string): Promise<LocalInstallationRecord | null>;
   abstract findApprovedByProyectoId(proyectoId: string): Promise<LocalInstallationRecord | null>;
   /** Hash of the project link token for an approved installation, or "" if there is none. */
-  abstract findApprovedLinkTokenHash(installationId: string): Promise<string>;
+  /** The approved installation that owns this sync token (by hash), with its project. */
+  abstract findApprovedBySyncTokenHash(
+    installationId: string,
+    syncTokenHash: string,
+  ): Promise<{ installationId: string; proyectoId: string } | null>;
   abstract recordCommandPoll(installationId: string, now: number): Promise<void>;
   /**
    * Approved installations grouped by last poll: online if polled at/after onlineSince,

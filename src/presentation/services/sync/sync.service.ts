@@ -13,28 +13,28 @@ export class SyncService {
     return this.repository.getConfiguration(proyectoId);
   }
 
-  getProjectsCatalog() {
-    return this.repository.getProjectsCatalog();
+  findProjectByLinkToken(token: string) {
+    return this.repository.findProjectByLinkToken(token);
   }
 
   getAccessSnapshot(proyectoId: string) {
     return this.repository.getAccessSnapshot(proyectoId);
   }
 
-  getAccessUserByCorreo(correo: string, app: UserAppAccess) {
-    return this.repository.getAccessUserByCorreo(correo, app);
+  getAccessUserByCorreo(correo: string, app: UserAppAccess, proyectoId: string) {
+    return this.repository.getAccessUserByCorreo(correo, app, proyectoId);
   }
 
-  getAccessUserByTelefono(telefono: string, app: UserAppAccess) {
-    return this.repository.getAccessUserByTelefono(telefono, app);
+  getAccessUserByTelefono(telefono: string, app: UserAppAccess, proyectoId: string) {
+    return this.repository.getAccessUserByTelefono(telefono, app, proyectoId);
   }
 
   requestInstallationLink(payload: InstallationLinkRequestPayload) {
     return this.repository.requestInstallationLink(payload);
   }
 
-  getInstallationRequestStatus(installationId: string) {
-    return this.repository.getInstallationRequestStatus(installationId);
+  getInstallationRequestStatus(installationId: string, proyectoId: string) {
+    return this.repository.getInstallationRequestStatus(installationId, proyectoId);
   }
 
   receiveHeartbeatSnapshot(payload: HeartbeatSnapshotPayload) {

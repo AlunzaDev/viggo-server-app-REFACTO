@@ -90,12 +90,24 @@ Docker levanta PostgreSQL, un servicio `migrate` que aplica las migraciones y te
 
 ## Sincronización OPERATIVO → ADMINISTRATIVO
 
-Las rutas `/api/sync` requieren:
+Cada instalación local usa su propio token de sincronización; no hay token global.
+
+1. **Vinculación** (`POST /installation-link/preview`, `POST /installation-requests`,
+   `GET /installation-request/status`): se autentican con el token de vinculación del
+   proyecto (`Authorization: Bearer <installationLinkToken>`). El proyecto se deduce del
+   token; la instalación nunca lo elige.
+2. Cuando un administrador aprueba la solicitud, la siguiente consulta de
+   `/installation-request/status` entrega `oneTimeSyncToken` (sólo se guarda su sha256 en
+   `local_installations.sync_token_hash`; consultar de nuevo lo rota).
+3. El resto de `/api/sync` requiere el token de la instalación aprobada:
 
 ```http
-Authorization: Bearer <SYNC_SERVICE_TOKEN>
+Authorization: Bearer <oneTimeSyncToken>
 X-Viggo-Installation-Id: <installation-id>
 ```
+
+y sólo da acceso al proyecto de esa instalación (otro `proyectoId` responde
+`403 SYNC_PROJECT_MISMATCH`). Al desvincular la instalación el token deja de servir.
 
 ### Descargar configuración administrativa
 

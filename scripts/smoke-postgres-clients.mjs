@@ -141,7 +141,6 @@ try {
     }, "backend startup");
   });
   adminToken = (await step("administrative web login", () => call(adminUrl, "/api/auth/login-correo", null, { correo: email, password, app: "ADMIN_WEB" }))).token;
-  localToken = (await step("operative web login", () => call(localUrl, "/api/auth/login-correo", null, { correo: email, password, app: "OPERATIVE_WEB" }))).token;
   projectId = uuid(id((await step("create project with UUID", () => call(adminUrl, "/api/proyectos", adminToken, { nombre: "Postgres Smoke", ciudad: "CDMX", coordinates: [-99,19], identificador: `smoke-${runId}`, estado: true }))).proyecto));
   for (const tipo of ["ENTRADA", "SALIDA", "POS"]) {
     const result = await step(`create ${tipo} module`, () => call(adminUrl, "/api/modulos", adminToken, { nombre: tipo, proyecto: projectId, tipo, identificador: `smoke-${runId}-${tipo}`, estado: true }));
@@ -156,12 +155,23 @@ try {
   await admin.db.query("INSERT INTO usuario_parkings (usuario_id,proyecto_id) VALUES ($1,$2)",[mobileUserId,projectId]);
   await admin.db.query("INSERT INTO usuario_app_permissions (usuario_id,app,permission_profile_id) VALUES ($1,'OPERATIVE_MOBILE',$2)",[mobileUserId,profileId]);
   const link = await call(adminUrl, `/api/proyectos/${projectId}/installation-link-token`, adminToken);
-  await step("request installation link", () => call(localUrl, "/api/installation/project-request", localToken, { proyectoId: projectId, installationLinkToken: link.installationLinkToken ?? link.token }));
+  const installationLinkToken = link.installationLinkToken ?? link.token;
+  await step("preview installation link (project comes from the token)", async () => {
+    // Linking happens before anyone can log in: the link token is the authorization.
+    const preview = await call(localUrl, "/api/installation/link-preview", null, { installationLinkToken });
+    assert.equal(preview.proyecto.id, projectId);
+  });
+  await step("request installation link", () => call(localUrl, "/api/installation/project-request", null, { installationLinkToken }));
   const requests = await call(adminUrl, "/api/installations", adminToken);
   const pending = requests.requests.find(row => row.installationId === installationId);
   assert(pending, "installation request exists");
   await step("approve installation", () => call(adminUrl, `/api/installations/${id(pending)}/approve`, adminToken, { note: "Postgres smoke" }, "PATCH"));
-  await call(localUrl, "/api/installation/status", localToken);
+  await step("installation receives its own sync token", async () => {
+    assert.equal((await call(localUrl, "/api/installation/status", null)).installation.status, "linked");
+    const relink = await fetch(localUrl + "/api/installation/link-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ installationLinkToken }) });
+    assert.equal(relink.status, 401, "linking endpoints require a session once linked");
+  });
+  localToken = (await step("operative web login", () => call(localUrl, "/api/auth/login-correo", null, { correo: email, password, app: "OPERATIVE_WEB" }))).token;
   await step("sync configuration and access", () => call(localUrl, "/api/config/sync-now", localToken, {}));
   assert.equal((await call(localUrl, "/api/installation/status", localToken)).installation.proyectoId, projectId);
   moduleToken = jwt.sign({ id: entryId }, secret, { expiresIn: "1h" });

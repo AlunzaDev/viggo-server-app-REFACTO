@@ -9,7 +9,11 @@ import type {
 export abstract class InstallationsRepository {
   abstract findByInstallationId(installationId: string): Promise<LocalInstallationRecord | null>;
   abstract findApprovedByProyectoId(proyectoId: string): Promise<LocalInstallationRecord | null>;
-  abstract findApprovedLinkTokenHash(installationId: string): Promise<string>;
+  /** The approved installation that owns this sync token (by hash), with its project. */
+  abstract findApprovedBySyncTokenHash(
+    installationId: string,
+    syncTokenHash: string,
+  ): Promise<{ installationId: string; proyectoId: string } | null>;
   abstract recordCommandPoll(installationId: string, now: number): Promise<void>;
   abstract getConnectivitySummary(
     onlineSince: number,

@@ -260,8 +260,8 @@ describe("InstallationsPostgresDatasource", () => {
     expect(proyecto?.serverIp).toBe("192.168.1.10");
 
     expect((await installations.findApprovedByProyectoId(proyectoId))?.installationId).toBe(tag("inst-1"));
-    const hash = await installations.findApprovedLinkTokenHash(tag("inst-1"));
-    expect(hash).toHaveLength(64);
+    // The sync token is issued when the installation asks for its status, not on approval.
+    expect(await installations.findApprovedBySyncTokenHash(tag("inst-1"), "")).toBeNull();
     expect(await installations.approveRequest({ requestId: randomUUID(), userId: "x", userName: "x" })).toBeNull();
   });
 
@@ -279,7 +279,7 @@ describe("InstallationsPostgresDatasource", () => {
 
   it("unlinks temporarily and permanently, and rejects", async () => {
     expect((await installations.unlinkTemporary({ requestId, userId: "", userName: "Admin" }))?.status).toBe("pending");
-    expect(await installations.findApprovedLinkTokenHash(tag("inst-1"))).toBe("");
+    expect((await installations.findByInstallationId(tag("inst-1")))?.syncTokenIssuedAt).toBe(0);
     expect((await installations.unlinkPermanent({ requestId, userId: "", userName: "Admin" }))?.reviewNote).toBe(
       "Desvinculacion definitiva solicitada desde administrativo",
     );

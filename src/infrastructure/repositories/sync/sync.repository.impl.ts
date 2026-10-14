@@ -14,28 +14,28 @@ export class SyncRepositoryImpl implements SyncRepository {
     return this.datasource.getConfiguration(proyectoId);
   }
 
-  getProjectsCatalog() {
-    return this.datasource.getProjectsCatalog();
+  findProjectByLinkToken(token: string) {
+    return this.datasource.findProjectByLinkToken(token);
   }
 
   getAccessSnapshot(proyectoId: string) {
     return this.datasource.getAccessSnapshot(proyectoId);
   }
 
-  getAccessUserByCorreo(correo: string, app: UserAppAccess) {
-    return this.datasource.getAccessUserByCorreo(correo, app);
+  getAccessUserByCorreo(correo: string, app: UserAppAccess, proyectoId: string) {
+    return this.datasource.getAccessUserByCorreo(correo, app, proyectoId);
   }
 
-  getAccessUserByTelefono(telefono: string, app: UserAppAccess) {
-    return this.datasource.getAccessUserByTelefono(telefono, app);
+  getAccessUserByTelefono(telefono: string, app: UserAppAccess, proyectoId: string) {
+    return this.datasource.getAccessUserByTelefono(telefono, app, proyectoId);
   }
 
   requestInstallationLink(payload: InstallationLinkRequestPayload) {
     return this.datasource.requestInstallationLink(payload);
   }
 
-  getInstallationRequestStatus(installationId: string) {
-    return this.datasource.getInstallationRequestStatus(installationId);
+  getInstallationRequestStatus(installationId: string, proyectoId: string) {
+    return this.datasource.getInstallationRequestStatus(installationId, proyectoId);
   }
 
   receiveHeartbeatSnapshot(payload: HeartbeatSnapshotPayload) {

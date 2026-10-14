@@ -1,3 +1,4 @@
+import { InstallationsPostgresDatasource } from "../../src/infrastructure/datasources/installations/installations.datasource.postgres";
 import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "../../src/generated/prisma/client";
@@ -282,17 +283,21 @@ describe("SyncPostgresDatasource", () => {
     expect(await sync.getAccessSnapshot(otherProyectoId)).toMatchObject({ users: expect.not.arrayContaining([expect.objectContaining({ _id: userId })]) });
   });
 
-  it("resolves a user's access per app", async () => {
-    const web = await sync.getAccessUserByCorreo(`${tag("caja")}@example.com`, "OPERATIVE_WEB");
+  it("resolves a user's access per app, only for the installation's project", async () => {
+    const web = await sync.getAccessUserByCorreo(`${tag("caja")}@example.com`, "OPERATIVE_WEB", proyectoId);
     expect(web?.permissionProfile).toMatchObject({ _id: profileId, modules: ["cashPayments"] });
     expect(web?.user.appPermissions).toEqual([{ app: "OPERATIVE_WEB", permissionProfileId: profileId }]);
 
-    const mobile = await sync.getAccessUserByTelefono(tag("caja"), "OPERATIVE_MOBILE");
+    const mobile = await sync.getAccessUserByTelefono(tag("caja"), "OPERATIVE_MOBILE", proyectoId);
     expect(mobile).toMatchObject({ permissionProfile: null, user: { appPermissions: [] } });
-    expect(await sync.getAccessUserByCorreo(`${tag("caja")}@example.com`, "ADMIN_WEB")).toBeNull();
+    expect(await sync.getAccessUserByCorreo(`${tag("caja")}@example.com`, "ADMIN_WEB", proyectoId)).toBeNull();
+
+    // Another project's installation cannot look this user up.
+    expect(await sync.getAccessUserByCorreo(`${tag("caja")}@example.com`, "OPERATIVE_WEB", otherProyectoId)).toBeNull();
+    expect(await sync.getAccessUserByTelefono(tag("caja"), "OPERATIVE_MOBILE", otherProyectoId)).toBeNull();
   });
 
-  it("links installations with the project token", async () => {
+  it("links installations with the project token and issues them their own sync token", async () => {
     const base = {
       installationId: tag("inst-2"),
       proyectoId,
@@ -303,24 +308,41 @@ describe("SyncPostgresDatasource", () => {
       requestedByUserId: "local-user",
       requestedByUserName: "Operador",
     };
-    expect((await sync.requestInstallationLink({ ...base, installationLinkToken: "wrong" })).status).toBe("invalid-token");
-    expect((await sync.requestInstallationLink({ ...base, proyectoId: randomUUID(), installationLinkToken: LINK_TOKEN })).status).toBe(
-      "missing-project",
-    );
+    // The link token identifies the project; the installation never chooses it.
+    expect(await sync.findProjectByLinkToken(LINK_TOKEN)).toMatchObject({ id: proyectoId, nombre: "Plaza" });
+    expect(await sync.findProjectByLinkToken("wrong")).toBeNull();
+    expect(await sync.findProjectByLinkToken("")).toBeNull();
+    expect((await sync.requestInstallationLink({ ...base, proyectoId: randomUUID() })).status).toBe("missing-project");
 
-    const first = await sync.requestInstallationLink({ ...base, installationLinkToken: LINK_TOKEN });
+    const first = await sync.requestInstallationLink(base);
     expect(first).toMatchObject({ status: "ok", request: { status: "pending", proyectoNombre: "Plaza", browserCoordinates: [-103.3, 20.6] } });
-    const resent = await sync.requestInstallationLink({ ...base, installationLinkToken: LINK_TOKEN, serverIp: "10.0.0.6" });
+    const resent = await sync.requestInstallationLink({ ...base, serverIp: "10.0.0.6" });
     expect(resent.request).toMatchObject({ requestedAt: first.request!.requestedAt, serverIp: "10.0.0.6" });
 
+    // Pending: no token yet; another project's link token does not see the request.
+    expect(await sync.getInstallationRequestStatus(tag("inst-2"), proyectoId)).toMatchObject({ oneTimeSyncToken: null, request: { status: "pending" } });
+    expect((await sync.getInstallationRequestStatus(tag("inst-2"), otherProyectoId)).request).toBeUndefined();
+
     await db.localInstallation.update({ where: { installationId: tag("inst-2") }, data: { status: "approved" } });
-    const status = await sync.getInstallationRequestStatus(tag("inst-2"));
+    const status = await sync.getInstallationRequestStatus(tag("inst-2"), proyectoId);
     expect(status.proyecto?._id).toBe(proyectoId);
     expect(status.proyecto).not.toHaveProperty("installationLinkTokenHash");
+    expect(status.request).not.toHaveProperty("syncTokenHash");
+    const token = String(status.oneTimeSyncToken);
+    expect(token.length).toBeGreaterThanOrEqual(40);
 
-    const otherProject = await sync.requestInstallationLink({ ...base, proyectoId: otherProyectoId, installationLinkToken: LINK_TOKEN });
-    // The other project never issued a link token.
-    expect(otherProject.status).toBe("missing-token");
+    // Only the hash is stored, and it authenticates exactly this installation and project.
+    const installations = new InstallationsPostgresDatasource();
+    const hash = createHash("sha256").update(token).digest("hex");
+    const stored = await db.localInstallation.findUniqueOrThrow({ where: { installationId: tag("inst-2") } });
+    expect(stored.syncTokenHash).toBe(hash);
+    expect(await installations.findApprovedBySyncTokenHash(tag("inst-2"), hash)).toEqual({ installationId: tag("inst-2"), proyectoId });
+    expect(await installations.findApprovedBySyncTokenHash(tag("other"), hash)).toBeNull();
+
+    // Asking again (e.g. the answer was lost) issues a new token and retires the previous one.
+    const again = await sync.getInstallationRequestStatus(tag("inst-2"), proyectoId);
+    expect(again.oneTimeSyncToken).not.toBe(token);
+    expect(await installations.findApprovedBySyncTokenHash(tag("inst-2"), hash)).toBeNull();
   });
 
   it("stores heartbeats and mirrors the device state of the project's modules only", async () => {

@@ -1,35 +1,79 @@
 import { NextFunction, Request, Response } from "express";
-import { envs } from "../../config";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
+import type { LinkTokenProject } from "../../domain/datasources/sync/sync.datasource";
 import type { InstallationsRepository } from "../../domain/repositories/installations/installations.repository";
-import { buildInstallationsRepository } from "../dependencies/repositories.dependencies";
+import type { SyncRepository } from "../../domain/repositories/sync/sync.repository";
+import { buildInstallationsRepository, buildSyncRepository } from "../dependencies/repositories.dependencies";
 
-export type SyncRequest = Request & { installationId?: string };
+/**
+ * Request authenticated by an OPERATIVO installation. `proyectoId` is the project that
+ * installation is linked to; handlers must never serve or accept data of another project.
+ */
+export type SyncRequest = Request & {
+  installationId?: string;
+  proyectoId?: string;
+  /** Set when authenticated with a project's link token (linking flow only). */
+  linkProject?: LinkTokenProject;
+};
 
 let installations: InstallationsRepository | undefined;
+let sync: SyncRepository | undefined;
 
-export const requireSyncAuth = async (req: Request, res: Response, next: NextFunction) => {
+const credentials = (req: Request) => {
   const authorization = req.header("Authorization") ?? "";
-  const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-  const installationId = req.header("X-Viggo-Installation-Id")?.trim();
-
-  if (!token) {
-    return res.status(401).json({ error: "Invalid service token" });
-  }
-  if (!installationId) {
-    return res.status(400).json({ error: "X-Viggo-Installation-Id es requerido" });
-  }
-
-  let valid = Boolean(envs.SYNC_SERVICE_TOKEN) && token === envs.SYNC_SERVICE_TOKEN;
-  if (!valid) {
-    installations ??= buildInstallationsRepository();
-    const expected = await installations.findApprovedLinkTokenHash(installationId);
-    const actual = createHash("sha256").update(token).digest("hex");
-    valid = Boolean(expected) && expected.length === actual.length &&
-      timingSafeEqual(Buffer.from(expected), Buffer.from(actual));
-  }
-  if (!valid) return res.status(401).json({ error: "Invalid service token" });
-
-  (req as SyncRequest).installationId = installationId;
-  return next();
+  return {
+    token: authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "",
+    installationId: req.header("X-Viggo-Installation-Id")?.trim() ?? "",
+  };
 };
+
+const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+
+/**
+ * Operating endpoints: the installation's own sync token, issued when its link request was
+ * approved (only its hash is stored). There is no shared or global token.
+ */
+export const requireInstallationAuth = async (req: Request, res: Response, next: NextFunction) => {
+  const { token, installationId } = credentials(req);
+  if (!token) return res.status(401).json({ error: "Invalid installation token" });
+  if (!installationId) return res.status(400).json({ error: "X-Viggo-Installation-Id es requerido" });
+
+  try {
+    installations ??= buildInstallationsRepository();
+    const installation = await installations.findApprovedBySyncTokenHash(installationId, sha256(token));
+    if (!installation) return res.status(401).json({ error: "Invalid installation token" });
+
+    (req as SyncRequest).installationId = installation.installationId;
+    (req as SyncRequest).proyectoId = installation.proyectoId;
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+};
+
+/**
+ * Linking endpoints: the project's installation link token (generated in ADMINISTRATIVO and
+ * typed by the operator). It identifies the project, so the installation never chooses it.
+ */
+export const requireLinkTokenAuth = async (req: Request, res: Response, next: NextFunction) => {
+  const { token, installationId } = credentials(req);
+  if (!token) return res.status(401).json({ error: "Token de vinculacion requerido" });
+  if (!installationId) return res.status(400).json({ error: "X-Viggo-Installation-Id es requerido" });
+
+  try {
+    sync ??= buildSyncRepository();
+    const project = await sync.findProjectByLinkToken(token);
+    if (!project) return res.status(401).json({ error: "Token de vinculacion invalido" });
+
+    (req as SyncRequest).installationId = installationId;
+    (req as SyncRequest).proyectoId = project.id;
+    (req as SyncRequest).linkProject = project;
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+};
+
+/** 403 unless `proyectoId` is the authenticated installation's project. */
+export const isOwnProject = (req: Request, proyectoId: string) =>
+  Boolean(proyectoId) && proyectoId === (req as SyncRequest).proyectoId;

@@ -1,7 +1,8 @@
 import { OperationalInboxProcessor } from "./operational-inbox.processor";
+import { randomBytes } from "node:crypto";
 import { PostgresDatabase } from "../../../data/postgres";
 import { Prisma } from "../../../generated/prisma/client";
-import type { UserAppAccess } from "../../../domain/constants";
+import { AUTH_ROLES, type UserAppAccess } from "../../../domain/constants";
 import {
   SyncDatasource,
   type HeartbeatSnapshotPayload,
@@ -77,9 +78,12 @@ export class SyncPostgresDatasource implements SyncDatasource {
     return { version: buildStableVersion(snapshot), ...snapshot };
   }
 
-  async getProjectsCatalog() {
-    const rows = await this.db.proyecto.findMany({ where: { estado: true }, include: proyectoDocumentInclude });
-    return rows.map(toProyectoDocument).sort(byText((proyecto) => proyecto.nombre));
+  async findProjectByLinkToken(token: string) {
+    if (!token) return null;
+    return this.db.proyecto.findFirst({
+      where: { installationLinkTokenHash: hashToken(token), estado: true },
+      select: { id: true, nombre: true, identificador: true, codigoProyecto: true, ciudad: true },
+    });
   }
 
   async getAccessSnapshot(proyectoId: string) {
@@ -105,25 +109,33 @@ export class SyncPostgresDatasource implements SyncDatasource {
     return { version: buildStableVersion(snapshot), ...snapshot };
   }
 
-  async getAccessUserByCorreo(correo: string, app: UserAppAccess) {
+  async getAccessUserByCorreo(correo: string, app: UserAppAccess, proyectoId: string) {
     const row = await this.db.usuario.findUnique({ where: { correo }, include: usuarioDocumentInclude });
-    return row ? resolveAccessUserForApp(toUsuarioDocument(row), app, findActiveProfileForApp) : null;
+    return this.accessForProject(row, app, proyectoId);
   }
 
-  async getAccessUserByTelefono(telefono: string, app: UserAppAccess) {
+  async getAccessUserByTelefono(telefono: string, app: UserAppAccess, proyectoId: string) {
     const row = await this.db.usuario.findUnique({ where: { telefono }, include: usuarioDocumentInclude });
-    return row ? resolveAccessUserForApp(toUsuarioDocument(row), app, findActiveProfileForApp) : null;
+    return this.accessForProject(row, app, proyectoId);
+  }
+
+  /** Same rule as the access snapshot: users of the project, plus super admins. */
+  private accessForProject(
+    row: Prisma.UsuarioGetPayload<{ include: typeof usuarioDocumentInclude }> | null,
+    app: UserAppAccess,
+    proyectoId: string,
+  ) {
+    if (!row) return null;
+    const allowed = row.rol === AUTH_ROLES.SUPER || row.parkings.some((parking) => parking.proyectoId === proyectoId);
+    return allowed ? resolveAccessUserForApp(toUsuarioDocument(row), app, findActiveProfileForApp) : null;
   }
 
   async requestInstallationLink(payload: InstallationLinkRequestPayload) {
+    // The project was resolved from the link token by the sync auth middleware.
     const proyecto = isUuid(payload.proyectoId)
       ? await this.db.proyecto.findUnique({ where: { id: payload.proyectoId } })
       : null;
     if (!proyecto) return { status: "missing-project" as const };
-
-    const expectedTokenHash = proyecto.installationLinkTokenHash.trim();
-    if (!expectedTokenHash) return { status: "missing-token" as const };
-    if (hashToken(payload.installationLinkToken) !== expectedTokenHash) return { status: "invalid-token" as const };
 
     const existing = await this.db.localInstallation.findUnique({
       where: { installationId: payload.installationId },
@@ -165,16 +177,28 @@ export class SyncPostgresDatasource implements SyncDatasource {
     return { status: "ok" as const, request: toInstallationRecord(request) };
   }
 
-  async getInstallationRequestStatus(installationId: string) {
-    const row = await this.db.localInstallation.findUnique({ where: { installationId }, include: installationInclude });
-    const proyecto =
-      row?.status === "approved"
-        ? await this.db.proyecto.findUnique({ where: { id: row.proyectoId }, include: proyectoDocumentInclude })
-        : null;
+  async getInstallationRequestStatus(installationId: string, proyectoId: string) {
+    const found = await this.db.localInstallation.findUnique({ where: { installationId }, include: installationInclude });
+    // A request for another project is not visible with this project's link token.
+    const row = found?.proyectoId === proyectoId ? found : null;
+    if (row?.status !== "approved") {
+      return { request: row ? toInstallationRecord(row) : undefined, proyecto: null, oneTimeSyncToken: null };
+    }
+
+    // The installation proved it holds the project's link token: issue it a fresh sync token.
+    // Only the hash is kept; asking again (e.g. the first answer was lost) replaces it.
+    const oneTimeSyncToken = randomBytes(32).toString("base64url");
+    const now = new Date();
+    const updated = await this.db.localInstallation.update({
+      where: { installationId },
+      data: { syncTokenHash: hashToken(oneTimeSyncToken), syncTokenIssuedAt: now, syncTokenDeliveredAt: now },
+      include: installationInclude,
+    });
+    const proyecto = await this.db.proyecto.findUnique({ where: { id: row.proyectoId }, include: proyectoDocumentInclude });
     return {
-      request: row ? toInstallationRecord(row) : undefined,
+      request: toInstallationRecord(updated),
       proyecto: proyecto ? toProyectoDocument(proyecto) : null,
-      oneTimeSyncToken: null,
+      oneTimeSyncToken,
     };
   }
 

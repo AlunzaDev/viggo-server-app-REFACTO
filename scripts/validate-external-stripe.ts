@@ -86,7 +86,7 @@ async function main() {
     const order = await orders.saveQuote(user.id, "seguripass", {
       reference: tag, ticket: "TEST-ONLY", parking: { id: "test-parking", name: "Sandbox validation" },
       amountMinor: 12550, currency: "MXN", expiresAt: Date.now() + 600_000, status: "payable",
-    });
+    }, Date.now());
     orderId = order.id;
     const first = await service.createPaymentIntent(userId, orderId);
     intentId = first.paymentIntentId;

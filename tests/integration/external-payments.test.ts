@@ -245,7 +245,38 @@ describe("external payments: PostgreSQL, HTTP provider, authenticated API and St
     expect(new Set(intents.map(value => value.paymentIntentId)).size).toBe(1);
     expect(stripe.creates - before).toBe(1);
     expect(await db().payment.count({ where: { referenceId: id } })).toBe(1);
-    await expect(service.resolve(otherUser, "seguripass", "same-qr")).rejects.toMatchObject({ statusCode: 404 });
+    // Another account scanning the same ticket gets a clear conflict, not a missing order.
+    await expect(service.resolve(otherUser, "seguripass", "same-qr")).rejects.toMatchObject({ statusCode: 409, code: "EXTERNAL_ORDER_TAKEN" });
+  });
+
+  it("quotes a ticket again once its unpaid quote expires, with the provider's current amount", async () => {
+    const first = await resolveOrder();
+    await db().externalPaymentOrder.update({ where: { id: first.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    quote.amountMinor = 18000;
+
+    const second = await resolveOrder();
+    expect(second.id).not.toBe(first.id);
+    expect(second).toMatchObject({ amountMinor: 18000, status: "quoted" });
+    expect((await repository.find(first.id))?.status).toBe("expired");
+    // The new quote can be paid; the expired one cannot.
+    expect((await service.createPaymentIntent(user, second.id)).status).toBe("requires_payment_method");
+    await expect(service.createPaymentIntent(user, first.id)).rejects.toMatchObject({ statusCode: 409 });
+
+    // Once expired, another account may take the ticket too.
+    await db().externalPaymentOrder.update({ where: { id: second.id }, data: { status: "expired" } });
+    const third = await service.resolve(otherUser, "seguripass", "same-qr");
+    expect(third.id).not.toBe(second.id);
+  });
+
+  it("keeps an order with a charge in progress even after its quote expires", async () => {
+    const order = await resolveOrder();
+    await service.createPaymentIntent(user, order.id);
+    await db().externalPaymentOrder.update({ where: { id: order.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    // Not replaced: the worker cancels the Stripe intent first, then the reference is free.
+    await expect(resolveOrder()).rejects.toMatchObject({ statusCode: 409 });
+    expect(await db().externalPaymentOrder.count({ where: { reference: quote.reference } })).toBe(1);
+    await service.runOnce();
+    expect((await resolveOrder()).id).not.toBe(order.id);
   });
 
   it("recovers an ambiguous Stripe creation using the same canonical order", async () => {

@@ -62,7 +62,11 @@ export abstract class ExternalOrderRepository {
   abstract listAdmin(filters: ExternalOrderFilters, page: number, limit: number): Promise<{ total: number; orders: ExternalOrderAdmin[] }>;
   abstract events(id: string, page: number, limit: number): Promise<{ total: number; events: ExternalOrderEvent[] }>;
   abstract retryConfirmation(id: string, actorId: string, reason: string, intent: ExternalIntent, now: number): Promise<void>;
-  abstract saveQuote(userId: string, provider: string, quote: ExternalQuote): Promise<ExternalOrder>;
+  /**
+   * Returns the live order for the quote's reference, or creates one. A quote nobody started
+   * paying is replaced once it expires, so the ticket can be quoted (and paid) again.
+   */
+  abstract saveQuote(userId: string, provider: string, quote: ExternalQuote, now: number): Promise<ExternalOrder>;
   abstract find(id: string): Promise<ExternalOrder | null>;
   abstract beginIntent(id: string, now: number): Promise<ExternalOrder>;
   abstract attachIntent(order: ExternalOrder, intent: ExternalIntent): Promise<void>;

@@ -574,7 +574,9 @@ model ExternalPaymentOrder {
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
   events  ExternalPaymentEvent[]
 
-  @@unique([provider, reference])
+  /// One live order per provider reference. An expired or refunded order frees the
+  /// reference, so the same ticket can be quoted again (its fee may have changed).
+  @@unique([provider, reference], map: "external_payment_orders_live_reference_key", where: raw("status <> 'expired' AND status <> 'refunded'"))
   @@index([status, nextRetryAt])
   @@index([usuarioId, createdAt(sort: Desc)])
   @@map("external_payment_orders")

@@ -38,7 +38,7 @@ function child(pause = false) {
 
 const seed = async (paid: boolean) => {
   const order = await repository.saveQuote(userId, "seguripass", { reference: randomUUID(), ticket: "RESTART",
-    parking: { id: "fake-parking", name: "Restart fixture" }, amountMinor: 12550, currency: "MXN", expiresAt: Date.now() + 600000, status: "payable" });
+    parking: { id: "fake-parking", name: "Restart fixture" }, amountMinor: 12550, currency: "MXN", expiresAt: Date.now() + 600000, status: "payable" }, Date.now());
   await repository.beginIntent(order.id, Date.now());
   const intent: ExternalIntent = { id: `pi_restart_${order.id}`, orderId: order.id, userId,
     amountMinor: order.amountMinor, currency: "MXN", clientSecret: null, status: "succeeded" };

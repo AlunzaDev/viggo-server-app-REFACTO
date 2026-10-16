@@ -22,8 +22,10 @@ export class ExternalPaymentService {
       throw new CustomError(502, "Cotizacion invalida del proveedor", "INVALID_EXTERNAL_QUOTE");
     }
     if (quote.status !== "payable" || quote.expiresAt <= this.now()) throw CustomError.conflict("Ticket pagado, expirado o no disponible");
-    const order = await this.orders.saveQuote(userId, provider.code, quote);
-    this.assertOwner(order, userId);
+    const order = await this.orders.saveQuote(userId, provider.code, quote, this.now());
+    if (order.userId !== userId) {
+      throw CustomError.conflict("Este ticket ya se esta pagando desde otra cuenta", undefined, "EXTERNAL_ORDER_TAKEN");
+    }
     if (order.expiresAt <= this.now() || !["quoted", "payment_pending"].includes(order.status)) {
       throw CustomError.conflict("La orden ya no esta disponible para cobro");
     }

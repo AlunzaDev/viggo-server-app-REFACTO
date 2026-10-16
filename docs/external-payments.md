@@ -44,8 +44,9 @@ stateDiagram-v2
     paid --> confirmation_failed: agotar 8 intentos
 ```
 
-- Unicidad `(provider, reference)` y dueño inmutable. Un QR repetido recupera la misma orden, sin cambiar monto o vigencia; otro usuario recibe 404. La referencia debe identificar de forma estable y única un ticket/cotización según el contrato del proveedor.
-- Una referencia expirada o ya pagada no se reutiliza automáticamente ni permite otro cobro. Falta acordar si SeguriPass emite una nueva referencia al recotizar. También falta acordar autorización del poseedor del QR y liberación de reservas abandonadas; no asumir que escanear prueba propiedad del ticket.
+- Una sola orden viva por `(provider, reference)` (índice único parcial: `expired` y `refunded` liberan la referencia) y dueño inmutable. Un QR repetido recupera la misma orden, sin cambiar monto o vigencia; otra cuenta recibe 409 `EXTERNAL_ORDER_TAKEN`.
+- Una cotización que nadie empezó a pagar (`quoted`) se reemplaza al vencer: el siguiente escaneo la marca `expired` y crea otra orden con el monto actual del proveedor. Así funciona tanto si SeguriPass emite una referencia nueva al recotizar como si conserva la del ticket. Una orden con cobro en curso no se reemplaza: el worker cancela primero el PaymentIntent y la marca `expired`. Una orden pagada nunca libera la referencia.
+- Falta acordar la autorización del poseedor del QR; no asumir que escanear prueba la propiedad del ticket.
 - Importes enteros en el dominio y `numeric(12,2)` en `payments`; no se mezcla la identidad del parking externo con un proyecto Viggo.
 - Se valida orden, usuario, importe, moneda e ID de PaymentIntent antes de aplicar un éxito de Stripe. El webhook conserva la verificación de firma sobre el body crudo.
 - Persistencia del inicio antes de llamar a Stripe; claves estables al recuperar respuestas perdidas. Si no se conoce el ID después de 23 horas, se abre un incidente y se bloquea la recreación automática. Stripe [puede eliminar claves de idempotencia después de 24 horas](https://docs.stripe.com/api/idempotent_requests). Una vez conocido el ID, solo se recupera ese intento.

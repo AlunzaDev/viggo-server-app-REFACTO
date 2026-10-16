@@ -64,11 +64,15 @@ export class ExternalOrderPostgresRepository extends ExternalOrderRepository {
     });
   }
 
-  async saveQuote(userId: string, provider: string, quote: ExternalQuote) {
-    // One canonical order per provider reference, even across users and concurrent QR scans.
-    const where = { provider_reference: { provider, reference: quote.reference } };
-    const existing = await this.db.externalPaymentOrder.findUnique({ where });
-    if (existing) return map(existing);
+  async saveQuote(userId: string, provider: string, quote: ExternalQuote, now: number) {
+    // One live order per provider reference, even across users and concurrent QR scans.
+    const where = { provider, reference: quote.reference, status: { notIn: ["expired" as const, "refunded" as const] } };
+    const existing = await this.db.externalPaymentOrder.findFirst({ where });
+    if (existing) {
+      // An abandoned quote (no charge started) frees the reference once it expires.
+      if (existing.status !== "quoted" || existing.expiresAt.getTime() > now) return map(existing);
+      await this.expire(existing.id);
+    }
     try {
       const row = await this.db.externalPaymentOrder.create({
         data: { provider, reference: quote.reference, usuarioId: userId,
@@ -80,7 +84,7 @@ export class ExternalOrderPostgresRepository extends ExternalOrderRepository {
     } catch (error) {
       // A racing scan may have inserted the canonical order after our initial read.
       if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
-        const winner = await this.db.externalPaymentOrder.findUnique({ where });
+        const winner = await this.db.externalPaymentOrder.findFirst({ where });
         if (winner) return map(winner);
       }
       throw error;

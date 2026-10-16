@@ -1,3 +1,4 @@
+import { externalPaymentRoutes } from "./payments/external-payment.routes";
 import { Router } from "express";
 
 import { USER_APPS } from "../../domain/constants";
@@ -49,6 +50,12 @@ export class AppRoutes {
     router.use("/api/auth", AuthRoutes.routes);
     router.use("/api/stripe/webhook", StripeWebhookRoutes.routes);
     router.use("/api/sync", SyncRoutes.routes);
+    router.use(
+      "/api/external-payments",
+      AuthMiddleware.requireAuth,
+      AuthMiddleware.requireApps(USER_APPS.OPERATIVE_MOBILE),
+      externalPaymentRoutes(),
+    );
     router.use(
       "/api/mobile",
       AuthMiddleware.requireAuth,

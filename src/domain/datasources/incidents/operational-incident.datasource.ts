@@ -1,7 +1,8 @@
 export type OperationalIncidentType =
   | "INSTALLATION_OFFLINE"
   | "MOBILE_OPERATION_DEAD_LETTER"
-  | "FINANCIAL_WORKER_FAILED";
+  | "FINANCIAL_WORKER_FAILED"
+  | "EXTERNAL_PAYMENT_REVIEW";
 
 export type OperationalIncidentSeverity = "info" | "warning" | "critical";
 

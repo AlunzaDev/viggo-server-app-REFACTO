@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { ExternalPaymentService } from "../../../domain/external-payments/external-payment.service";
+import { externalIntent } from "../../../infrastructure/external-payments/stripe-external.gateway";
 import { Request, Response } from "express";
 import { envs } from "../../../config";
 import { StripePlugin } from "../../../config/plugins/stripe.plugin";
@@ -9,6 +11,7 @@ export class StripeWebhookController {
   constructor(
     private readonly payments: PaymentRepository,
     private readonly operations: MobileOperationRepository,
+    private readonly externalPayments?: ExternalPaymentService,
   ) {}
 
   handle = async (req: Request, res: Response) => {
@@ -26,6 +29,11 @@ export class StripeWebhookController {
         return res.status(200).json({ received: true });
       }
       const intent = event.data.object;
+      if (intent.metadata.type === "external") {
+        if (!this.externalPayments) throw new Error("External payments handler unavailable");
+        await this.externalPayments.acceptSucceeded(externalIntent(intent));
+        return res.status(200).json({ received: true });
+      }
       const pending = await this.payments.findRecordByStripePaymentIntentId(intent.id);
       if (!pending) return res.status(200).json({ received: true, ignored: true });
       const payment = await this.payments.markSucceeded(pending.id, {

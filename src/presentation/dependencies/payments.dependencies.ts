@@ -1,4 +1,5 @@
 import { PaymentHistoryController } from "../routes/payments/payment-history.controller";
+import { buildExternalPaymentService } from "./external-payments.dependencies";
 import { StripePaymentController } from "../routes/payments/stripe-payment.controller";
 import { StripeWebhookController } from "../routes/payments/stripe-webhook.controller";
 import { FinancialReconciliationService } from "../services/payments/financial-reconciliation.service";
@@ -31,7 +32,7 @@ export const buildPaymentHistoryController = (): PaymentHistoryController => {
 };
 
 export const buildStripeWebhookController = (): StripeWebhookController =>
-  new StripeWebhookController(buildPaymentRepository(), buildMobileOperationRepository());
+  new StripeWebhookController(buildPaymentRepository(), buildMobileOperationRepository(), buildExternalPaymentService());
 
 export const buildFinancialReconciliationService = (): FinancialReconciliationService =>
   new FinancialReconciliationService(

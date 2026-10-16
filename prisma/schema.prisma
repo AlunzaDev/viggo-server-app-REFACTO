@@ -107,6 +107,7 @@ enum PaymentType {
   ticket
   pension
   renewal
+  external
 
   @@map("payment_type")
 }
@@ -160,6 +161,7 @@ enum IncidentType {
   INSTALLATION_OFFLINE
   MOBILE_OPERATION_DEAD_LETTER
   FINANCIAL_WORKER_FAILED
+  EXTERNAL_PAYMENT_REVIEW
 
   @@map("incident_type")
 }
@@ -231,6 +233,7 @@ model Usuario {
   cancelledPensionPasses PensionPass[]          @relation("PensionPassCancelledBy")
   cancelledPensiones     Pension[]              @relation("PensionCancelledBy")
   payments               Payment[]
+  externalPaymentOrders  ExternalPaymentOrder[]
   mobileOperations       MobileOperation[]
   reviewedInstallations  LocalInstallation[]    @relation("InstallationReviewedBy")
 
@@ -532,6 +535,63 @@ model PensionPassOperation {
 }
 
 // ───────────────────────────── Payments ─────────────────────────────
+
+enum ExternalOrderStatus {
+  quoted
+  payment_pending
+  paid
+  confirmed
+  confirmation_failed
+  expired
+  refunded
+
+  @@map("external_order_status")
+}
+
+model ExternalPaymentOrder {
+  id                    String              @id @default(uuid(7)) @db.Uuid
+  provider              String              @db.VarChar(32)
+  reference             String              @db.VarChar(256)
+  usuarioId             String              @map("usuario_id") @db.Uuid
+  ticket                String
+  parkingId             String              @map("parking_id")
+  parkingName           String              @map("parking_name")
+  amountMinor           Int                 @map("amount_minor")
+  currency              String              @db.Char(3)
+  expiresAt             DateTime            @map("expires_at") @db.Timestamptz(3)
+  status                ExternalOrderStatus @default(quoted)
+  stripePaymentIntentId String?             @unique @map("stripe_payment_intent_id")
+  intentStartedAt       DateTime?           @map("intent_started_at") @db.Timestamptz(3)
+  attempts              Int                 @default(0)
+  nextRetryAt           DateTime            @default(now()) @map("next_retry_at") @db.Timestamptz(3)
+  leaseOwner            String              @default("") @map("lease_owner")
+  leaseUntil            DateTime?           @map("lease_until") @db.Timestamptz(3)
+  confirmationReference String              @default("") @map("confirmation_reference")
+  lastError             String              @default("") @map("last_error")
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  events  ExternalPaymentEvent[]
+
+  @@unique([provider, reference])
+  @@index([status, nextRetryAt])
+  @@index([usuarioId, createdAt(sort: Desc)])
+  @@map("external_payment_orders")
+}
+
+/// Append-only audit. Never stores raw QRs, client secrets or provider credentials.
+model ExternalPaymentEvent {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  orderId   String   @map("order_id") @db.Uuid
+  kind      String
+  detail    String   @default("")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  order ExternalPaymentOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+  @@map("external_payment_events")
+}
 
 model Payment {
   id                    String               @id @default(uuid(7)) @db.Uuid

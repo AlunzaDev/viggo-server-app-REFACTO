@@ -8,7 +8,7 @@ import {
 } from "../../../domain/datasources/incidents/operational-incident.datasource";
 import { isUuid } from "../postgres/prisma-errors";
 
-const TYPES = ["INSTALLATION_OFFLINE", "MOBILE_OPERATION_DEAD_LETTER", "FINANCIAL_WORKER_FAILED"];
+const TYPES = ["INSTALLATION_OFFLINE", "MOBILE_OPERATION_DEAD_LETTER", "FINANCIAL_WORKER_FAILED", "EXTERNAL_PAYMENT_REVIEW"];
 const STATUSES = ["open", "resolved"];
 const SEVERITIES = ["info", "warning", "critical"];
 

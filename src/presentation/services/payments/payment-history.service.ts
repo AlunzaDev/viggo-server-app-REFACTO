@@ -5,7 +5,7 @@ import {
   parsePaginationDateQuery,
 } from "../shared/pagination-query";
 
-type PaymentType = "ticket" | "pension" | "renewal";
+type PaymentType = "ticket" | "pension" | "renewal" | "external";
 type PaymentStatus = "succeeded" | "pending" | "failed" | "refunded";
 
 interface PaymentHistoryFilters {
@@ -18,7 +18,7 @@ interface PaymentHistoryFilters {
   to?: unknown;
 }
 
-const paymentTypes = new Set<PaymentType>(["ticket", "pension", "renewal"]);
+const paymentTypes = new Set<PaymentType>(["ticket", "pension", "renewal", "external"]);
 const paymentStatuses = new Set<PaymentStatus>([
   "succeeded",
   "pending",

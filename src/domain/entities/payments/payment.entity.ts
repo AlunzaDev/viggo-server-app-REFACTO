@@ -4,6 +4,7 @@ export const PAYMENT_TYPES = [
   "ticket",
   "pension",
   "renewal",
+  "external",
 ] as const;
 
 export type PaymentType = (typeof PAYMENT_TYPES)[number];

@@ -214,6 +214,7 @@ export class PaymentPostgresDatasource extends PaymentDatasource {
     // Same predicate as the payments_unreconciled_idx partial index.
     const rows = await this.payments.findMany({
       where: {
+        type: { not: "external" },
         stripePaymentIntentId: { not: null },
         NOT: { stripePaymentIntentId: "" },
         OR: [

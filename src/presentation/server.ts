@@ -1,4 +1,6 @@
 import { OperationalInboxScheduler } from "./services/sync/operational-inbox.scheduler";
+import { ExternalPaymentWorker } from "./services/payments/external-payment.worker";
+import { buildExternalPaymentService } from "./dependencies/external-payments.dependencies";
 import cors, { CorsOptions } from "cors";
 import express, { Router } from "express";
 import type { Server as HttpServer } from "node:http";
@@ -39,6 +41,7 @@ export class Server {
   private httpServer?: HttpServer;
   private shuttingDown = false;
   private readonly inbox = new OperationalInboxScheduler();
+  private readonly externalPayments = new ExternalPaymentWorker(buildExternalPaymentService());
 
   constructor({ host = "0.0.0.0", port, publicPath = "public", routes }: ServerOptions) {
     this.host = host;
@@ -99,6 +102,7 @@ export class Server {
     });
 
     buildFinancialReconciliationService().start();
+    this.externalPayments.start();
     this.inbox.start();
 
     process.once("SIGTERM", () => void this.shutdown("SIGTERM"));
@@ -124,6 +128,7 @@ export class Server {
         this.httpServer.closeIdleConnections();
       });
       await this.inbox.stop();
+      await this.externalPayments.stop();
       await PostgresDatabase.disconnect();
       process.exit(0);
     } catch (error) {

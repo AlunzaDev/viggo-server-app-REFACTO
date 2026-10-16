@@ -58,7 +58,10 @@ if (!existsSync(appEntry)) {
 console.log("[DEV] Iniciando compilación incremental y servidor con recarga...");
 
 const compiler = runNode([tscBin, "--watch", "--preserveWatchOutput"]);
-const server = runNode(["--watch", appEntry]);
+// Watch only the compiled output: plain --watch also tracks every file loaded from
+// node_modules, and on Windows a library loading a file lazily (e.g. iconv-lite on the
+// first login) counts as a change and restarts the server mid-request.
+const server = runNode(["--watch-path", resolve(projectRoot, "dist"), appEntry]);
 
 let shuttingDown = false;
 

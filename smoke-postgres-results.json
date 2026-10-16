@@ -1,0 +1,168 @@
+{
+  "issue": 11,
+  "runId": "mv9r2wcs",
+  "stripe": "mock",
+  "physicalHardware": false,
+  "steps": [
+    {
+      "name": "both PostgreSQL backends ready",
+      "status": "passed",
+      "ms": 11972
+    },
+    {
+      "name": "administrative web login",
+      "status": "passed",
+      "ms": 320
+    },
+    {
+      "name": "create project with UUID",
+      "status": "passed",
+      "ms": 132
+    },
+    {
+      "name": "create ENTRADA module",
+      "status": "passed",
+      "ms": 244
+    },
+    {
+      "name": "create SALIDA module",
+      "status": "passed",
+      "ms": 86
+    },
+    {
+      "name": "create POS module",
+      "status": "passed",
+      "ms": 453
+    },
+    {
+      "name": "preview installation link (project comes from the token)",
+      "status": "passed",
+      "ms": 551
+    },
+    {
+      "name": "request installation link",
+      "status": "passed",
+      "ms": 257
+    },
+    {
+      "name": "approve installation",
+      "status": "passed",
+      "ms": 345
+    },
+    {
+      "name": "installation receives its own sync token",
+      "status": "passed",
+      "ms": 291
+    },
+    {
+      "name": "operative web login",
+      "status": "passed",
+      "ms": 583
+    },
+    {
+      "name": "sync configuration and access",
+      "status": "passed",
+      "ms": 737
+    },
+    {
+      "name": "mobile login",
+      "status": "passed",
+      "ms": 203
+    },
+    {
+      "name": "mobile catalogs scoped to assigned project; administrative writes denied",
+      "status": "passed",
+      "ms": 95
+    },
+    {
+      "name": "mobile entry command",
+      "status": "passed",
+      "ms": 241
+    },
+    {
+      "name": "mobile payment intent (mock provider)",
+      "status": "passed",
+      "ms": 1610
+    },
+    {
+      "name": "apply mobile payment locally",
+      "status": "passed",
+      "ms": 2111
+    },
+    {
+      "name": "mobile exit",
+      "status": "passed",
+      "ms": 2621
+    },
+    {
+      "name": "create pension plan",
+      "status": "passed",
+      "ms": 48
+    },
+    {
+      "name": "contract pension",
+      "status": "passed",
+      "ms": 80
+    },
+    {
+      "name": "cashier login with cloud unreachable",
+      "status": "passed",
+      "ms": 185
+    },
+    {
+      "name": "issue ticket while offline",
+      "status": "passed",
+      "ms": 100
+    },
+    {
+      "name": "retried entry returns the same ticket",
+      "status": "passed",
+      "ms": 27
+    },
+    {
+      "name": "open cash shift while offline",
+      "status": "passed",
+      "ms": 76
+    },
+    {
+      "name": "resolve and quote cash ticket QR while offline",
+      "status": "passed",
+      "ms": 57
+    },
+    {
+      "name": "start cash payment while offline",
+      "status": "passed",
+      "ms": 76
+    },
+    {
+      "name": "complete cash payment while offline",
+      "status": "passed",
+      "ms": 149
+    },
+    {
+      "name": "local exit while offline",
+      "status": "passed",
+      "ms": 59
+    },
+    {
+      "name": "reconnect and project all offline events",
+      "status": "passed",
+      "ms": 1313
+    },
+    {
+      "name": "cloud historical dashboard",
+      "status": "passed",
+      "ms": 57
+    },
+    {
+      "name": "ADMINISTRATIVO/viggo_web-ADMINISTRATIVO authenticated HTTP smoke",
+      "status": "passed",
+      "ms": 492
+    },
+    {
+      "name": "OPERATIVO/viggo-web-OPERATIVA authenticated HTTP smoke",
+      "status": "passed",
+      "ms": 752
+    }
+  ]
+}

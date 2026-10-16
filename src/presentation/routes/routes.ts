@@ -1,3 +1,4 @@
+import { DashboardRoutes } from "./dashboard/dashboard.routes";
 import { externalPaymentRoutes } from "./payments/external-payment.routes";
 import { externalPaymentAdminRoutes } from "./payments/external-payment-admin.routes";
 import { Router } from "express";
@@ -44,6 +45,7 @@ export class AppRoutes {
         message: "pong",
       });
     });
+    router.use("/api/dashboard", AuthMiddleware.requireAuth, requireAdminApp, DashboardRoutes.routes);
     router.use("/api/health", HealthRoutes.routes);
     if (!envs.PROD) {
       router.use("/api/dev/ticket-lab", TicketLabRoutes.routes);

@@ -16,3 +16,7 @@ src/generated/
 
 # Local MongoDB data from the pre-Postgres setup (never versioned)
 /mongo/
+
+# Local reports and uploads made while testing
+smoke-postgres-results.json
+public/uploads/projects/project-1792082949245-8463b9bd-8fba-4647-b237-ada3fbddce3c.jpg

@@ -12,6 +12,7 @@ import { ExternalOrderPostgresRepository } from "../../src/infrastructure/reposi
 import { PaymentPostgresDatasource } from "../../src/infrastructure/datasources/payments/payment.datasource.postgres";
 import { SeguripassClient } from "../../src/infrastructure/external-payments/seguripass.client";
 import { externalPaymentRoutes } from "../../src/presentation/routes/payments/external-payment.routes";
+import { externalPaymentAdminRoutes } from "../../src/presentation/routes/payments/external-payment-admin.routes";
 import { StripeWebhookController } from "../../src/presentation/routes/payments/stripe-webhook.controller";
 import { StripePlugin } from "../../src/config/plugins/stripe.plugin";
 import { StripeExternalGateway } from "../../src/infrastructure/external-payments/stripe-external.gateway";
@@ -45,6 +46,8 @@ const repository = new ExternalOrderPostgresRepository();
 const stripe = new FakeStripe();
 const tag = `external-${randomUUID()}`;
 let user = "", otherUser = "", token = "", otherToken = "";
+let superToken = "", adminToken = "", profileId = "";
+const staff: string[] = [];
 let quote: ExternalQuote;
 let service: ExternalPaymentService;
 let server: Server, providerServer: Server, base = "";
@@ -74,6 +77,15 @@ beforeAll(async () => {
   }
   token = String(await JwtPlugin.generateToken({ id: user, app: "OPERATIVE_MOBILE" }));
   otherToken = String(await JwtPlugin.generateToken({ id: otherUser, app: "OPERATIVE_MOBILE" }));
+  profileId = (await db().permissionProfile.create({ data: { nombre: tag, app: "ADMIN_WEB", modules: ["payments"] } })).id;
+  for (const rol of ["SUPER_ROLE", "ADMIN_ROLE"]) {
+    const row = await db().usuario.create({ data: { nombre: "Staff", apellido: "Test", password: "hash", rol,
+      correo: `${tag}-${rol.toLowerCase()}@example.com`, telefono: `${tag}-${rol}`, emailValidated: true,
+      allowedApps: ["ADMIN_WEB"], appPermissions: { create: { app: "ADMIN_WEB", permissionProfileId: profileId } } } });
+    staff.push(row.id);
+    const jwt = String(await JwtPlugin.generateToken({ id: row.id, app: "ADMIN_WEB" }));
+    if (rol === "SUPER_ROLE") superToken = jwt; else adminToken = jwt;
+  }
 
   // These endpoints/payloads are ONLY a fake test protocol, never a claimed SeguriPass API.
   const providerApp = express();
@@ -111,6 +123,7 @@ beforeAll(async () => {
     new StripeWebhookController(buildPaymentRepository(), buildMobileOperationRepository(), service).handle);
   app.use(express.json());
   app.use("/orders-api", AuthMiddleware.requireAuth, AuthMiddleware.requireApps("OPERATIVE_MOBILE"), externalPaymentRoutes(service));
+  app.use("/admin-api", externalPaymentAdminRoutes(service, repository));
   const host = await listen(app); server = host.server; base = host.url;
 });
 
@@ -131,6 +144,8 @@ afterAll(async () => {
   await db().payment.deleteMany({ where: { usuarioId: { in: [user, otherUser] } } });
   await db().externalPaymentOrder.deleteMany({ where: { usuarioId: { in: [user, otherUser] } } });
   await db().usuario.deleteMany({ where: { id: { in: [user, otherUser] } } });
+  await db().usuario.deleteMany({ where: { id: { in: staff } } });
+  if (profileId) await db().permissionProfile.delete({ where: { id: profileId } });
   await PostgresDatabase.disconnect();
 });
 
@@ -143,6 +158,70 @@ const paidOrder = async () => {
 };
 
 describe("external payments: PostgreSQL, HTTP provider, authenticated API and Stripe port", () => {
+  it("restricts the global administrative queue to super administrators", async () => {
+    for (const path of ["/admin-api/orders", `/admin-api/orders/${randomUUID()}/events`]) {
+      expect((await request("GET", path, undefined, null)).status).toBe(401);
+      expect((await request("GET", path, undefined, token)).status).toBe(403);
+      expect((await request("GET", path, undefined, adminToken)).status).toBe(403);
+      expect((await request("GET", path, undefined, superToken)).status).toBe(path.endsWith("events") ? 404 : 200);
+    }
+    const path = `/admin-api/orders/${randomUUID()}/retry-confirmation`;
+    expect((await request("POST", path, { reason: "Validar recuperacion" }, token)).status).toBe(403);
+    expect((await request("POST", path, { reason: "Validar recuperacion" }, adminToken)).status).toBe(403);
+  });
+
+  it("filters and paginates admin orders and events with no client secrets", async () => {
+    await resolveOrder(); quote.reference = randomUUID(); await resolveOrder();
+    const result = await request("GET", `/admin-api/orders?userId=${user}&status=quoted&provider=seguripass&limit=1`, undefined, superToken);
+    expect(result.status).toBe(200); expect(result.body.orders).toHaveLength(1); expect(result.body.total).toBeGreaterThanOrEqual(2);
+    expect(result.body.orders[0]).not.toHaveProperty("clientSecret"); expect(result.body.orders[0]).not.toHaveProperty("leaseOwner");
+    const events = await request("GET", `/admin-api/orders/${result.body.orders[0].id}/events?limit=1`, undefined, superToken);
+    expect(events.body.events[0].kind).toBe("quoted");
+    for (const query of ["status=bad", "page=1.5", "limit=101", "userId=bad", "provider=a%2Fb", "from=999999999999999999", "from=100&to=1", "status=paid&status=quoted"]) {
+      expect((await request("GET", `/admin-api/orders?${query}`, undefined, superToken)).status).toBe(400);
+    }
+    expect((await request("GET", "/admin-api/orders/invalid/events", undefined, superToken)).status).toBe(400);
+  });
+
+  it("audits a concurrent manual retry and preserves the existing charge and incident until confirmation", async () => {
+    const order = await paidOrder();
+    await db().externalPaymentOrder.update({ where: { id: order.id }, data: { attempts: 7 } });
+    confirmationFails = true; await service.runOnce();
+    expect((await repository.find(order.id))?.status).toBe("confirmation_failed");
+    const creates = stripe.creates;
+    const path = `/admin-api/orders/${order.id}/retry-confirmation`;
+    expect((await request("POST", path, { reason: "corto" }, superToken)).status).toBe(400);
+    const results = await Promise.all([request("POST", path, { reason: "Proveedor recuperado tras incidente" }, superToken), request("POST", path, { reason: "Proveedor recuperado tras incidente" }, superToken)]);
+    expect(results.map(result => result.status).sort()).toEqual([202, 409]);
+    const audit = await db().externalPaymentEvent.findMany({ where: { orderId: order.id, kind: "manual_confirmation_retry" } });
+    expect(audit).toHaveLength(1); expect(JSON.parse(audit[0].detail)).toMatchObject({ actorId: staff[0], previousAttempts: 8 });
+    expect((await repository.find(order.id))?.attempts).toBe(0);
+    expect(await db().operationalIncident.findUnique({ where: { incidentKey: `external-payment:${order.id}` } })).toMatchObject({ status: "open" });
+    confirmationFails = false; await service.runOnce();
+    expect((await repository.find(order.id))?.status).toBe("confirmed");
+    expect(await db().operationalIncident.findUnique({ where: { incidentKey: `external-payment:${order.id}` } })).toMatchObject({ status: "resolved" });
+    expect(stripe.creates).toBe(creates);
+    expect((await request("POST", path, { reason: "No debe repetir confirmacion" }, superToken)).status).toBe(409);
+  });
+
+  it("rejects manual retries for unpaid, refunded, mismatched or actively leased payments", async () => {
+    const order = await paidOrder();
+    await db().externalPaymentOrder.update({ where: { id: order.id }, data: { attempts: 7 } });
+    confirmationFails = true; await service.runOnce();
+    const path = `/admin-api/orders/${order.id}/retry-confirmation`;
+    const intent = stripe.intents.get(order.id)!;
+    intent.status = "requires_payment_method";
+    expect((await request("POST", path, { reason: "Verificar estado financiero" }, superToken)).status).toBe(409);
+    intent.status = "succeeded"; intent.amountMinor = 1;
+    expect((await request("POST", path, { reason: "Verificar estado financiero" }, superToken)).status).toBe(409);
+    intent.amountMinor = 12550;
+    await db().payment.updateMany({ where: { referenceId: order.id }, data: { status: "refunded" } });
+    expect((await request("POST", path, { reason: "Verificar estado financiero" }, superToken)).status).toBe(409);
+    await db().payment.updateMany({ where: { referenceId: order.id }, data: { status: "succeeded" } });
+    await db().externalPaymentOrder.update({ where: { id: order.id }, data: { leaseUntil: new Date(Date.now() + 60_000) } });
+    expect((await request("POST", path, { reason: "Verificar estado financiero" }, superToken)).status).toBe(409);
+    expect(await db().externalPaymentEvent.count({ where: { orderId: order.id, kind: "manual_confirmation_retry" } })).toBe(0);
+  });
   it("requires auth and owns orders; ignores client amounts and user IDs", async () => {
     expect((await request("POST", "/orders-api/orders", {}, null)).status).toBe(401);
     const result = await request("POST", "/orders-api/orders", { provider: "seguripass", qr: "untrusted", amountMinor: 1, userId: otherUser });

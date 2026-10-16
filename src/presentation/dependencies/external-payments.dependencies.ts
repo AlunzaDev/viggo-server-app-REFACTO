@@ -3,8 +3,10 @@ import { SeguripassClient } from "../../infrastructure/external-payments/segurip
 import { StripeExternalGateway } from "../../infrastructure/external-payments/stripe-external.gateway";
 import { ExternalOrderPostgresRepository } from "../../infrastructure/repositories/payments/external-order.repository.postgres";
 
+export const buildExternalOrderRepository = () => new ExternalOrderPostgresRepository();
+
 export const buildExternalPaymentService = () => new ExternalPaymentService(
-  new ExternalOrderPostgresRepository(),
+  buildExternalOrderRepository(),
   // Intentionally unconfigured until #18 supplies the actual QR/API/auth contract.
   [new SeguripassClient()], new StripeExternalGateway(),
 );

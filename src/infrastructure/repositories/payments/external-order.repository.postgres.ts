@@ -2,6 +2,7 @@ import { PostgresDatabase } from "../../../data/postgres";
 import type { ExternalPaymentOrder as Row, Prisma } from "../../../generated/prisma/client";
 import { ExternalOrderRepository, type ExternalOrder, type ExternalQuote, type ExternalIntent } from "../../../domain/external-payments/external-payment";
 import { CustomError } from "../../../domain/errors/custom.error";
+import type { ExternalOrderFilters, ExternalOrderAdmin } from "../../../domain/external-payments/external-payment";
 
 const map = (row: Row): ExternalOrder => ({ ...row, userId: row.usuarioId,
   expiresAt: row.expiresAt.getTime(), intentStartedAt: row.intentStartedAt?.getTime() ?? null });
@@ -10,6 +11,58 @@ const event = (kind: string, detail = "") => ({ create: { kind, detail } });
 
 export class ExternalOrderPostgresRepository extends ExternalOrderRepository {
   private get db() { return PostgresDatabase.client; }
+
+  async listAdmin(filters: ExternalOrderFilters, page: number, limit: number) {
+    const where: Prisma.ExternalPaymentOrderWhereInput = {
+      status: filters.status, provider: filters.provider, usuarioId: filters.userId,
+      createdAt: { ...(filters.from !== undefined ? { gte: new Date(filters.from) } : {}), ...(filters.to !== undefined ? { lte: new Date(filters.to) } : {}) },
+    };
+    const [total, rows] = await this.db.$transaction([
+      this.db.externalPaymentOrder.count({ where }),
+      this.db.externalPaymentOrder.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * limit, take: limit }),
+    ], { isolationLevel: "RepeatableRead" });
+    const orders: ExternalOrderAdmin[] = rows.map(row => ({
+      ...map(row), lastError: row.lastError, nextRetryAt: row.nextRetryAt.getTime(),
+      leaseUntil: row.leaseUntil?.getTime() ?? null, createdAt: row.createdAt.getTime(),
+    }));
+    // Explicit projection keeps internal Prisma fields out of the administrative API too.
+    return { total, orders: orders.map(row => ({
+      id: row.id, provider: row.provider, reference: row.reference, userId: row.userId,
+      ticket: row.ticket, parkingId: row.parkingId, parkingName: row.parkingName,
+      amountMinor: row.amountMinor, currency: row.currency, expiresAt: row.expiresAt, status: row.status,
+      stripePaymentIntentId: row.stripePaymentIntentId, intentStartedAt: row.intentStartedAt,
+      attempts: row.attempts, confirmationReference: row.confirmationReference,
+      lastError: row.lastError, nextRetryAt: row.nextRetryAt, leaseUntil: row.leaseUntil, createdAt: row.createdAt,
+    })) };
+  }
+
+  async events(id: string, page: number, limit: number) {
+    const where = { orderId: id };
+    const [total, rows] = await this.db.$transaction([
+      this.db.externalPaymentEvent.count({ where }),
+      this.db.externalPaymentEvent.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * limit, take: limit }),
+    ], { isolationLevel: "RepeatableRead" });
+    return { total, events: rows.map(row => ({ id: row.id, kind: row.kind, detail: row.detail, createdAt: row.createdAt.getTime() })) };
+  }
+
+  async retryConfirmation(id: string, actorId: string, reason: string, intent: ExternalIntent, now: number) {
+    await this.locked(id, async (tx, row) => {
+      this.checkBinding(row, intent);
+      if (row.status !== "confirmation_failed" || (row.leaseUntil && row.leaseUntil.getTime() > now) || intent.status !== "succeeded") {
+        throw CustomError.conflict("Orden no disponible para reintento");
+      }
+      const payment = await tx.payment.findUnique({ where: { stripePaymentIntentId: intent.id } });
+      if (!payment || payment.status !== "succeeded" || payment.type !== "external" || payment.referenceId !== id || payment.usuarioId !== row.usuarioId) {
+        throw CustomError.conflict("El registro del cobro no permite reintentar");
+      }
+      await tx.externalPaymentOrder.update({ where: { id }, data: {
+        status: "paid", attempts: 0, nextRetryAt: new Date(now), leaseOwner: "", leaseUntil: null, lastError: "",
+        events: event("manual_confirmation_retry", JSON.stringify({ actorId, reason, previousAttempts: row.attempts, paymentIntentId: intent.id })),
+      } });
+      await tx.payment.update({ where: { id: payment.id }, data: { reconciliationStatus: "pending", reconciliationError: "" } });
+      // The incident remains open until the provider actually confirms.
+    });
+  }
 
   async saveQuote(userId: string, provider: string, quote: ExternalQuote) {
     // One canonical order per provider reference, even across users and concurrent QR scans.

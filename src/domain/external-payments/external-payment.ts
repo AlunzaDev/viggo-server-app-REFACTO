@@ -44,6 +44,14 @@ export interface ExternalIntent {
   orderId: string; userId: string;
 }
 
+export interface ExternalOrderFilters {
+  status?: ExternalOrderStatus; provider?: string; userId?: string; from?: number; to?: number;
+}
+export interface ExternalOrderAdmin extends ExternalOrder {
+  lastError: string; nextRetryAt: number; leaseUntil: number | null; createdAt: number;
+}
+export interface ExternalOrderEvent { id: string; kind: string; detail: string; createdAt: number }
+
 export interface ExternalPaymentGateway {
   create(order: ExternalOrder): Promise<ExternalIntent>;
   retrieve(id: string): Promise<ExternalIntent>;
@@ -51,6 +59,9 @@ export interface ExternalPaymentGateway {
 }
 
 export abstract class ExternalOrderRepository {
+  abstract listAdmin(filters: ExternalOrderFilters, page: number, limit: number): Promise<{ total: number; orders: ExternalOrderAdmin[] }>;
+  abstract events(id: string, page: number, limit: number): Promise<{ total: number; events: ExternalOrderEvent[] }>;
+  abstract retryConfirmation(id: string, actorId: string, reason: string, intent: ExternalIntent, now: number): Promise<void>;
   abstract saveQuote(userId: string, provider: string, quote: ExternalQuote): Promise<ExternalOrder>;
   abstract find(id: string): Promise<ExternalOrder | null>;
   abstract beginIntent(id: string, now: number): Promise<ExternalOrder>;

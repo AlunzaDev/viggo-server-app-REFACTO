@@ -56,7 +56,47 @@ stateDiagram-v2
 - Auditoría append-only de cotización, inicio, vinculación del intento, pago, confirmación, errores y expiración. No almacena QRs, secretos de Stripe, credenciales ni respuestas crudas.
 - La conciliación existente de tickets/pensiones excluye `external`. El historial normal del usuario sí incluye el nuevo tipo.
 
-`refunded` está reservado en el modelo. **No hay automatización de devoluciones, reintento manual ni conciliación contra un endpoint de estado de SeguriPass todavía**: hay que acordar políticas y contrato primero. La revisión usa las rutas existentes de incidentes para ADMIN_WEB; el parking externo no se asigna a un proyecto Viggo. No cerrar #18 ni declarar lista para producción la integración por pasar las pruebas simuladas.
+`refunded` está reservado en el modelo. **No hay automatización de devoluciones ni conciliación contra un endpoint de estado de SeguriPass todavía**: hay que acordar políticas y contrato primero. La revisión usa las rutas existentes de incidentes para ADMIN_WEB; el parking externo no se asigna a un proyecto Viggo. No cerrar #18 ni declarar lista para producción la integración por pasar las pruebas simuladas.
+
+## Operación administrativa y reintento manual
+
+Se reutilizan `AuthMiddleware`, el módulo de permisos `payments`, la paginación compartida, el historial de eventos y el worker existente. No se agregan tablas ni workers. Las órdenes externas no tienen alcance por proyecto Viggo: estas rutas requieren sesión `ADMIN_WEB` con `SUPER_ROLE`. Un administrador de proyecto o cliente móvil no puede consultar la cola global ni reactivar órdenes.
+
+| Método y ruta | Función |
+| --- | --- |
+| `GET /api/admin/external-payments/orders` | Lista paginada; filtros opcionales `status`, `provider`, `userId`, `from`, `to`, `page`, `limit`. Fechas sobre creación, con las convenciones de paginación existentes. Sin `status` lista todos los estados. |
+| `GET /api/admin/external-payments/orders/:id/events` | Auditoría paginada, orden descendente. |
+| `POST /api/admin/external-payments/orders/:id/retry-confirmation` | Body `{ "reason": "Proveedor recuperado tras incidente" }`. Devuelve 202 cuando el worker tiene la confirmación en cola. |
+
+El reintento manual exige un motivo de 10 a 256 caracteres y estado `confirmation_failed`. Recupera el PaymentIntent existente de Stripe y comprueba estado `succeeded`, importe, moneda y dueño. En una transacción bloquea la orden, vuelve a comprobar el estado y que el pago local siga exitoso, sin lease activo, y registra `manual_confirmation_retry` con actor de la sesión, motivo, intentos anteriores y PaymentIntent. Reabre un ciclo de hasta 8 intentos, conservando el mismo cobro y la misma clave de confirmación del tercero. Solicitudes concurrentes: una recibe 202 y las demás 409. El incidente sigue abierto hasta obtener confirmación real del tercero.
+
+No hay llamadas a creación de PaymentIntent desde este reintento. Se rechazan órdenes ya confirmadas, cobros pendientes o reembolsados conocidos y discrepancias con Stripe. Esta primera versión no consulta reembolsos remotos que aún no se hayan reflejado localmente; su conciliación depende del contrato financiero pendiente.
+
+### Validación con Stripe test real
+
+`scripts/validate-external-stripe.ts` es una prueba explícita: exige `STRIPE_TEST_SECRET_KEY` con prefijo `sk_test_` y la URL de `.env.test` terminada en `_test`. Nunca utiliza la base de desarrollo. Ejecución, una vez configurada la variable con una clave de prueba:
+
+```sh
+npx tsx scripts/validate-external-stripe.ts
+```
+
+Crea una orden temporal, llama al gateway real, repite la solicitud para verificar idempotencia, confirma con `pm_card_visa` y comprueba la persistencia mediante recuperación del intento desde Stripe. Limpia sus filas locales; el PaymentIntent permanece visible como pago de prueba en Stripe. El 2026-10-16 esta validación pasó con 12,550 centavos MXN: un solo PaymentIntent y un solo registro de pago.
+
+El modo anterior comprueba recuperación desde Stripe sin webhook. Para probar entrega real:
+
+```sh
+npx tsx scripts/validate-external-stripe.ts --webhook
+```
+
+Requiere [Stripe CLI](https://docs.stripe.com/stripe-cli/use-cli) en PATH o `STRIPE_CLI_PATH` apuntando al ejecutable. El script abre un endpoint HTTP temporal en loopback con el controlador real y body crudo, inicia `stripe listen` filtrado a `payment_intent.succeeded`, captura el secreto de firma en memoria y confirma su propio PaymentIntent. La clave se pasa al hijo mediante `STRIPE_API_KEY`, sin ponerla en argumentos ni imprimirla. Solo procesa el intento de esta validación; no modifica otras órdenes del sandbox. No registra un endpoint público ni cambia `.env`.
+
+En este modo no llama al servicio para marcar el pago: espera que el evento real firmado actualice la base. Después reenvía el mismo payload/firma para probar idempotencia. Cierra el listener, el endpoint y limpia los datos locales. No usar `stripe trigger` para dar por pagada una orden cualquiera: el evento debe corresponder al intento de esa orden.
+
+Validación real completada el 2026-10-16 con Stripe CLI 1.53.1 (descarga oficial y SHA-256 verificado): PaymentIntent `pi_3UREQLEUJQtwe1bv17gxs008`, evento `evt_3UREQLEUJQtwe1bv1t5507o0`, 12,550 centavos MXN, webhook recibido y duplicado aceptado sin duplicar pago/auditoría. El servidor temporal usó la base `_test` y el controlador de producción; no hubo confirmación a SeguriPass. La operación en un entorno desplegado y la validación del proveedor siguen pendientes.
+
+### Recuperación entre procesos
+
+`tests/integration/external-payments.restart.test.ts` inicia procesos Node distintos usando el servicio y repositorio reales. Comprueba recuperación de un webhook perdido y mata un proceso después de confirmar remotamente con un proveedor simulado, antes del commit local. Un nuevo proceso respeta el lease vigente; tras adelantar su vencimiento en la base de pruebas, otro proceso recupera la orden con la misma clave de confirmación. Resultado: dos intentos remotos, una aplicación remota, un cobro y una auditoría de confirmación. El arnés está en `tests/fixtures/external-payment-process.ts` y solo acepta base `_test` y proveedor loopback.
 
 ## Cuando llegue la documentación
 

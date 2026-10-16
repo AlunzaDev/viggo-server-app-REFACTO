@@ -34,6 +34,18 @@ export class ExternalPaymentService {
     return this.publicOrder(await this.owned(userId, id));
   }
 
+  async retryConfirmation(id: string, actorId: string, reason: unknown) {
+    if (!validText(reason) || reason.trim().length < 10) throw CustomError.badRequest("Indica un motivo de 10 a 256 caracteres");
+    const order = await this.orders.find(id);
+    if (!order) throw CustomError.notFound("Orden externa no encontrada");
+    if (order.status !== "confirmation_failed" || !order.stripePaymentIntentId) throw CustomError.conflict("Solo se reintenta una confirmacion fallida de un cobro existente");
+    // Retrieve only: a manual retry can never create another charge.
+    const intent = await this.gateway.retrieve(order.stripePaymentIntentId);
+    this.validateIntent(order, intent);
+    if (intent.status !== "succeeded") throw CustomError.conflict("Stripe no confirma el pago");
+    await this.orders.retryConfirmation(id, actorId, reason.trim(), intent, this.now());
+  }
+
   async createPaymentIntent(userId: string, id: string) {
     let order = await this.owned(userId, id);
     if (!["quoted", "payment_pending"].includes(order.status) || order.expiresAt <= this.now()) {

@@ -450,6 +450,26 @@ describe("external payments: PostgreSQL, HTTP provider, authenticated API and St
       expect((await send(signature)).status).toBe(200);
       expect((await repository.find(order.id))?.status).toBe("confirmed");
       expect(await db().externalPaymentEvent.count({ where: { orderId: order.id, kind: "paid" } })).toBe(1);
+
+      // An order this database does not know (another environment on the same Stripe
+      // account) is acknowledged, so Stripe does not retry it for days.
+      for (const externalOrderId of [randomUUID(), "not-an-order-id"]) {
+        const foreign = JSON.stringify({ id: "evt_foreign", object: "event", type: "payment_intent.succeeded", data: { object: {
+          id: `pi_foreign_${randomUUID()}`, amount: 12550, currency: "mxn", status: "succeeded", client_secret: null,
+          metadata: { type: "external", externalOrderId, usuario: user },
+        } } });
+        const response = await fetch(base + "/webhook", { method: "POST", headers: { "Content-Type": "application/json",
+          "stripe-signature": StripePlugin.client.webhooks.generateTestHeaderString({ payload: foreign, secret: "whsec_test" }) }, body: foreign });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ ignored: true });
+      }
+      // A known order whose charge does not match is still an error (Stripe keeps retrying).
+      const mismatched = JSON.stringify({ id: "evt_mismatch", object: "event", type: "payment_intent.succeeded", data: { object: {
+        id: intent.id, amount: 1, currency: "mxn", status: "succeeded", client_secret: null,
+        metadata: { type: "external", externalOrderId: order.id, usuario: user },
+      } } });
+      expect((await fetch(base + "/webhook", { method: "POST", headers: { "Content-Type": "application/json",
+        "stripe-signature": StripePlugin.client.webhooks.generateTestHeaderString({ payload: mismatched, secret: "whsec_test" }) }, body: mismatched })).status).toBe(400);
     } finally { envs.STRIPE_WEBHOOK_SECRET = previousSecret; envs.SECRET_STRIPE_KEY = previousKey; }
   });
 

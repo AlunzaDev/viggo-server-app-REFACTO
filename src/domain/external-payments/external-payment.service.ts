@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { CustomError } from "../errors/custom.error";
 import { ExternalOrderRepository, type ExternalIntent, type ExternalOrder, type ExternalPaymentGateway, type ExternalPaymentProvider } from "./external-payment";
 
+const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const validText = (value: unknown): value is string => typeof value === "string" && !!value.trim() && value.length <= 256;
 
 export class ExternalPaymentService {
@@ -62,7 +63,7 @@ export class ExternalPaymentService {
 
   /** Only called with a signature-verified Stripe event or a server-side Stripe retrieval. */
   async acceptSucceeded(intent: ExternalIntent) {
-    const order = await this.orders.find(intent.orderId);
+    const order = isUuid(intent.orderId) ? await this.orders.find(intent.orderId) : null;
     if (!order) throw CustomError.notFound("Orden externa no encontrada");
     this.validateIntent(order, intent);
     if (intent.status !== "succeeded") throw CustomError.conflict("Stripe no confirma el pago");
@@ -145,7 +146,7 @@ export class ExternalPaymentService {
   }
 
   private async owned(userId: string, id: string) {
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw CustomError.badRequest("Orden invalida");
+    if (!isUuid(id)) throw CustomError.badRequest("Orden invalida");
     const order = await this.orders.find(id);
     if (!order) throw CustomError.notFound("Orden externa no encontrada");
     this.assertOwner(order, userId);

@@ -8,6 +8,7 @@
     "dev": "node scripts/dev.mjs",
     "preflight": "node scripts/preflight.mjs",
     "audit:app-permissions": "tsx scripts/audit-app-permissions.ts",
+    "provider:reference": "tsx scripts/provider-reference-server.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/app.js",
     "check": "prisma generate && tsc --noEmit && tsc -p tests",

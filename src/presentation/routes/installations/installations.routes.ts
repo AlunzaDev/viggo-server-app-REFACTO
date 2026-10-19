@@ -16,6 +16,7 @@ export class InstallationsRoutes {
     router.patch("/:id/approve", controller.approveRequest);
     router.patch("/:id/reject", controller.rejectRequest);
     router.patch("/:id/unlink-temporary", controller.unlinkTemporary);
+    router.post("/:id/rotate-token", controller.requestTokenRotation);
     router.patch("/:id/unlink-permanent", AuthMiddleware.requireRoles(AUTH_ROLES.SUPER), controller.unlinkPermanent);
 
     return router;

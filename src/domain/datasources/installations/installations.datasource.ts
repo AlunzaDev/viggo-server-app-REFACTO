@@ -36,12 +36,23 @@ export interface InstallationConnectivitySummary {
 export abstract class InstallationsDatasource {
   abstract findByInstallationId(installationId: string): Promise<LocalInstallationRecord | null>;
   abstract findApprovedByProyectoId(proyectoId: string): Promise<LocalInstallationRecord | null>;
-  /** Hash of the project link token for an approved installation, or "" if there is none. */
-  /** The approved installation that owns this sync token (by hash), with its project. */
-  abstract findApprovedBySyncTokenHash(
+  /**
+   * The approved installation that owns this sync token (by hash), with its project. The
+   * token replaced by the last rotation is accepted until the new one is used once.
+   */
+  abstract authenticateSyncToken(
     installationId: string,
     syncTokenHash: string,
-  ): Promise<{ installationId: string; proyectoId: string } | null>;
+  ): Promise<{ installationId: string; proyectoId: string; rotationRequested: boolean } | null>;
+  /**
+   * Issues a new sync token to the installation that authenticated with `usedHash`; that
+   * hash stays valid until the new token is used. Null if it is no longer approved.
+   */
+  abstract rotateSyncToken(installationId: string, usedHash: string): Promise<{ syncToken: string } | null>;
+  /** Asks the installation to rotate its token on its next sync call. */
+  abstract requestSyncTokenRotation(requestId: string): Promise<LocalInstallationRecord | null>;
+  /** Token to call the project's linked installation, or "" if it has none yet. */
+  abstract findAdminCallToken(proyectoId: string): Promise<string>;
   abstract recordCommandPoll(installationId: string, now: number): Promise<void>;
   /**
    * Approved installations grouped by last poll: online if polled at/after onlineSince,

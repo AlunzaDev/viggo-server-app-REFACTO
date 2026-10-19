@@ -229,9 +229,15 @@ Internamente `ADMINISTRATIVO` llama a:
 
 ```http
 GET <localApiBaseUrl>/api/local-reports/snapshot
-Authorization: Bearer <SYNC_SERVICE_TOKEN>
+Authorization: Bearer <token de llamada de la instalacion>
 X-Viggo-Sync-Source: administrativo-direct-query
 ```
+
+No hay token compartido: el token de llamada es un HMAC del token de sincronizacion de esa instalacion (`viggo:administrativo->operativo`), que ADMINISTRATIVO guarda cifrado al entregar el token y OPERATIVO calcula con el suyo. No sirve para hacerse pasar por la instalacion ante la nube. Una instalacion aprobada antes de este cambio no lo tiene: se arregla rotando su token desde *Instalaciones*.
+
+### Rotar el token de una instalacion
+
+Desde *Instalaciones* (`POST /api/installations/:id/rotate-token`) se pide la rotacion sin desvincular. En su siguiente llamada de sync la instalacion recibe el encabezado `X-Viggo-Sync-Token-Rotation: required` y pide un token nuevo (`POST /api/sync/sync-token/rotate`). El token anterior sigue valido hasta que el nuevo se usa por primera vez, asi que una respuesta perdida solo se reintenta.
 
 Este flujo sirve para estado en vivo cuando existe conexion hacia el servidor local. El historial de `/api/local-projects/:projectId/snapshot` se consulta en las tablas espejo de la nube; el heartbeat conserva su consulta en vivo y su fallback almacenado.
 

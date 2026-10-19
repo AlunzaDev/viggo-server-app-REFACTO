@@ -1,4 +1,3 @@
-import { envs } from "../../../config";
 import {
   LocalProjectsDatasource,
   type LocalDeviceBindingActionPayload,
@@ -10,6 +9,11 @@ export interface LocalProjectRef {
   nombre: string;
   identificador: string;
   localApiBaseUrl: string;
+  /**
+   * Token to call the linked installation's local API (derived from its own sync token).
+   * Empty until the installation receives its token; there is no shared token.
+   */
+  adminCallToken: string;
 }
 
 export interface HeartbeatSnapshotData {
@@ -32,12 +36,19 @@ export interface LocalProjectsStore {
 const buildLocalUrl = (baseUrl: string, path: string) =>
   `${baseUrl.replace(/\/+$/, "")}${path}`;
 
-const fetchLocalHeartbeat = async (baseUrl: string, projectId: string) => {
+const NO_ADMIN_CALL_TOKEN = {
+  ok: false as const,
+  localStatus: 503,
+  error: "La instalacion local aun no tiene credenciales para recibir llamadas; rota su token desde Instalaciones",
+};
+
+const fetchLocalHeartbeat = async (baseUrl: string, projectId: string, adminCallToken: string) => {
+  if (!adminCallToken) return NO_ADMIN_CALL_TOKEN;
   const response = await fetch(
     buildLocalUrl(baseUrl, `/api/local-reports/heartbeat?proyectoId=${encodeURIComponent(projectId)}`),
     {
       headers: {
-        Authorization: `Bearer ${envs.SYNC_SERVICE_TOKEN}`,
+        Authorization: `Bearer ${adminCallToken}`,
         "X-Viggo-Sync-Source": "administrativo-direct-query",
       },
     },
@@ -62,7 +73,9 @@ const callLocalDeviceBindingAction = async (
   baseUrl: string,
   action: "approve" | "reject",
   payload: LocalDeviceBindingActionPayload,
+  adminCallToken: string,
 ) => {
+  if (!adminCallToken) return NO_ADMIN_CALL_TOKEN;
   const response = await fetch(
     buildLocalUrl(
       baseUrl,
@@ -71,7 +84,7 @@ const callLocalDeviceBindingAction = async (
     {
       method: "PATCH",
       headers: {
-        Authorization: `Bearer ${envs.SYNC_SERVICE_TOKEN}`,
+        Authorization: `Bearer ${adminCallToken}`,
         "Content-Type": "application/json",
         "X-Viggo-Sync-Source": "administrativo-device-binding",
       },
@@ -117,11 +130,14 @@ export class LocalProjectsHttpDatasource implements LocalProjectsDatasource {
     if (payload.from) params.set("from", payload.from);
     if (payload.to) params.set("to", payload.to);
 
+    if (!proyecto.adminCallToken) {
+      return { status: "local-error" as const, localStatus: NO_ADMIN_CALL_TOKEN.localStatus, error: NO_ADMIN_CALL_TOKEN.error };
+    }
     const response = await fetch(
       buildLocalUrl(localApiBaseUrl, `/api/local-reports/snapshot?${params.toString()}`),
       {
         headers: {
-          Authorization: `Bearer ${envs.SYNC_SERVICE_TOKEN}`,
+          Authorization: `Bearer ${proyecto.adminCallToken}`,
           "X-Viggo-Sync-Source": "administrativo-direct-query",
         },
       },
@@ -176,7 +192,7 @@ export class LocalProjectsHttpDatasource implements LocalProjectsDatasource {
     }
 
     try {
-      const liveResult = await fetchLocalHeartbeat(localApiBaseUrl, projectId);
+      const liveResult = await fetchLocalHeartbeat(localApiBaseUrl, projectId, proyecto.adminCallToken);
       if (!liveResult.ok) {
         return {
           status: "local-error" as const,
@@ -292,6 +308,7 @@ export class LocalProjectsHttpDatasource implements LocalProjectsDatasource {
       localApiBaseUrl,
       action,
       payload,
+      proyecto.adminCallToken,
     );
 
     if (!result.ok) {

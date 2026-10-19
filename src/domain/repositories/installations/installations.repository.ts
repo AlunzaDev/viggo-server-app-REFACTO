@@ -9,11 +9,13 @@ import type {
 export abstract class InstallationsRepository {
   abstract findByInstallationId(installationId: string): Promise<LocalInstallationRecord | null>;
   abstract findApprovedByProyectoId(proyectoId: string): Promise<LocalInstallationRecord | null>;
-  /** The approved installation that owns this sync token (by hash), with its project. */
-  abstract findApprovedBySyncTokenHash(
+  abstract authenticateSyncToken(
     installationId: string,
     syncTokenHash: string,
-  ): Promise<{ installationId: string; proyectoId: string } | null>;
+  ): Promise<{ installationId: string; proyectoId: string; rotationRequested: boolean } | null>;
+  abstract rotateSyncToken(installationId: string, usedHash: string): Promise<{ syncToken: string } | null>;
+  abstract requestSyncTokenRotation(requestId: string): Promise<LocalInstallationRecord | null>;
+  abstract findAdminCallToken(proyectoId: string): Promise<string>;
   abstract recordCommandPoll(installationId: string, now: number): Promise<void>;
   abstract getConnectivitySummary(
     onlineSince: number,

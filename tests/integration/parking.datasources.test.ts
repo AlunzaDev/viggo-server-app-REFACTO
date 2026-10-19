@@ -261,7 +261,7 @@ describe("InstallationsPostgresDatasource", () => {
 
     expect((await installations.findApprovedByProyectoId(proyectoId))?.installationId).toBe(tag("inst-1"));
     // The sync token is issued when the installation asks for its status, not on approval.
-    expect(await installations.findApprovedBySyncTokenHash(tag("inst-1"), "")).toBeNull();
+    expect(await installations.authenticateSyncToken(tag("inst-1"), "")).toBeNull();
     expect(await installations.approveRequest({ requestId: randomUUID(), userId: "x", userName: "x" })).toBeNull();
   });
 

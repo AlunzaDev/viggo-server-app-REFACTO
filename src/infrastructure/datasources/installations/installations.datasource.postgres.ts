@@ -1,4 +1,5 @@
 import { PostgresDatabase } from "../../../data/postgres";
+import { issueSyncToken, readAdminCallToken } from "../../../presentation/utils/installation-sync-token.util";
 import type { Prisma } from "../../../generated/prisma/client";
 import {
   InstallationsDatasource,
@@ -43,6 +44,9 @@ export const toInstallationRecord = (row: InstallationRow): LocalInstallationRec
   reviewNote: row.reviewNote,
   syncTokenIssuedAt: ms(row.syncTokenIssuedAt),
   syncTokenDeliveredAt: ms(row.syncTokenDeliveredAt),
+  syncTokenRotationRequestedAt: ms(row.syncTokenRotationRequestedAt),
+  // Approved before ADMINISTRATIVO kept a token to call it: rotating the token fixes it.
+  hasAdminCallToken: Boolean(row.adminCallTokenEncrypted),
   lastCommandPollAt: ms(row.lastCommandPollAt),
   updatedAt: ms(row.updatedAt),
 });
@@ -54,7 +58,14 @@ const reviewFields = (payload: InstallationReviewPayload, note: string) => ({
   reviewNote: note,
 });
 
-const clearSyncToken = { syncTokenHash: "", syncTokenIssuedAt: null, syncTokenDeliveredAt: null };
+const clearSyncToken = {
+  syncTokenHash: "",
+  syncTokenIssuedAt: null,
+  syncTokenDeliveredAt: null,
+  previousSyncTokenHash: "",
+  syncTokenRotationRequestedAt: null,
+  adminCallTokenEncrypted: "",
+};
 
 export class InstallationsPostgresDatasource implements InstallationsDatasource {
   private get installations() {
@@ -130,12 +141,74 @@ export class InstallationsPostgresDatasource implements InstallationsDatasource 
     return row ? toInstallationRecord(row) : null;
   }
 
-  async findApprovedBySyncTokenHash(installationId: string, syncTokenHash: string) {
+  async authenticateSyncToken(installationId: string, syncTokenHash: string) {
     if (!installationId || !syncTokenHash) return null;
-    return this.installations.findFirst({
-      where: { installationId, syncTokenHash, status: "approved" },
-      select: { installationId: true, proyectoId: true },
+    const row = await this.installations.findFirst({
+      where: {
+        installationId,
+        status: "approved",
+        OR: [{ syncTokenHash }, { previousSyncTokenHash: syncTokenHash }],
+      },
+      select: { installationId: true, proyectoId: true, syncTokenHash: true, previousSyncTokenHash: true, syncTokenRotationRequestedAt: true },
     });
+    if (!row) return null;
+    // The new token is in use: the one it replaced stops working.
+    if (row.syncTokenHash === syncTokenHash && row.previousSyncTokenHash) {
+      await this.installations.updateMany({
+        where: { installationId, syncTokenHash },
+        data: { previousSyncTokenHash: "" },
+      });
+    }
+    return {
+      installationId: row.installationId,
+      proyectoId: row.proyectoId,
+      rotationRequested: Boolean(row.syncTokenRotationRequestedAt),
+    };
+  }
+
+  async rotateSyncToken(installationId: string, usedHash: string) {
+    return PostgresDatabase.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM local_installations WHERE installation_id = ${installationId} FOR UPDATE`;
+      const row = await tx.localInstallation.findUnique({ where: { installationId } });
+      if (row?.status !== "approved" || !usedHash) return null;
+      if (usedHash !== row.syncTokenHash && usedHash !== row.previousSyncTokenHash) return null;
+      const issued = issueSyncToken();
+      const now = new Date();
+      await tx.localInstallation.update({
+        where: { installationId },
+        data: {
+          // Whatever the installation authenticated with stays valid until the new token is used.
+          previousSyncTokenHash: usedHash,
+          syncTokenHash: issued.syncTokenHash,
+          adminCallTokenEncrypted: issued.adminCallTokenEncrypted,
+          syncTokenIssuedAt: now,
+          syncTokenDeliveredAt: now,
+          syncTokenRotationRequestedAt: null,
+        },
+      });
+      return { syncToken: issued.syncToken };
+    });
+  }
+
+  async requestSyncTokenRotation(requestId: string) {
+    if (!isUuid(requestId)) return null;
+    const updated = await this.installations.updateMany({
+      where: { id: requestId, status: "approved" },
+      data: { syncTokenRotationRequestedAt: new Date() },
+    });
+    if (!updated.count) return null;
+    const row = await this.installations.findUnique({ where: { id: requestId }, include: installationInclude });
+    return row ? toInstallationRecord(row) : null;
+  }
+
+  async findAdminCallToken(proyectoId: string) {
+    if (!isUuid(proyectoId)) return "";
+    const row = await this.installations.findFirst({
+      where: { proyectoId, status: "approved", adminCallTokenEncrypted: { not: "" } },
+      orderBy: { syncTokenIssuedAt: "desc" },
+      select: { adminCallTokenEncrypted: true },
+    });
+    return readAdminCallToken(row?.adminCallTokenEncrypted);
   }
 
   async recordCommandPoll(installationId: string, now: number): Promise<void> {

@@ -3,6 +3,7 @@ import { Prisma } from "../../../generated/prisma/client";
 import type { LocalProjectSnapshotPayload } from "../../../domain/datasources/local-projects/local-projects.datasource";
 import { isUuid } from "../postgres/prisma-errors";
 import { toHeartbeatDocument } from "../sync/sync.documents.postgres";
+import { readAdminCallToken } from "../../../presentation/utils/installation-sync-token.util";
 import { LocalProjectsHttpDatasource, type LocalProjectsStore } from "./local-projects.http-datasource";
 
 const asJson = (value: unknown) => value as Prisma.InputJsonValue;
@@ -14,7 +15,17 @@ const postgresStore: LocalProjectsStore = {
       where: { id: projectId },
       select: { id: true, nombre: true, identificador: true, localApiBaseUrl: true },
     });
-    return proyecto ? { ...proyecto, localApiBaseUrl: proyecto.localApiBaseUrl.trim() } : null;
+    if (!proyecto) return null;
+    const installation = await PostgresDatabase.client.localInstallation.findFirst({
+      where: { proyectoId: projectId, status: "approved", adminCallTokenEncrypted: { not: "" } },
+      orderBy: { syncTokenIssuedAt: "desc" },
+      select: { adminCallTokenEncrypted: true },
+    });
+    return {
+      ...proyecto,
+      localApiBaseUrl: proyecto.localApiBaseUrl.trim(),
+      adminCallToken: readAdminCallToken(installation?.adminCallTokenEncrypted),
+    };
   },
   async findHeartbeat(projectId) {
     if (!isUuid(projectId)) return null;

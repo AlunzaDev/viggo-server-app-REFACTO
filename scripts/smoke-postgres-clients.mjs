@@ -78,7 +78,7 @@ const launch = (directory, url, port, adminUrl) => {
   const child = spawn(process.execPath, ["--import", "tsx", "src/app.ts"], {
     cwd: directory, windowsHide: true, env: { ...process.env,
       APP_ENV: "test", PROD: "false", DATABASE_URL: url, PORT: String(port), HOST: "127.0.0.1", PUBLIC_PATH: "public",
-      JWT_SEED: secret, SYNC_SERVICE_TOKEN: secret, INSTALLATION_LINK_TOKEN_SECRET: secret,
+      JWT_SEED: secret, INSTALLATION_LINK_TOKEN_SECRET: secret,
       ADMINISTRATIVO_API_URL: adminUrl, WEB_SERVICE_URL: `http://127.0.0.1:${port}`,
       INSTALLATION_ID: installationId, PROJECT_ID: "", AUTO_CONFIG_SYNC_ENABLED: "false",
       MOBILE_COMMANDS_SYNC_ENABLED: "true", MOBILE_COMMANDS_SYNC_INTERVAL_MS: "2000", MOBILE_COMMANDS_SYNC_START_DELAY_MS: "0",
@@ -173,6 +173,11 @@ try {
   });
   localToken = (await step("operative web login", () => call(localUrl, "/api/auth/login-correo", null, { correo: email, password, app: "OPERATIVE_WEB" }))).token;
   await step("sync configuration and access", () => call(localUrl, "/api/config/sync-now", localToken, {}));
+  await step("administrative live heartbeat with the installation's own call token", async () => {
+    // No shared secret: ADMINISTRATIVO calls the parking with a token derived from its sync token.
+    const live = await call(adminUrl, `/api/local-projects/${projectId}/heartbeat`, adminToken);
+    assert.equal(live.mode, "live", JSON.stringify(live).slice(0, 200));
+  });
   assert.equal((await call(localUrl, "/api/installation/status", localToken)).installation.proyectoId, projectId);
   moduleToken = jwt.sign({ id: entryId }, secret, { expiresIn: "1h" });
   exitToken = jwt.sign({ id: exitId }, secret, { expiresIn: "1h" });

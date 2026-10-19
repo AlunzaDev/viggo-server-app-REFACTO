@@ -1,4 +1,5 @@
 import { OperationalInboxProcessor } from "./operational-inbox.processor";
+import { issueSyncToken } from "../../../presentation/utils/installation-sync-token.util";
 import { randomBytes } from "node:crypto";
 import { PostgresDatabase } from "../../../data/postgres";
 import { Prisma } from "../../../generated/prisma/client";
@@ -187,11 +188,19 @@ export class SyncPostgresDatasource implements SyncDatasource {
 
     // The installation proved it holds the project's link token: issue it a fresh sync token.
     // Only the hash is kept; asking again (e.g. the first answer was lost) replaces it.
-    const oneTimeSyncToken = randomBytes(32).toString("base64url");
+    const issued = issueSyncToken();
+    const oneTimeSyncToken = issued.syncToken;
     const now = new Date();
     const updated = await this.db.localInstallation.update({
       where: { installationId },
-      data: { syncTokenHash: hashToken(oneTimeSyncToken), syncTokenIssuedAt: now, syncTokenDeliveredAt: now },
+      data: {
+        syncTokenHash: issued.syncTokenHash,
+        adminCallTokenEncrypted: issued.adminCallTokenEncrypted,
+        previousSyncTokenHash: "",
+        syncTokenRotationRequestedAt: null,
+        syncTokenIssuedAt: now,
+        syncTokenDeliveredAt: now,
+      },
       include: installationInclude,
     });
     const proyecto = await this.db.proyecto.findUnique({ where: { id: row.proyectoId }, include: proyectoDocumentInclude });

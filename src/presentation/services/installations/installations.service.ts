@@ -1,8 +1,4 @@
-import { envs } from "../../../config";
 import { InstallationsRepository } from "../../../domain/repositories/installations/installations.repository";
-
-const buildLocalUrl = (baseUrl: string, path: string) =>
-  `${baseUrl.replace(/\/+$/, "")}${path}`;
 
 export class InstallationsService {
   constructor(private readonly repository: InstallationsRepository) {}
@@ -17,12 +13,8 @@ export class InstallationsService {
     userName: string;
     note?: string;
   }) {
-    const request = await this.repository.approveRequest(payload);
-    if (!request || "missingProject" in request) return request;
-
-    const localApiBaseUrl = String(request.localApiBaseUrl ?? "").trim();
-    await this.triggerLocalSync(localApiBaseUrl);
-    return request;
+    // The installation syncs its configuration itself once it receives its token.
+    return this.repository.approveRequest(payload);
   }
 
   rejectRequest(payload: {
@@ -32,6 +24,10 @@ export class InstallationsService {
     note: string;
   }) {
     return this.repository.rejectRequest(payload);
+  }
+
+  requestTokenRotation(requestId: string) {
+    return this.repository.requestSyncTokenRotation(requestId);
   }
 
   unlinkTemporary(payload: {
@@ -52,20 +48,4 @@ export class InstallationsService {
     return this.repository.unlinkPermanent(payload);
   }
 
-  private async triggerLocalSync(localApiBaseUrl: string) {
-    if (!localApiBaseUrl) return;
-
-    try {
-      await fetch(
-        buildLocalUrl(localApiBaseUrl, "/api/config/sync-now/service"),
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${envs.SYNC_SERVICE_TOKEN}`,
-            "X-Viggo-Sync-Source": "administrativo-approval",
-          },
-        },
-      );
-    } catch {}
-  }
 }

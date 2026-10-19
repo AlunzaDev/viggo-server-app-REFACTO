@@ -14,7 +14,11 @@ export type SyncRequest = Request & {
   proyectoId?: string;
   /** Set when authenticated with a project's link token (linking flow only). */
   linkProject?: LinkTokenProject;
+  /** Hash of the sync token the installation authenticated with. */
+  syncTokenHash?: string;
 };
+
+export const SYNC_TOKEN_ROTATION_HEADER = "X-Viggo-Sync-Token-Rotation";
 
 let installations: InstallationsRepository | undefined;
 let sync: SyncRepository | undefined;
@@ -40,11 +44,15 @@ export const requireInstallationAuth = async (req: Request, res: Response, next:
 
   try {
     installations ??= buildInstallationsRepository();
-    const installation = await installations.findApprovedBySyncTokenHash(installationId, sha256(token));
+    const syncTokenHash = sha256(token);
+    const installation = await installations.authenticateSyncToken(installationId, syncTokenHash);
     if (!installation) return res.status(401).json({ error: "Invalid installation token" });
 
     (req as SyncRequest).installationId = installation.installationId;
     (req as SyncRequest).proyectoId = installation.proyectoId;
+    (req as SyncRequest).syncTokenHash = syncTokenHash;
+    // An administrator asked for a new token: the installation rotates on seeing this.
+    if (installation.rotationRequested) res.setHeader(SYNC_TOKEN_ROTATION_HEADER, "required");
     return next();
   } catch (error) {
     return next(error);

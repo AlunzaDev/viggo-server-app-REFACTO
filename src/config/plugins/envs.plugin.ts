@@ -64,7 +64,6 @@ const installationLinkTokenSecret = env
   .default("")
   .asString()
   .trim();
-const syncServiceToken = env.get("SYNC_SERVICE_TOKEN").default("").asString().trim();
 const mailerEmail = env.get("MAILER_EMAIL").default("").asString().trim();
 const mailerSecretKey = env.get("MAILER_SECRET_KEY").default("").asString().trim();
 const mailerHost = env.get("MAILER_HOST").default("").asString().trim();
@@ -103,7 +102,6 @@ if (isProd) {
   }
   requireProductionSecret("JWT_SEED", jwtSeed);
   requireProductionSecret("INSTALLATION_LINK_TOKEN_SECRET", installationLinkTokenSecret);
-  requireProductionSecret("SYNC_SERVICE_TOKEN", syncServiceToken);
 
   if (!mailerEmail || !mailerSecretKey || !mailerHost) {
     throw new Error("MAILER_EMAIL, MAILER_SECRET_KEY and MAILER_HOST are required in production.");
@@ -168,7 +166,6 @@ export const envs = {
   STRIPE_CURRENCY: env.get("STRIPE_CURRENCY").default("mxn").asString(),
   STRIPE_ENABLED: stripeEnabled,
   STRIPE_MOCK_ENABLED: env.get("STRIPE_MOCK_ENABLED").default(isProd ? "false" : "true").asBool(),
-  SYNC_SERVICE_TOKEN: syncServiceToken,
   FINANCIAL_RECONCILIATION_WORKER_ENABLED: env
     .get("FINANCIAL_RECONCILIATION_WORKER_ENABLED")
     .default("true")

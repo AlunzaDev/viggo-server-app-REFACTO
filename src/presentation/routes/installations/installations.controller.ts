@@ -100,6 +100,17 @@ export class InstallationsController {
     }
   };
 
+  /** The installation gets a new sync token on its next sync call, without unlinking. */
+  requestTokenRotation = async (req: Request, res: Response) => {
+    try {
+      const request = await this.service.requestTokenRotation(String(req.params.id ?? "").trim());
+      if (!request) return res.status(404).json({ error: "Instalacion aprobada no encontrada" });
+      return res.status(202).json({ request });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
   unlinkTemporary = async (req: Request, res: Response) => {
     try {
       const requestId = String(req.params.id ?? "").trim();

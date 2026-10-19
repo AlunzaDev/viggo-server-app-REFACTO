@@ -25,6 +25,7 @@ export class SyncRoutes {
     // Operation: authenticated with the installation's own sync token, scoped to its project.
     router.use(requireInstallationAuth);
     router.get("/status", controller.status);
+    router.post("/sync-token/rotate", controller.rotateSyncToken);
     router.get("/mobile-commands/next", controller.claimNextMobileCommand);
     router.post("/mobile-commands/:operationId/complete", controller.completeMobileCommand);
     router.get("/configuration/:proyectoId", controller.getConfiguration);

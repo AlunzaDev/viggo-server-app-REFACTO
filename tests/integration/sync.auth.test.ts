@@ -1,10 +1,11 @@
 import express from "express";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresDatabase } from "../../src/data/postgres";
 import { SyncRoutes } from "../../src/presentation/routes/sync/sync.routes";
+import { InstallationsPostgresDatasource } from "../../src/infrastructure/datasources/installations/installations.datasource.postgres";
 
 const db = () => PostgresDatabase.client;
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -132,11 +133,40 @@ describe("sync authentication (HTTP)", () => {
     expect((await call("POST", "/heartbeat-snapshot", { token, body: heartbeat })).status).toBe(403);
   });
 
+  it("rotates the token on request without unlinking, never locking the installation out", async () => {
+    const installations = new InstallationsPostgresDatasource();
+    const path = `/configuration/${proyectoA}`;
+    const header = async (token: string) =>
+      (await fetch(`${baseUrl}${path}`, { headers: { Authorization: `Bearer ${token}`, "X-Viggo-Installation-Id": INSTALLATION_A } }))
+        .headers.get("x-viggo-sync-token-rotation");
+    const row = await db().localInstallation.findUniqueOrThrow({ where: { installationId: INSTALLATION_A } });
+
+    // ADMINISTRATIVO can call the installation with a token derived from its sync token.
+    const derive = (token: string) => createHmac("sha256", token).update("viggo:administrativo->operativo").digest("base64url");
+    expect(await installations.findAdminCallToken(proyectoA)).toBe(derive(syncTokenA));
+
+    expect(await header(syncTokenA)).toBeNull();
+    expect((await installations.requestSyncTokenRotation(row.id))?.syncTokenRotationRequestedAt).toBeGreaterThan(0);
+    expect(await header(syncTokenA)).toBe("required");
+
+    const rotated = await call("POST", "/sync-token/rotate", { token: syncTokenA });
+    expect(rotated.status).toBe(200);
+    const newToken: string = rotated.body.syncToken;
+    expect(newToken).not.toBe(syncTokenA);
+    // The answer could be lost: the old token keeps working until the new one is used.
+    expect((await call("GET", path, { token: syncTokenA })).status).toBe(200);
+    expect(await header(newToken)).toBeNull();
+    expect((await call("GET", path, { token: syncTokenA })).status).toBe(401);
+    expect((await call("POST", "/sync-token/rotate", { token: syncTokenA })).status).toBe(401);
+    expect(await installations.findAdminCallToken(proyectoA)).toBe(derive(newToken));
+    syncTokenA = newToken;
+  });
+
   it("rejects every credential that is not the installation's own token", async () => {
     const path = `/configuration/${proyectoA}`;
     expect((await call("GET", path)).status).toBe(401);
-    // The old shared service token no longer opens the sync API.
-    expect((await call("GET", path, { token: process.env.SYNC_SERVICE_TOKEN || "test-sync-token" })).status).toBe(401);
+    // A made-up token does not open the sync API (there is no shared service token).
+    expect((await call("GET", path, { token: "test-sync-token" })).status).toBe(401);
     // The project's link token only works for linking.
     expect((await call("GET", path, { token: LINK_A })).status).toBe(401);
     // A token is bound to its installation id.

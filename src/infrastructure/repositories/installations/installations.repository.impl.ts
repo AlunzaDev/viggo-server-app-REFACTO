@@ -16,8 +16,20 @@ export class InstallationsRepositoryImpl implements InstallationsRepository {
     return this.datasource.findApprovedByProyectoId(proyectoId);
   }
 
-  findApprovedBySyncTokenHash(installationId: string, syncTokenHash: string) {
-    return this.datasource.findApprovedBySyncTokenHash(installationId, syncTokenHash);
+  authenticateSyncToken(installationId: string, syncTokenHash: string) {
+    return this.datasource.authenticateSyncToken(installationId, syncTokenHash);
+  }
+
+  rotateSyncToken(installationId: string, usedHash: string) {
+    return this.datasource.rotateSyncToken(installationId, usedHash);
+  }
+
+  requestSyncTokenRotation(requestId: string) {
+    return this.datasource.requestSyncTokenRotation(requestId);
+  }
+
+  findAdminCallToken(proyectoId: string) {
+    return this.datasource.findAdminCallToken(proyectoId);
   }
 
   recordCommandPoll(installationId: string, now: number) {

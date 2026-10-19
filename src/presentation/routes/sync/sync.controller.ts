@@ -35,6 +35,21 @@ export class SyncController {
     });
   };
 
+  /**
+   * Issues the installation a new sync token (it asks when told to rotate). The token it
+   * used stays valid until the new one is used, so a lost answer can simply be retried.
+   */
+  rotateSyncToken = async (req: Request, res: Response) => {
+    try {
+      const { installationId, syncTokenHash } = req as SyncRequest;
+      const rotated = await this.installations.rotateSyncToken(installationId!, syncTokenHash!);
+      if (!rotated) return res.status(401).json({ error: "Invalid installation token" });
+      return res.status(200).json({ syncToken: rotated.syncToken });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
   claimNextMobileCommand = async (req: Request, res: Response) => {
     try {
       const installationId = (req as SyncRequest).installationId!;

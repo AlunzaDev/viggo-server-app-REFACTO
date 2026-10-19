@@ -336,13 +336,13 @@ describe("SyncPostgresDatasource", () => {
     const hash = createHash("sha256").update(token).digest("hex");
     const stored = await db.localInstallation.findUniqueOrThrow({ where: { installationId: tag("inst-2") } });
     expect(stored.syncTokenHash).toBe(hash);
-    expect(await installations.findApprovedBySyncTokenHash(tag("inst-2"), hash)).toEqual({ installationId: tag("inst-2"), proyectoId });
-    expect(await installations.findApprovedBySyncTokenHash(tag("other"), hash)).toBeNull();
+    expect(await installations.authenticateSyncToken(tag("inst-2"), hash)).toEqual({ installationId: tag("inst-2"), proyectoId, rotationRequested: false });
+    expect(await installations.authenticateSyncToken(tag("other"), hash)).toBeNull();
 
     // Asking again (e.g. the answer was lost) issues a new token and retires the previous one.
     const again = await sync.getInstallationRequestStatus(tag("inst-2"), proyectoId);
     expect(again.oneTimeSyncToken).not.toBe(token);
-    expect(await installations.findApprovedBySyncTokenHash(tag("inst-2"), hash)).toBeNull();
+    expect(await installations.authenticateSyncToken(tag("inst-2"), hash)).toBeNull();
   });
 
   it("stores heartbeats and mirrors the device state of the project's modules only", async () => {

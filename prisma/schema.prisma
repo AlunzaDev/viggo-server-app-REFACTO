@@ -299,6 +299,9 @@ model Proyecto {
   serverIp                       String    @default("") @map("server_ip")
   serverMac                      String    @default("") @map("server_mac")
   localApiBaseUrl                String    @default("") @map("local_api_base_url")
+  paymentProvider                String    @default("") @map("payment_provider")
+  externalParkingId              String    @default("") @map("external_parking_id")
+  paymentProviderId              String?   @map("payment_provider_id") @db.Uuid
   installationLinkTokenHash      String    @default("") @map("installation_link_token_hash")
   /// AES-encrypted so admins can display it again.
   installationLinkTokenEncrypted String    @default("") @map("installation_link_token_encrypted")
@@ -310,6 +313,7 @@ model Proyecto {
   updatedAt                      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   remoteSupport            ProyectoRemoteSupport?
+  paymentProviderRelation  PaymentProvider? @relation(fields: [paymentProviderId], references: [id], onDelete: SetNull)
   modulos                  Modulo[]
   pensiones                Pension[]
   usuarios                 UsuarioParking[]
@@ -329,9 +333,21 @@ model Proyecto {
   heartbeatSnapshot ProjectHeartbeatSnapshot?
 
   @@index([estado])
+  @@index([paymentProviderId])
   /// Linking: an installation presents the link token and the project is found by its hash.
   @@index([installationLinkTokenHash])
   @@map("proyectos")
+}
+
+model PaymentProvider {
+  id        String     @id @default(uuid(7)) @db.Uuid
+  nombre    String     @unique
+  logo      String     @default("")
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  proyectos Proyecto[]
+
+  @@map("payment_providers")
 }
 
 model ProyectoRemoteSupport {

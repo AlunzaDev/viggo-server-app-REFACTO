@@ -10,6 +10,7 @@ import { LocalProjectsPostgresDatasource } from "../../infrastructure/datasource
 import { MobileOperationPostgresDatasource } from "../../infrastructure/datasources/mobile/mobile-operation.datasource.postgres";
 import { ModuloPostgresDatasource } from "../../infrastructure/datasources/parking/modulo.datasource.postgres";
 import { ProyectoPostgresDatasource } from "../../infrastructure/datasources/parking/proyecto.datasource.postgres";
+import { PaymentProviderPostgresDatasource } from "../../infrastructure/datasources/parking/payment-provider.datasource.postgres";
 import { PaymentPostgresDatasource } from "../../infrastructure/datasources/payments/payment.datasource.postgres";
 import { StripePaymentPostgresDatasource } from "../../infrastructure/datasources/payments/stripe-payment.datasource.postgres";
 import { PensionPassPostgresDatasource } from "../../infrastructure/datasources/pension/pension-pass.datasource.postgres";
@@ -25,6 +26,7 @@ import { LocalProjectsRepositoryImpl } from "../../infrastructure/repositories/l
 import { MobileOperationRepositoryImpl } from "../../infrastructure/repositories/mobile/mobile-operation.repository.impl";
 import { ModuloRepositoryImpl } from "../../infrastructure/repositories/parking/modulo.repository.impl";
 import { ProyectoRepositoryImpl } from "../../infrastructure/repositories/parking/proyecto.repository.impl";
+import { PaymentProviderRepositoryImpl } from "../../infrastructure/repositories/parking/payment-provider.repository.impl";
 import { PaymentRepositoryImpl } from "../../infrastructure/repositories/payments/payment.repository.impl";
 import { StripePaymentRepositoryImpl } from "../../infrastructure/repositories/payments/stripe-payment.repository.impl";
 import { PensionPassRepositoryImpl } from "../../infrastructure/repositories/pension/pension-pass.repository.impl";
@@ -43,6 +45,9 @@ export const buildPermissionProfileRepository = () =>
 
 export const buildProyectoRepository = () =>
   new ProyectoRepositoryImpl(new ProyectoPostgresDatasource());
+
+export const buildPaymentProviderRepository = () =>
+  new PaymentProviderRepositoryImpl(new PaymentProviderPostgresDatasource());
 
 export const buildModuloRepository = () =>
   new ModuloRepositoryImpl(new ModuloPostgresDatasource());

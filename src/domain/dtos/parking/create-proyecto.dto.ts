@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { parseRemoteSupportProvider } from "../../entities/parking/remote-support.entity";
 
 export class CreateProyectoDto {
@@ -53,6 +54,9 @@ export class CreateProyectoDto {
         public readonly serverIp?: string,
         public readonly serverMac?: string,
         public readonly localApiBaseUrl?: string,
+        public readonly paymentProvider?: string,
+        public readonly externalParkingId?: string,
+        public readonly paymentProviderId?: string,
         public readonly remoteSupport?: ReturnType<typeof CreateProyectoDto.normalizeRemoteSupport>,
         public readonly img?: string,
         public readonly descripcion?: string,
@@ -68,7 +72,8 @@ export class CreateProyectoDto {
                 ? body.direccion.trim()
                 : undefined;
         const identificador =
-            typeof body.identificador === "string" ? body.identificador.trim() : "";
+            (typeof body.identificador === "string" ? body.identificador.trim() : "") ||
+            `VIGGO-${randomUUID().toUpperCase()}`;
         const serverIp =
             typeof body.serverIp === "string" && body.serverIp.trim().length > 0
                 ? body.serverIp.trim()
@@ -82,6 +87,10 @@ export class CreateProyectoDto {
                 ? body.localApiBaseUrl.trim()
                 : undefined;
         const remoteSupport = CreateProyectoDto.normalizeRemoteSupport(body.remoteSupport);
+        const paymentProvider = typeof body.paymentProvider === "string" ? body.paymentProvider.trim().toUpperCase() : "";
+        const externalParkingId = typeof body.externalParkingId === "string" ? body.externalParkingId.trim() : "";
+        const paymentProviderId = typeof body.paymentProviderId === "string" ? body.paymentProviderId.trim() : "";
+        if (externalParkingId && !paymentProviderId) return ["'paymentProviderId' es requerido cuando se captura 'externalParkingId'"];
         const img =
             typeof body.img === "string" && body.img.trim().length > 0
                 ? body.img.trim()
@@ -93,21 +102,22 @@ export class CreateProyectoDto {
         const estado = typeof body.estado === "boolean" ? body.estado : true;
 
         if (!nombre) return ["'nombre' es requerido"];
-        if (!coordinates.length) return ["'coordinates' es requerido"];
-        if (!ciudad) return ["'ciudad' es requerido"];
-        if (!identificador) return ["'identificador' es requerido"];
+        if (!descripcion) return ["'descripcion' es requerido"];
 
         return [
             undefined,
             new CreateProyectoDto(
                 nombre,
-                coordinates,
-                ciudad,
+                coordinates.length ? coordinates : [0, 0],
+                ciudad || "Sin especificar",
                 identificador,
                 direccion,
                 serverIp,
                 serverMac,
                 localApiBaseUrl,
+                paymentProvider || undefined,
+                externalParkingId || undefined,
+                paymentProviderId || undefined,
                 remoteSupport,
                 img,
                 descripcion,

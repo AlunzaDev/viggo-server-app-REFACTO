@@ -54,6 +54,9 @@ export class UpdateProyectoDto {
         public readonly serverIp?: string,
         public readonly serverMac?: string,
         public readonly localApiBaseUrl?: string,
+        public readonly paymentProvider?: string,
+        public readonly externalParkingId?: string,
+        public readonly paymentProviderId?: string,
         public readonly remoteSupport?: ReturnType<typeof UpdateProyectoDto.normalizeRemoteSupport>,
         public readonly img?: string,
         public readonly descripcion?: string,
@@ -82,6 +85,9 @@ export class UpdateProyectoDto {
                 typeof body.localApiBaseUrl === "string"
                     ? body.localApiBaseUrl.trim()
                     : undefined,
+                typeof body.paymentProvider === "string" ? body.paymentProvider.trim().toUpperCase() : undefined,
+                typeof body.externalParkingId === "string" ? body.externalParkingId.trim() : undefined,
+                typeof body.paymentProviderId === "string" ? body.paymentProviderId.trim() || undefined : undefined,
                 UpdateProyectoDto.normalizeRemoteSupport(body.remoteSupport),
                 typeof body.img === "string" ? body.img.trim() : undefined,
                 typeof body.descripcion === "string"

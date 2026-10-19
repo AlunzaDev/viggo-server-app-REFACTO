@@ -24,6 +24,9 @@ export interface ProyectoEntityOptions {
     serverIp?: string;
     serverMac?: string;
     localApiBaseUrl?: string;
+    paymentProvider?: string;
+    externalParkingId?: string;
+    paymentProviderId?: string;
     remoteSupport?: ProyectoRemoteSupport | null;
     img?: string;
     descripcion?: string;
@@ -41,13 +44,16 @@ export class ProyectoEntity {
     public serverIp?: string;
     public serverMac?: string;
     public localApiBaseUrl?: string;
+    public paymentProvider?: string;
+    public externalParkingId?: string;
+    public paymentProviderId?: string;
     public remoteSupport?: ProyectoRemoteSupport | null;
     public img?: string;
     public descripcion?: string;
     public estado: boolean;
 
     constructor(options: ProyectoEntityOptions) {
-        const { id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, remoteSupport, img, descripcion, estado } =
+        const { id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, paymentProvider, externalParkingId, paymentProviderId, remoteSupport, img, descripcion, estado } =
             options;
 
         this.id = id;
@@ -60,6 +66,9 @@ export class ProyectoEntity {
         this.serverIp = serverIp;
         this.serverMac = serverMac;
         this.localApiBaseUrl = localApiBaseUrl;
+        this.paymentProvider = paymentProvider;
+        this.externalParkingId = externalParkingId;
+        this.paymentProviderId = paymentProviderId;
         this.remoteSupport = remoteSupport;
         this.img = img;
         this.descripcion = descripcion;
@@ -67,7 +76,7 @@ export class ProyectoEntity {
     }
 
     static fromObject(object: { [key: string]: unknown }): ProyectoEntity {
-        const { _id, id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, remoteSupport, img, descripcion, estado } =
+        const { _id, id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, paymentProvider, externalParkingId, paymentProviderId, remoteSupport, img, descripcion, estado } =
             object;
 
         const proyectoId = id || (_id ? String(_id) : undefined);
@@ -107,6 +116,9 @@ export class ProyectoEntity {
                 typeof localApiBaseUrl === "string" && localApiBaseUrl.trim().length > 0
                     ? localApiBaseUrl.trim()
                     : undefined,
+            paymentProvider: typeof paymentProvider === "string" && paymentProvider.trim() ? paymentProvider.trim().toUpperCase() : undefined,
+            externalParkingId: typeof externalParkingId === "string" && externalParkingId.trim() ? externalParkingId.trim() : undefined,
+            paymentProviderId: typeof paymentProviderId === "string" && paymentProviderId.trim() ? paymentProviderId.trim() : undefined,
             remoteSupport: ProyectoEntity.parseRemoteSupport(remoteSupport),
             img: typeof img === "string" ? img : undefined,
             descripcion: typeof descripcion === "string" ? descripcion : undefined,

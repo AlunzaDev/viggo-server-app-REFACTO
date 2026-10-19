@@ -16,6 +16,7 @@ import { LocalProjectsRoutes } from "./local-projects/local-projects.routes";
 
 import { ModuloRoutes } from "./parking/modulo.routes";
 import { ProyectoRoutes } from "./parking/proyecto.routes";
+import { PaymentProviderRoutes } from "./parking/payment-provider.routes";
 
 import { PaymentRoutes } from "./payments/payment.routes";
 import { StripePaymentRoutes } from "./payments/stripe-payment.routes";
@@ -95,6 +96,12 @@ export class AppRoutes {
       AuthMiddleware.requireAuth,
       requireAdminApp,
       ProyectoRoutes.routes,
+    );
+    router.use(
+      "/api/payment-providers",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      PaymentProviderRoutes.routes,
     );
     router.use(
       "/api/modulos",

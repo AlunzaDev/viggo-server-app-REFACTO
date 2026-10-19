@@ -32,7 +32,7 @@ export const externalPaymentAdminRoutes = (
     if ((from !== undefined && from > 8.64e15) || (to !== undefined && to > 8.64e15) || (from !== undefined && to !== undefined && from > to)) throw CustomError.badRequest("Rango de fechas invalido");
     const { status, provider, userId } = req.query;
     if (status !== undefined && (typeof status !== "string" || !statuses.has(status))) throw CustomError.badRequest("status invalido");
-    if (provider !== undefined && (typeof provider !== "string" || !/^[a-z0-9_-]{1,32}$/.test(provider))) throw CustomError.badRequest("provider invalido");
+    if (provider !== undefined && (typeof provider !== "string" || !/^[a-z0-9_-]{1,64}$/.test(provider))) throw CustomError.badRequest("provider invalido");
     if (userId !== undefined && (typeof userId !== "string" || !uuid(userId))) throw CustomError.badRequest("userId invalido");
     const result = await orders.listAdmin({ status: status as ExternalOrderStatus | undefined, provider: provider as string | undefined, userId: userId as string | undefined, from, to }, page, limit);
     return buildPaginatedResponse("orders", result.orders, result.total, page, limit);

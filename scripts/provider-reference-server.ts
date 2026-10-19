@@ -13,22 +13,27 @@ const credential = process.env.PROVIDER_TOKEN ?? "referencia-viggo";
 const QUOTE_TTL_MS = 10 * 60 * 1000;
 const CONFIRM_GRACE_MS = 24 * 60 * 60 * 1000;
 
-/** Test tickets by QR. `amountMinor` grows with time in a real parking; fixed here. */
+/** `amountMinor` grows with time in a real parking; fixed here. */
 type TestTicket = { parkingId: string; parkingName: string; ticket: string; amountMinor: number; state: "open" | "paid" | "expired" };
 
-const tickets = new Map<string, TestTicket>([
-  ["PRV|000123|plaza-centro", { parkingId: "plaza-centro", parkingName: "Plaza Centro", ticket: "000123", amountMinor: 12550, state: "open" }],
-  ["PRV|000124|plaza-centro", { parkingId: "plaza-centro", parkingName: "Plaza Centro", ticket: "000124", amountMinor: 8000, state: "paid" }],
-  ["PRV|000125|plaza-centro", { parkingId: "plaza-centro", parkingName: "Plaza Centro", ticket: "000125", amountMinor: 5000, state: "expired" }],
-]);
-/** reference -> quote; idempotency key -> { body, response }. */
-const quotes = new Map<string, { qr: string; amountMinor: number; currency: string; expiresAt: number }>();
-const confirmations = new Map<string, { body: string; response: { confirmationReference: string } }>();
+/** Test tickets by QR, quotes by reference and confirmations by idempotency key. */
+const createState = () => {
+  const tickets = new Map<string, TestTicket>([
+    ["PRV|000123|plaza-centro", { parkingId: "plaza-centro", parkingName: "Plaza Centro", ticket: "000123", amountMinor: 12550, state: "open" }],
+    ["PRV|000124|plaza-centro", { parkingId: "plaza-centro", parkingName: "Plaza Centro", ticket: "000124", amountMinor: 8000, state: "paid" }],
+    ["PRV|000125|plaza-centro", { parkingId: "plaza-centro", parkingName: "Plaza Centro", ticket: "000125", amountMinor: 5000, state: "expired" }],
+  ]);
+  const quotes = new Map<string, { qr: string; amountMinor: number; currency: string; expiresAt: number }>();
+  const confirmations = new Map<string, { body: string; response: { confirmationReference: string } }>();
+  return { tickets, quotes, confirmations };
+};
 
 const fail = (res: Response, status: number, code: string, message: string) => res.status(status).json({ error: { code, message } });
 const text = (value: unknown, max = 256): value is string => typeof value === "string" && value.trim().length > 0 && value.length <= max;
 
+/** Each app has its own state, so tests do not affect one another. */
 export const createProviderReferenceApp = () => {
+  const { tickets, quotes, confirmations } = createState();
   const app = express();
   app.use(express.json({ limit: "16kb" }));
 

@@ -26,7 +26,12 @@ async function main() {
   const db = await PostgresDatabase.connect({ databaseUrl });
   const orders = new ExternalOrderPostgresRepository();
   const gateway = new StripeExternalGateway();
-  const service = new ExternalPaymentService(orders, [], gateway);
+  // Stripe validation only: no provider quotes or confirms in this script.
+  const noProviders = {
+    forProject: async () => { throw new Error("No provider in the Stripe validation"); },
+    forProvider: async () => { throw new Error("No provider in the Stripe validation"); },
+  };
+  const service = new ExternalPaymentService(orders, noProviders, gateway);
   let userId = "", orderId = "", intentId = "";
   const webhookMode = process.argv.includes("--webhook");
   let server: Server | undefined, listener: ChildProcess | undefined;

@@ -1,7 +1,7 @@
 /** Child-process harness: real repository/service, fake remote provider and Stripe HTTP ports. */
 import { PostgresDatabase } from "../../src/data/postgres";
 import { ExternalPaymentService } from "../../src/domain/external-payments/external-payment.service";
-import type { ExternalIntent, ExternalPaymentGateway, ExternalPaymentProvider } from "../../src/domain/external-payments/external-payment";
+import type { ExternalIntent, ExternalPaymentGateway, ExternalPaymentProvider, ExternalProviderDirectory } from "../../src/domain/external-payments/external-payment";
 import { ExternalOrderPostgresRepository } from "../../src/infrastructure/repositories/payments/external-order.repository.postgres";
 
 async function main() {
@@ -34,7 +34,11 @@ async function main() {
   };
   await PostgresDatabase.connect({ databaseUrl: url, poolMax: 2 });
   try {
-    await new ExternalPaymentService(new ExternalOrderPostgresRepository(), [provider], gateway).runOnce();
+    const directory = {
+      forProject: async () => { throw new Error("Unexpected quotation"); },
+      forProvider: async () => provider,
+    } as unknown as ExternalProviderDirectory;
+    await new ExternalPaymentService(new ExternalOrderPostgresRepository(), directory, gateway).runOnce();
     process.send?.({ state: "finished" });
   } finally { await PostgresDatabase.disconnect(); }
 }

@@ -1,19 +1,29 @@
-# Pagos externos / SeguriPass
+# Pagos externos (proveedores de estacionamiento)
 
-Base de backend para #17, #19–24 y #34. **La integración real sigue pendiente de #18**: todavía no existen documentación, QR de ejemplo ni credenciales del proveedor. Las rutas de cotización devuelven `503 EXTERNAL_PROVIDER_NOT_CONFIGURED` hasta conectar un protocolo real. No hay proveedor simulado accesible desde la API ni cobros ficticios en runtime.
+Cobro desde la app en estacionamientos que opera otro proveedor (#17). **Cada estacionamiento es un proyecto de Viggo ligado a un proveedor del catálogo** (*Proveedores* en la web): el proveedor decide cómo se cobra.
+
+| Integración del proveedor | Cómo cobra |
+| --- | --- |
+| `viggo` | Flujo propio con OPERATIVO (tickets, entrada y salida). No usa este módulo: `POST /orders` responde `409 VIGGO_TICKET_FLOW`. |
+| `standard` | El proveedor implementa la [API de proveedores Viggo](api-proveedores.md); se configura solo con URL y credencial. |
+| `adapter` | Integración programada para un proveedor que no adopta el estándar (por ahora `seguripass`, pendiente de su API real en #18: responde `503 EXTERNAL_PROVIDER_NOT_CONFIGURED`). |
+
+La configuración (URL, credencial cifrada, activo, tiempo de espera) se lee en cada llamada, así que se puede cambiar sin reiniciar. No hay cobros ficticios en runtime.
 
 ## Responsabilidad y extensión
 
-Todo el flujo vive en ADMINISTRATIVO. SeguriPass es dueño de sus tickets, tarifas y operación física; Viggo guarda una cotización, cobra y confirma el pago. No se crean tickets ni comandos de barrera en OPERATIVO. No hay cambios en web o Flutter.
+Todo el flujo vive en ADMINISTRATIVO. El proveedor es dueño de sus tickets, tarifas y operación física; Viggo guarda una cotización, cobra y confirma el pago. No se crean tickets ni comandos de barrera en OPERATIVO.
 
 - `src/domain/external-payments`: contratos del proveedor, repositorio y gateway; orquestación independiente de Express, Prisma y Stripe.
 - `src/infrastructure/repositories/payments/external-order.repository.postgres.ts`: órdenes, auditoría, pagos y leases en PostgreSQL.
 - `src/infrastructure/external-payments/stripe-external.gateway.ts`: PaymentIntent real con una clave estable por orden.
-- `src/infrastructure/external-payments/seguripass.client.ts`: transporte HTTPS con timeout; el contrato `SeguripassProtocol` traduce requests y respuestas reales al dominio.
-- `src/presentation/dependencies/external-payments.dependencies.ts`: punto donde conectar el protocolo y configuración del proveedor.
+- `src/infrastructure/external-payments/http-provider.client.ts`: cliente HTTPS genérico (timeout, sin redirecciones, reintentos de cotización, errores traducidos al dominio); lo que cambia por proveedor es solo el `ProviderProtocol`.
+- `src/infrastructure/external-payments/standard-provider.protocol.ts`: protocolo de la API de proveedores Viggo v1.
+- `src/infrastructure/external-payments/seguripass.client.ts`: adaptador de SeguriPass (solo si no adopta el estándar).
+- `src/infrastructure/external-payments/provider-directory.postgres.ts`: arma la integración del proveedor del proyecto a partir del catálogo.
 - Worker: cada 15 segundos, lotes de hasta 50 órdenes. Verifica cobros pendientes en Stripe y confirma al tercero después de `succeeded`. Espera trabajos activos durante el cierre del servidor.
 
-Para otro proveedor, implementar `ExternalPaymentProvider` y registrarlo en dependencies. No hace falta cambiar las reglas del servicio, Stripe ni las tablas.
+Un proveedor que implementa el estándar se da de alta solo en el catálogo. Un adaptador nuevo es un `ProviderProtocol` más su caso en el directorio. No hace falta cambiar las reglas del servicio, Stripe ni las tablas.
 
 ## API para el futuro cliente móvil
 
@@ -21,13 +31,13 @@ Todas las rutas requieren el JWT normal de Viggo para `OPERATIVE_MOBILE`; el usu
 
 | Método y ruta | Entrada / resultado |
 | --- | --- |
-| `POST /api/external-payments/orders` | `{ "provider": "seguripass", "qr": "<texto opaco>" }`; devuelve la cotización normalizada y el ID de orden. |
+| `POST /api/external-payments/orders` | `{ "projectId": "<estacionamiento detectado>", "qr": "<texto opaco>" }`; devuelve la cotización normalizada y el ID de orden. |
 | `GET /api/external-payments/orders/:id` | Estado de una orden propia. |
 | `POST /api/external-payments/orders/:id/payment-intent` | Sin monto en el body. Devuelve `orderId`, `paymentIntentId`, `paymentIntent` (client secret) y `status`. |
 
-La orden pública incluye `id`, `provider`, `ticket`, `parking: { id, name }`, `amountMinor`, `currency`, `expiresAt` y `status`. `amountMinor` son centavos enteros; `expiresAt` es epoch en milisegundos. Esta primera versión acepta MXN y montos de 1,000 a 99,999,999 centavos; estos límites están en el servicio y en los CHECK de la migración. Confirmar límites de operación y liquidación antes de habilitar el proveedor.
+La orden pública incluye `id`, `provider` (ID del proveedor en el catálogo), `proyectoId`, `ticket`, `parking: { id, name }`, `amountMinor`, `currency`, `expiresAt` y `status`. `amountMinor` son centavos enteros; `expiresAt` es epoch en milisegundos. Esta primera versión acepta MXN y montos de 1,000 a 99,999,999 centavos; estos límites están en el servicio y en los CHECK de la migración. Confirmar límites de operación y liquidación antes de habilitar el proveedor.
 
-`provider` se solicita explícitamente mientras no tengamos el formato oficial del QR para detectar su origen. El contenido del QR nunca fija el monto ni un URL de destino. No hay endpoint móvil que pueda marcar el pago como exitoso.
+El proveedor sale del proyecto que detectó la app (por ubicación), nunca del QR ni del cliente; al proveedor se le envía el ID que él le da a ese estacionamiento (`externalParkingId`). Errores: `PARKING_WITHOUT_PROVIDER`, `PARKING_WITHOUT_EXTERNAL_ID`, `VIGGO_TICKET_FLOW` (409) y `PROVIDER_INACTIVE` (503). El contenido del QR nunca fija el monto ni un URL de destino. No hay endpoint móvil que pueda marcar el pago como exitoso.
 
 La creación del PaymentIntent es idempotente **por orden**, independientemente de claves elegidas por el cliente. No exige `Idempotency-Key` del móvil porque la misma orden siempre representa el mismo cobro. El gateway usa `external-intent:<orderId>` en Stripe y guarda `type=external`, `externalOrderId`, `usuario` y `provider` en metadata. Puede usarse el client secret con PaymentSheet sin Customer/ephemeral key; no se agrega guardado de tarjetas.
 
@@ -57,7 +67,7 @@ stateDiagram-v2
 - Auditoría append-only de cotización, inicio, vinculación del intento, pago, confirmación, errores y expiración. No almacena QRs, secretos de Stripe, credenciales ni respuestas crudas.
 - La conciliación existente de tickets/pensiones excluye `external`. El historial normal del usuario sí incluye el nuevo tipo.
 
-`refunded` está reservado en el modelo. **No hay automatización de devoluciones ni conciliación contra un endpoint de estado de SeguriPass todavía**: hay que acordar políticas y contrato primero. La revisión usa las rutas existentes de incidentes para ADMIN_WEB; el parking externo no se asigna a un proyecto Viggo. No cerrar #18 ni declarar lista para producción la integración por pasar las pruebas simuladas.
+`refunded` está reservado en el modelo. **No hay automatización de devoluciones ni conciliación contra un endpoint de estado de SeguriPass todavía**: hay que acordar políticas y contrato primero. La revisión usa las rutas existentes de incidentes para ADMIN_WEB. Una respuesta definitiva del proveedor al confirmar (ya pagado, monto distinto, ticket desconocido) manda la orden a revisión en el primer intento; los errores temporales se reintentan hasta 8 veces. No cerrar #18 ni declarar lista para producción la integración por pasar las pruebas simuladas.
 
 ## Operación administrativa y reintento manual
 

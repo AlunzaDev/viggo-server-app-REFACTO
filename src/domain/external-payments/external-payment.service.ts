@@ -1,29 +1,41 @@
 import { randomUUID } from "node:crypto";
 import { CustomError } from "../errors/custom.error";
-import { ExternalOrderRepository, type ExternalIntent, type ExternalOrder, type ExternalPaymentGateway, type ExternalPaymentProvider } from "./external-payment";
+import { ExternalOrderRepository, ExternalProviderDirectory, type ExternalIntent, type ExternalOrder, type ExternalPaymentGateway } from "./external-payment";
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+/**
+ * Final provider answers to a confirmation (already paid, amount mismatch, unknown ticket,
+ * rejected request): retrying cannot help, the order goes straight to review.
+ */
+const isFinalConfirmationError = (error: unknown) =>
+  error instanceof CustomError && (error.statusCode === 409 || error.code === "EXTERNAL_PROVIDER_REJECTED");
+
 const validText = (value: unknown): value is string => typeof value === "string" && !!value.trim() && value.length <= 256;
 
 export class ExternalPaymentService {
   constructor(
     private readonly orders: ExternalOrderRepository,
-    private readonly providers: ExternalPaymentProvider[],
+    private readonly directory: ExternalProviderDirectory,
     private readonly gateway: ExternalPaymentGateway,
     private readonly now = Date.now,
   ) {}
 
-  async resolve(userId: string, providerCode: string, qr: unknown) {
+  /**
+   * Quotes the ticket of a QR scanned in a parking. The provider comes from the parking
+   * (detected by the app), never from the QR or the client.
+   */
+  async resolve(userId: string, projectId: unknown, qr: unknown) {
+    if (typeof projectId !== "string" || !isUuid(projectId)) throw CustomError.badRequest("Estacionamiento invalido");
     if (typeof qr !== "string" || !qr.trim() || qr.length > 4096) throw CustomError.badRequest("QR invalido");
-    const provider = this.provider(providerCode);
-    const quote = await provider.resolveOrder(qr.trim());
+    const { provider, providerId, parkingId } = await this.directory.forProject(projectId);
+    const quote = await provider.resolveOrder(qr.trim(), parkingId);
     if (!quote || !validText(quote.reference) || !validText(quote.ticket) || !validText(quote.parking?.id) || !validText(quote.parking?.name) ||
         !Number.isSafeInteger(quote.amountMinor) || quote.amountMinor < 1000 || quote.amountMinor > 99_999_999 ||
         quote.currency !== "MXN" || !Number.isSafeInteger(quote.expiresAt) || quote.expiresAt > 8.64e15) {
       throw new CustomError(502, "Cotizacion invalida del proveedor", "INVALID_EXTERNAL_QUOTE");
     }
     if (quote.status !== "payable" || quote.expiresAt <= this.now()) throw CustomError.conflict("Ticket pagado, expirado o no disponible");
-    const order = await this.orders.saveQuote(userId, provider.code, quote, this.now());
+    const order = await this.orders.saveQuote(userId, providerId, quote, this.now(), projectId);
     if (order.userId !== userId) {
       throw CustomError.conflict("Este ticket ya se esta pagando desde otra cuenta", undefined, "EXTERNAL_ORDER_TAKEN");
     }
@@ -100,15 +112,18 @@ export class ExternalPaymentService {
           continue;
         }
         try {
-          const result = await this.provider(claimed.provider).confirmPayment({
+          const provider = await this.directory.forProvider(claimed.provider);
+          const result = await provider.confirmPayment({
             reference: claimed.reference, paymentReference: claimed.stripePaymentIntentId!,
             amountMinor: claimed.amountMinor, currency: claimed.currency,
             idempotencyKey: `external-confirm:${claimed.id}`,
           });
           if (!result || !validText(result.confirmationReference)) throw new Error("Invalid confirmation");
           await this.orders.confirmed(claimed.id, lease, result.confirmationReference, this.now());
-        } catch {
-          await this.orders.confirmationFailed(claimed.id, lease, this.now(), 8);
+        } catch (error) {
+          // A final answer exhausts the attempts now; anything else is retried with backoff.
+          const maxAttempts = isFinalConfirmationError(error) ? claimed.attempts : 8;
+          await this.orders.confirmationFailed(claimed.id, lease, this.now(), maxAttempts);
         }
       } catch (error) {
         // Persist a diagnostic without recording QRs, credentials or provider response bodies.
@@ -139,12 +154,6 @@ export class ExternalPaymentService {
     }
   }
 
-  private provider(code: string) {
-    const provider = this.providers.find(item => item.code === code);
-    if (!provider) throw CustomError.badRequest("Proveedor externo no soportado");
-    return provider;
-  }
-
   private async owned(userId: string, id: string) {
     if (!isUuid(id)) throw CustomError.badRequest("Orden invalida");
     const order = await this.orders.find(id);
@@ -158,7 +167,7 @@ export class ExternalPaymentService {
   }
 
   private publicOrder(order: ExternalOrder) {
-    return { id: order.id, provider: order.provider, ticket: order.ticket,
+    return { id: order.id, provider: order.provider, proyectoId: order.proyectoId, ticket: order.ticket,
       parking: { id: order.parkingId, name: order.parkingName }, amountMinor: order.amountMinor,
       currency: order.currency, expiresAt: order.expiresAt, status: order.status };
   }

@@ -10,8 +10,10 @@ export interface ExternalQuote {
 }
 
 export interface ExternalPaymentProvider {
+  /** Catalog id of the provider; stored on its orders. */
   readonly code: string;
-  resolveOrder(qr: string): Promise<ExternalQuote>;
+  /** `parkingId` is the parking's id in the provider's system (externalParkingId). */
+  resolveOrder(qr: string, parkingId: string): Promise<ExternalQuote>;
   /** Must deduplicate by idempotencyKey, including after an ambiguous timeout. */
   confirmPayment(input: {
     reference: string; paymentReference: string; amountMinor: number;
@@ -25,6 +27,8 @@ export interface ExternalOrder {
   provider: string;
   reference: string;
   userId: string;
+  /** Parking (Viggo project) where the user scanned the ticket. */
+  proyectoId: string | null;
   ticket: string;
   parkingId: string;
   parkingName: string;
@@ -66,7 +70,7 @@ export abstract class ExternalOrderRepository {
    * Returns the live order for the quote's reference, or creates one. A quote nobody started
    * paying is replaced once it expires, so the ticket can be quoted (and paid) again.
    */
-  abstract saveQuote(userId: string, provider: string, quote: ExternalQuote, now: number): Promise<ExternalOrder>;
+  abstract saveQuote(userId: string, provider: string, quote: ExternalQuote, now: number, proyectoId?: string | null): Promise<ExternalOrder>;
   abstract find(id: string): Promise<ExternalOrder | null>;
   abstract beginIntent(id: string, now: number): Promise<ExternalOrder>;
   abstract attachIntent(order: ExternalOrder, intent: ExternalIntent): Promise<void>;
@@ -79,4 +83,22 @@ export abstract class ExternalOrderRepository {
   abstract confirmed(id: string, lease: string, reference: string, now: number): Promise<void>;
   abstract confirmationFailed(id: string, lease: string, now: number, maxAttempts: number): Promise<void>;
   abstract flagReview(id: string, reason: string, now: number): Promise<void>;
+}
+
+/** The integration that charges in a parking, and the parking's id in the provider's system. */
+export interface ProjectPaymentProvider {
+  providerId: string;
+  parkingId: string;
+  provider: ExternalPaymentProvider;
+}
+
+/**
+ * Integrations built from the payment provider catalog. Configuration is read on every call,
+ * so a provider can be reconfigured (URL, credential, active) without a restart.
+ */
+export abstract class ExternalProviderDirectory {
+  /** The provider of the parking; a CustomError explains why it cannot charge there. */
+  abstract forProject(proyectoId: string): Promise<ProjectPaymentProvider>;
+  /** A catalog provider with its current configuration (to confirm its orders). */
+  abstract forProvider(providerId: string): Promise<ExternalPaymentProvider>;
 }

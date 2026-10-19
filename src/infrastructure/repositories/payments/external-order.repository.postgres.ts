@@ -27,7 +27,7 @@ export class ExternalOrderPostgresRepository extends ExternalOrderRepository {
     }));
     // Explicit projection keeps internal Prisma fields out of the administrative API too.
     return { total, orders: orders.map(row => ({
-      id: row.id, provider: row.provider, reference: row.reference, userId: row.userId,
+      id: row.id, provider: row.provider, reference: row.reference, userId: row.userId, proyectoId: row.proyectoId,
       ticket: row.ticket, parkingId: row.parkingId, parkingName: row.parkingName,
       amountMinor: row.amountMinor, currency: row.currency, expiresAt: row.expiresAt, status: row.status,
       stripePaymentIntentId: row.stripePaymentIntentId, intentStartedAt: row.intentStartedAt,
@@ -64,7 +64,7 @@ export class ExternalOrderPostgresRepository extends ExternalOrderRepository {
     });
   }
 
-  async saveQuote(userId: string, provider: string, quote: ExternalQuote, now: number) {
+  async saveQuote(userId: string, provider: string, quote: ExternalQuote, now: number, proyectoId: string | null = null) {
     // One live order per provider reference, even across users and concurrent QR scans.
     const where = { provider, reference: quote.reference, status: { notIn: ["expired" as const, "refunded" as const] } };
     const existing = await this.db.externalPaymentOrder.findFirst({ where });
@@ -75,7 +75,7 @@ export class ExternalOrderPostgresRepository extends ExternalOrderRepository {
     }
     try {
       const row = await this.db.externalPaymentOrder.create({
-        data: { provider, reference: quote.reference, usuarioId: userId,
+        data: { provider, reference: quote.reference, usuarioId: userId, proyectoId,
           ticket: quote.ticket, parkingId: quote.parking.id, parkingName: quote.parking.name,
           amountMinor: quote.amountMinor, currency: quote.currency, expiresAt: new Date(quote.expiresAt),
           events: event("quoted") },

@@ -314,6 +314,7 @@ model Proyecto {
 
   remoteSupport            ProyectoRemoteSupport?
   paymentProviderRelation  PaymentProvider?          @relation(fields: [paymentProviderId], references: [id], onDelete: SetNull)
+  externalPaymentOrders    ExternalPaymentOrder[]
   modulos                  Modulo[]
   pensiones                Pension[]
   usuarios                 UsuarioParking[]
@@ -339,13 +340,33 @@ model Proyecto {
   @@map("proyectos")
 }
 
+/// How a parking provider charges: Viggo's own ticket flow (OPERATIVO), the Viggo provider
+/// API standard (docs/api-proveedores.md) or an adapter coded for one provider.
+enum PaymentProviderIntegration {
+  viggo
+  standard
+  adapter
+
+  @@map("payment_provider_integration")
+}
+
 model PaymentProvider {
-  id        String     @id @default(uuid(7)) @db.Uuid
-  nombre    String     @unique
-  logo      String     @default("")
-  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
-  proyectos Proyecto[]
+  id                  String                     @id @default(uuid(7)) @db.Uuid
+  nombre              String                     @unique
+  logo                String                     @default("")
+  integration         PaymentProviderIntegration @default(viggo)
+  /// Adapter coded in the backend (integration = adapter), e.g. "seguripass".
+  adapter             String                     @default("")
+  /// Base URL of the provider's API (standard/adapter).
+  baseUrl             String                     @default("") @map("base_url")
+  /// Credential the provider gave Viggo, encrypted. The API never returns it.
+  credentialEncrypted String                     @default("") @map("credential_encrypted")
+  /// An inactive provider neither quotes nor charges.
+  active              Boolean                    @default(true)
+  timeoutMs           Int                        @default(8000) @map("timeout_ms")
+  createdAt           DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  proyectos           Proyecto[]
 
   @@map("payment_providers")
 }
@@ -566,8 +587,11 @@ enum ExternalOrderStatus {
 
 model ExternalPaymentOrder {
   id                    String              @id @default(uuid(7)) @db.Uuid
-  provider              String              @db.VarChar(32)
+  /// Provider of the payment provider catalog (its id) that quoted and confirms the order.
+  provider              String              @db.VarChar(64)
   reference             String              @db.VarChar(256)
+  /// Parking (Viggo project) the user was in; kept for reports by parking.
+  proyectoId            String?             @map("proyecto_id") @db.Uuid
   usuarioId             String              @map("usuario_id") @db.Uuid
   ticket                String
   parkingId             String              @map("parking_id")
@@ -587,14 +611,16 @@ model ExternalPaymentOrder {
   createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  usuario Usuario                @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  events  ExternalPaymentEvent[]
+  usuario  Usuario                @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  proyecto Proyecto?              @relation(fields: [proyectoId], references: [id], onDelete: SetNull)
+  events   ExternalPaymentEvent[]
 
   /// One live order per provider reference. An expired or refunded order frees the
   /// reference, so the same ticket can be quoted again (its fee may have changed).
   @@unique([provider, reference], map: "external_payment_orders_live_reference_key", where: raw("status <> 'expired' AND status <> 'refunded'"))
   @@index([status, nextRetryAt])
   @@index([usuarioId, createdAt(sort: Desc)])
+  @@index([proyectoId, createdAt(sort: Desc)])
   @@map("external_payment_orders")
 }
 

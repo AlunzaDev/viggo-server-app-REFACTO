@@ -7,7 +7,8 @@ import { PostgresDatabase } from "../../src/data/postgres";
 import { JwtPlugin } from "../../src/config/plugins/jwt.plugin";
 import { envs } from "../../src/config";
 import { ExternalPaymentService } from "../../src/domain/external-payments/external-payment.service";
-import type { ExternalIntent, ExternalOrder, ExternalPaymentGateway, ExternalQuote } from "../../src/domain/external-payments/external-payment";
+import type { ExternalIntent, ExternalOrder, ExternalPaymentGateway, ExternalProviderDirectory, ExternalQuote } from "../../src/domain/external-payments/external-payment";
+import { CustomError } from "../../src/domain/errors/custom.error";
 import { ExternalOrderPostgresRepository } from "../../src/infrastructure/repositories/payments/external-order.repository.postgres";
 import { PaymentPostgresDatasource } from "../../src/infrastructure/datasources/payments/payment.datasource.postgres";
 import { SeguripassClient } from "../../src/infrastructure/external-payments/seguripass.client";
@@ -46,6 +47,8 @@ const repository = new ExternalOrderPostgresRepository();
 const stripe = new FakeStripe();
 const tag = `external-${randomUUID()}`;
 let user = "", otherUser = "", token = "", otherToken = "";
+// The parking the app detected; its provider (in the catalog) quotes the QR.
+const proyectoId = randomUUID();
 let superToken = "", adminToken = "", profileId = "";
 const staff: string[] = [];
 let quote: ExternalQuote;
@@ -70,6 +73,7 @@ const request = async (method: string, path: string, body?: unknown, auth: strin
 
 beforeAll(async () => {
   await PostgresDatabase.connect({ databaseUrl: process.env.DATABASE_URL!, poolMax: 8 });
+  await db().proyecto.create({ data: { id: proyectoId, nombre: "External parking", coordinates: [], ciudad: "GDL", identificador: `${tag}-parking` } });
   for (const name of ["a", "b"]) {
     const row = await db().usuario.create({ data: { nombre: "External", apellido: "Test", password: "hash",
       correo: `${tag}-${name}@example.com`, telefono: `${tag}-${name}`, emailValidated: true, allowedApps: ["OPERATIVE_MOBILE"] } });
@@ -90,8 +94,10 @@ beforeAll(async () => {
   // These endpoints/payloads are ONLY a fake test protocol, never a claimed SeguriPass API.
   const providerApp = express();
   providerApp.use(express.json());
-  providerApp.post("/fake/quote", (_req, res) => {
+  providerApp.post("/fake/quote", (req, res) => {
     quoteCalls++;
+    // The parking id in the provider's system comes from the detected project.
+    if (req.body.parkingId !== "parking-external") return res.sendStatus(404);
     if (quoteMode === "unavailable") return res.sendStatus(503);
     if (quoteMode === "missing") return res.sendStatus(404);
     if (quoteMode === "invalid") return res.send("invalid-json");
@@ -113,11 +119,18 @@ beforeAll(async () => {
   providerServer = providerHost.server;
   const provider = new SeguripassClient({ baseUrl: providerHost.url, headers: { Authorization: "Bearer test-only" },
     allowLocalHttp: true, timeoutMs: 100,
-    protocol: { quoteRequest: qr => ({ path: "/fake/quote", body: { qr } }), readQuote: body => body as ExternalQuote,
+    protocol: { quoteRequest: (qr, parkingId) => ({ path: "/fake/quote", body: { qr, parkingId } }), readQuote: body => body as ExternalQuote,
       confirmationRequest: input => ({ path: "/fake/confirm", body: input }),
       readConfirmation: body => body as { confirmationReference: string } },
   });
-  service = new ExternalPaymentService(repository, [provider], stripe);
+  const directory = {
+    forProject: async (id: string) => {
+      if (id !== proyectoId) throw CustomError.conflict("El estacionamiento no tiene proveedor de pago", undefined, "PARKING_WITHOUT_PROVIDER");
+      return { providerId: "seguripass", parkingId: "parking-external", provider };
+    },
+    forProvider: async () => provider,
+  } as unknown as ExternalProviderDirectory;
+  service = new ExternalPaymentService(repository, directory, stripe);
   const app = express();
   app.post("/webhook", express.raw({ type: "application/json" }),
     new StripeWebhookController(buildPaymentRepository(), buildMobileOperationRepository(), service).handle);
@@ -143,13 +156,14 @@ afterAll(async () => {
   await db().externalPaymentEvent.deleteMany({ where: { orderId: { in: orders.map(row => row.id) } } });
   await db().payment.deleteMany({ where: { usuarioId: { in: [user, otherUser] } } });
   await db().externalPaymentOrder.deleteMany({ where: { usuarioId: { in: [user, otherUser] } } });
+  await db().proyecto.delete({ where: { id: proyectoId } });
   await db().usuario.deleteMany({ where: { id: { in: [user, otherUser] } } });
   await db().usuario.deleteMany({ where: { id: { in: staff } } });
   if (profileId) await db().permissionProfile.delete({ where: { id: profileId } });
   await PostgresDatabase.disconnect();
 });
 
-const resolveOrder = async () => (await service.resolve(user, "seguripass", "opaque-QR-with-no-trusted-amount"));
+const resolveOrder = async () => (await service.resolve(user, proyectoId, "opaque-QR-with-no-trusted-amount"));
 const paidOrder = async () => {
   const order = await resolveOrder();
   await service.createPaymentIntent(user, order.id);
@@ -224,9 +238,9 @@ describe("external payments: PostgreSQL, HTTP provider, authenticated API and St
   });
   it("requires auth and owns orders; ignores client amounts and user IDs", async () => {
     expect((await request("POST", "/orders-api/orders", {}, null)).status).toBe(401);
-    const result = await request("POST", "/orders-api/orders", { provider: "seguripass", qr: "untrusted", amountMinor: 1, userId: otherUser });
+    const result = await request("POST", "/orders-api/orders", { projectId: proyectoId, qr: "untrusted", amountMinor: 1, userId: otherUser });
     expect(result.status).toBe(201);
-    expect(result.body).toMatchObject({ amountMinor: 12550, currency: "MXN", parking: quote.parking });
+    expect(result.body).toMatchObject({ amountMinor: 12550, currency: "MXN", parking: quote.parking, proyectoId });
     expect((await request("GET", `/orders-api/orders/${result.body.id}`, undefined, otherToken)).status).toBe(404);
     expect((await request("POST", `/orders-api/orders/${result.body.id}/payment-intent`, {}, otherToken)).status).toBe(404);
     expect((await request("GET", "/orders-api/orders/not-an-id")).status).toBe(400);
@@ -246,7 +260,7 @@ describe("external payments: PostgreSQL, HTTP provider, authenticated API and St
     expect(stripe.creates - before).toBe(1);
     expect(await db().payment.count({ where: { referenceId: id } })).toBe(1);
     // Another account scanning the same ticket gets a clear conflict, not a missing order.
-    await expect(service.resolve(otherUser, "seguripass", "same-qr")).rejects.toMatchObject({ statusCode: 409, code: "EXTERNAL_ORDER_TAKEN" });
+    await expect(service.resolve(otherUser, proyectoId, "same-qr")).rejects.toMatchObject({ statusCode: 409, code: "EXTERNAL_ORDER_TAKEN" });
   });
 
   it("quotes a ticket again once its unpaid quote expires, with the provider's current amount", async () => {
@@ -264,7 +278,7 @@ describe("external payments: PostgreSQL, HTTP provider, authenticated API and St
 
     // Once expired, another account may take the ticket too.
     await db().externalPaymentOrder.update({ where: { id: second.id }, data: { status: "expired" } });
-    const third = await service.resolve(otherUser, "seguripass", "same-qr");
+    const third = await service.resolve(otherUser, proyectoId, "same-qr");
     expect(third.id).not.toBe(second.id);
   });
 
@@ -474,9 +488,11 @@ describe("external payments: PostgreSQL, HTTP provider, authenticated API and St
   });
 
   it("rejects invalid quotes, unavailable provider, timeouts and unknown protocols", async () => {
-    await expect(new SeguripassClient().resolveOrder("qr")).rejects.toMatchObject({ statusCode: 503, code: "EXTERNAL_PROVIDER_NOT_CONFIGURED" });
+    await expect(new SeguripassClient().resolveOrder("qr", "parking")).rejects.toMatchObject({ statusCode: 503, code: "EXTERNAL_PROVIDER_NOT_CONFIGURED" });
     await expect(service.resolve(user, "unknown", "qr")).rejects.toMatchObject({ statusCode: 400 });
-    await expect(service.resolve(user, "seguripass", "")).rejects.toMatchObject({ statusCode: 400 });
+    await expect(service.resolve(user, proyectoId, "")).rejects.toMatchObject({ statusCode: 400 });
+    // A parking without an external provider cannot quote.
+    await expect(service.resolve(user, randomUUID(), "qr")).rejects.toMatchObject({ statusCode: 409, code: "PARKING_WITHOUT_PROVIDER" });
     quote.status = "paid";
     await expect(resolveOrder()).rejects.toMatchObject({ statusCode: 409 });
     quote.status = "payable"; quote.expiresAt = Date.now() - 1;

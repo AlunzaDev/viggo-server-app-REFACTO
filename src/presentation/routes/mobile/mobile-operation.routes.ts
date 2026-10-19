@@ -15,8 +15,8 @@ export class MobileOperationRoutes {
     const stripeController = buildStripePaymentController();
     const projects = buildProyectoController();
     const pensions = buildPensionController();
-    // Read-only mobile catalogs keep project scoping in their controllers.
-    router.get("/proyectos", projects.getProyectos);
+    // All authenticated mobile users need active polygons to determine their current parking.
+    router.get("/proyectos", projects.getMobileParkingAreas);
     router.get("/proyectos/:id", projects.getProyectoById);
     router.get("/pensiones/proyecto/:proyectoId", pensions.getPensionesByProyecto);
     router.get("/pensiones/:id", pensions.getPensionById);

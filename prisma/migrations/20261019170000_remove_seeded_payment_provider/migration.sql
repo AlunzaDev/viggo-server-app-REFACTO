@@ -1,0 +1,3 @@
+DELETE FROM "payment_providers"
+WHERE "id" = '019a0000-0000-7000-8000-000000000001'
+  AND "nombre" = 'SEGURIPASS';

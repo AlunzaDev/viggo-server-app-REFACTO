@@ -43,10 +43,12 @@ export class MobileOperationController {
       const userId = String((req as AuthenticatedRequest).uid ?? "").trim();
       const idempotencyKey = String(req.header("Idempotency-Key") ?? "").trim();
       const moduleToken = String(req.body?.moduleToken ?? "").trim();
+      const requestedProjectId = String(req.body?.projectId ?? "").trim();
       if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) {
         return res.status(400).json({ error: "Idempotency-Key invalida" });
       }
       if (!moduleToken) return res.status(400).json({ error: "moduleToken es requerido" });
+      if (!requestedProjectId) return res.status(400).json({ error: "projectId es requerido" });
 
       const existing = await this.operations.findByIdempotencyKey(idempotencyKey);
       if (existing) {
@@ -60,6 +62,12 @@ export class MobileOperationController {
       const modulo = moduloId ? await this.modulos.findById(moduloId) : null;
       if (!modulo) return res.status(400).json({ error: "El QR no identifica un modulo valido" });
       const proyectoId = String(modulo.proyecto ?? "");
+      if (proyectoId !== requestedProjectId || modulo.tipo !== "ENTRADA") {
+        return res.status(409).json({
+          error: "El QR de entrada no pertenece al estacionamiento detectado",
+          code: "PARKING_QR_MISMATCH",
+        });
+      }
       const installation = await this.installations.findApprovedByProyectoId(proyectoId);
       if (!installation) {
         return res.status(503).json({ error: "El estacionamiento no esta disponible para operaciones moviles" });
@@ -188,14 +196,29 @@ export class MobileOperationController {
       const userId = String((req as AuthenticatedRequest).uid ?? "");
       const key = String(req.header("Idempotency-Key") ?? "").trim();
       const moduleToken = String(req.body?.moduleToken ?? "").trim();
-      if (!/^[A-Za-z0-9._:-]{16,128}$/.test(key) || !moduleToken) {
-        return res.status(400).json({ error: "Idempotency-Key y moduleToken son requeridos" });
+      const requestedProjectId = String(req.body?.projectId ?? "").trim();
+      if (!/^[A-Za-z0-9._:-]{16,128}$/.test(key) || !moduleToken || !requestedProjectId) {
+        return res.status(400).json({ error: "Idempotency-Key, projectId y moduleToken son requeridos" });
+      }
+      const moduloId = decodeModuleId(moduleToken);
+      const modulo = moduloId ? await this.modulos.findById(moduloId) : null;
+      if (!modulo || modulo.tipo !== "SALIDA" || String(modulo.proyecto ?? "") !== requestedProjectId) {
+        return res.status(409).json({
+          error: "El QR de salida no pertenece al estacionamiento detectado",
+          code: "PARKING_QR_MISMATCH",
+        });
       }
       const source = await this.operations.findLatestCompletedWithTicket(userId, [
         "CREATE_TICKET",
         "APPLY_TICKET_PAYMENT",
       ]);
       if (!source) return res.status(404).json({ error: "Ticket activo no encontrado" });
+      if (String(source.proyectoId) !== requestedProjectId) {
+        return res.status(409).json({
+          error: "El ticket activo pertenece a otro estacionamiento",
+          code: "PARKING_TICKET_MISMATCH",
+        });
+      }
       const operation = await this.enqueueAndWait({
         idempotencyKey: key,
         type: "EXIT_TICKET",

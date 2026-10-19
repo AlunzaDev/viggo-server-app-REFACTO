@@ -9,6 +9,7 @@ import {
   isSuperAdminRequest,
 } from "../../middlewares";
 import { ProyectoService } from "../../services/parking/proyecto.service";
+import { toMobileParkingArea } from "../../services/parking/mobile-parking-area.presenter";
 import {
   buildPaginatedResponse,
   paginateArray,
@@ -168,6 +169,18 @@ export class ProyectoController {
           limit,
         ),
       );
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  /** Catálogo mínimo para geodetección; no expone red, instalación ni soporte remoto. */
+  getMobileParkingAreas = async (_req: Request, res: Response) => {
+    try {
+      const proyectos = (await this.proyectoService.getProyectos())
+        .filter((proyecto) => proyecto.estado)
+        .map(toMobileParkingArea);
+      return res.status(200).json({ proyectos, total: proyectos.length });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

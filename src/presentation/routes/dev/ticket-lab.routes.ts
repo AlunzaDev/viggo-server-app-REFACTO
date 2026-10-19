@@ -27,6 +27,22 @@ const buildModuleToken = async (moduleId: string): Promise<string> => {
 const buildQr = (token: string) =>
   QRCode.toDataURL(token, { errorCorrectionLevel: "M", margin: 2, width: 720 });
 
+const polygonFrom = (value: unknown): number[][] => {
+  if (!Array.isArray(value)) return [];
+  const source = Array.isArray(value[0]) && Array.isArray((value[0] as unknown[])[0]) ? value[0] : value;
+  return source.filter(Array.isArray).map((point) => [Number(point[0]), Number(point[1])]).filter((point) => point.length >= 2 && point.every(Number.isFinite));
+};
+
+const containsPoint = (polygon: number[][], longitude: number, latitude: number) => {
+  if (polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i]; const [xj, yj] = polygon[j];
+    if ((yi > latitude) !== (yj > latitude) && longitude < ((xj - xi) * (latitude - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+};
+
 /**
  * Development-only laboratory (mounted when PROD=false): prepares tickets for the mobile app
  * without a running OPERATIVO. The app reads its current ticket from the latest completed
@@ -44,7 +60,7 @@ export class TicketLabRoutes {
         const [users, modules, projects, installations] = await Promise.all([
           db().usuario.findMany({ where: { estado: true }, orderBy: { correo: "asc" } }),
           db().modulo.findMany({ where: { estado: true }, orderBy: { nombre: "asc" } }),
-          db().proyecto.findMany(),
+          db().proyecto.findMany({ include: { paymentProviderRelation: true } }),
           db().localInstallation.findMany({ where: { status: "approved" }, orderBy: { createdAt: "asc" } }),
         ]);
         const projectNames = new Map(projects.map((item) => [item.id, item.nombre]));
@@ -64,6 +80,10 @@ export class TicketLabRoutes {
               id: item.id,
               nombre: item.nombre,
               ciudad: item.ciudad ?? "",
+              coordinates: item.coordinates,
+              polygonPoints: polygonFrom(item.coordinates).length,
+              paymentProviderId: item.paymentProviderId ?? "",
+              paymentProviderName: item.paymentProviderRelation?.nombre ?? "Sin proveedor",
               installationId: installation?.installationId,
               installationApproved: Boolean(installation),
               hasEntryModule: projectsWithEntry.has(item.id),
@@ -79,6 +99,24 @@ export class TicketLabRoutes {
       } catch (error) {
         return res.status(500).json({ error: serializeError(error) });
       }
+    });
+
+    router.post("/detect", async (req, res) => {
+      try {
+        const longitude = Number(req.body?.longitude); const latitude = Number(req.body?.latitude);
+        if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return res.status(400).json({ error: "Coordenadas inválidas" });
+        const projects = await db().proyecto.findMany({ where: { estado: true }, include: { paymentProviderRelation: true } });
+        const project = projects.find((item) => containsPoint(polygonFrom(item.coordinates), longitude, latitude));
+        return res.json({ detected: Boolean(project), coordinates: [longitude, latitude], project: project ? { id: project.id, nombre: project.nombre, ciudad: project.ciudad, paymentProviderId: project.paymentProviderId ?? "", paymentProviderName: project.paymentProviderRelation?.nombre ?? "Sin proveedor" } : null });
+      } catch (error) { return res.status(500).json({ error: serializeError(error) }); }
+    });
+
+    router.get("/payments/:userId", async (req, res) => {
+      try {
+        const userId = String(req.params.userId); if (!isUuid(userId)) return res.status(400).json({ error: "Usuario inválido" });
+        const payments = await db().payment.findMany({ where: { usuarioId: userId }, orderBy: { paidAt: "desc" }, take: 20 });
+        return res.json({ payments: payments.map((item) => ({ id: item.id, concept: item.concept, amount: Number(item.amount), currency: item.currency, status: item.status, paidAt: item.paidAt.getTime(), parkingName: item.parkingName, parkingCity: item.parkingCity, referenceId: item.referenceId, reconciliationStatus: item.reconciliationStatus })) });
+      } catch (error) { return res.status(500).json({ error: serializeError(error) }); }
     });
 
     router.post("/module-token", async (req, res) => {

@@ -2,7 +2,7 @@ import express from "express";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { loginAttemptLimiter, rateLimitMiddleware } from "../../src/presentation/middlewares/rate-limit.middleware";
+import { failedAuthLimiter, loginAttemptLimiter, rateLimitMiddleware } from "../../src/presentation/middlewares/rate-limit.middleware";
 
 const PASSWORD = "correcta";
 const servers: Server[] = [];
@@ -98,5 +98,41 @@ describe("rateLimitMiddleware", () => {
     expect((await send("1.1.1.1")).status).toBe(204);
     expect((await send("2.2.2.2")).status).toBe(204);
     expect((await send("3.3.3.3")).status).toBe(429);
+  });
+});
+
+describe("failedAuthLimiter", () => {
+  /** Two routes sharing one limiter: 200 with the right token, 401 otherwise. */
+  const startLinking = async (maxFailures: number) => {
+    const app = express();
+    const guesses = failedAuthLimiter({ windowMs: 60_000, maxFailures });
+    const check = (req: express.Request, res: express.Response) =>
+      req.header("authorization") === "Bearer ok" ? res.status(200).json({ ok: true }) : res.status(401).json({ error: "Token invalido" });
+    app.post("/preview", guesses, check);
+    app.get("/status", guesses, check);
+    const server = app.listen(0);
+    servers.push(server);
+    await new Promise((resolve) => server.once("listening", resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    return (method: string, path: string, token: string) =>
+      fetch(base + path, { method, headers: { Authorization: `Bearer ${token}` } });
+  };
+
+  it("blocks an address after too many rejected tokens, across the routes that share it", async () => {
+    const call = await startLinking(3);
+    expect((await call("POST", "/preview", "guess-1")).status).toBe(401);
+    expect((await call("GET", "/status", "guess-2")).status).toBe(401);
+    expect((await call("POST", "/preview", "guess-3")).status).toBe(401);
+
+    const blocked = await call("GET", "/status", "ok");
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
+
+  it("never counts requests with a valid token", async () => {
+    const call = await startLinking(2);
+    for (let attempt = 0; attempt < 20; attempt += 1) expect((await call("GET", "/status", "ok")).status).toBe(200);
+    expect((await call("POST", "/preview", "guess")).status).toBe(401);
+    expect((await call("GET", "/status", "ok")).status).toBe(200);
   });
 });

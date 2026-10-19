@@ -139,3 +139,30 @@ export const loginAttemptLimiter = ({
     return next();
   };
 };
+
+export interface FailedAuthLimitOptions {
+  windowMs: number;
+  /** Rejected credentials allowed per client address within the window. */
+  maxFailures: number;
+  message?: string;
+}
+
+/**
+ * Limits guessing of a credential sent with the request (e.g. a project link token): only
+ * rejected attempts (401/403) count, per client address. One limiter can be shared by
+ * several routes so they draw from the same budget. Requests with a valid credential are
+ * never counted, so normal polling is not blocked.
+ */
+export const failedAuthLimiter = ({ windowMs, maxFailures, message = DEFAULT_MESSAGE }: FailedAuthLimitOptions) => {
+  const addresses = new WindowCounter(windowMs);
+  return (req: Request, res: Response, next: NextFunction) => {
+    const key = clientIp(req);
+    if (addresses.count(key) >= maxFailures) {
+      return tooManyRequests(res, addresses.retryAfterSeconds(key), message);
+    }
+    res.on("finish", () => {
+      if (FAILED_LOGIN_STATUSES.has(res.statusCode)) addresses.increment(key);
+    });
+    return next();
+  };
+};

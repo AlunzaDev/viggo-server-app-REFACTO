@@ -144,6 +144,28 @@ describe("sync authentication (HTTP)", () => {
     expect((await call("GET", path, { token: syncTokenA, installationId: "" })).status).toBe(400);
   });
 
+  it("limits link token guessing per address on the public linking routes", async () => {
+    // Own router instance, so its counters do not affect the other tests.
+    const app = express();
+    app.use(express.json());
+    app.use("/api/sync", SyncRoutes.routes);
+    const isolated = app.listen(0);
+    await new Promise((resolve) => isolated.once("listening", resolve));
+    const url = `http://127.0.0.1:${(isolated.address() as AddressInfo).port}/api/sync/installation-link/preview`;
+    const preview = (token: string) =>
+      fetch(url, { method: "POST", headers: { Authorization: `Bearer ${token}`, "X-Viggo-Installation-Id": INSTALLATION_NEW } });
+    try {
+      // A valid token is never counted.
+      for (let attempt = 0; attempt < 12; attempt += 1) expect((await preview(LINK_A)).status).toBe(200);
+      for (let attempt = 0; attempt < 10; attempt += 1) expect((await preview(`guess-${attempt}`)).status).toBe(401);
+      const blocked = await preview(LINK_A);
+      expect(blocked.status).toBe(429);
+      expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
+    } finally {
+      await new Promise((resolve) => isolated.close(resolve));
+    }
+  });
+
   it("stops accepting the token when the installation is unlinked", async () => {
     await db().localInstallation.update({ where: { installationId: INSTALLATION_A }, data: { status: "pending" } });
     expect((await call("GET", `/configuration/${proyectoA}`, { token: syncTokenA })).status).toBe(401);

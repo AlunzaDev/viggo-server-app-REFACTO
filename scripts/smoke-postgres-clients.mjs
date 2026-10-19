@@ -141,7 +141,7 @@ try {
     }, "backend startup");
   });
   adminToken = (await step("administrative web login", () => call(adminUrl, "/api/auth/login-correo", null, { correo: email, password, app: "ADMIN_WEB" }))).token;
-  projectId = uuid(id((await step("create project with UUID", () => call(adminUrl, "/api/proyectos", adminToken, { nombre: "Postgres Smoke", ciudad: "CDMX", coordinates: [-99,19], identificador: `smoke-${runId}`, estado: true }))).proyecto));
+  projectId = uuid(id((await step("create project with UUID", () => call(adminUrl, "/api/proyectos", adminToken, { nombre: "Postgres Smoke", descripcion: "Proyecto del smoke de punta a punta", ciudad: "CDMX", coordinates: [-99,19], identificador: `smoke-${runId}`, estado: true }))).proyecto));
   for (const tipo of ["ENTRADA", "SALIDA", "POS"]) {
     const result = await step(`create ${tipo} module`, () => call(adminUrl, "/api/modulos", adminToken, { nombre: tipo, proyecto: projectId, tipo, identificador: `smoke-${runId}-${tipo}`, estado: true }));
     const moduloId = uuid(id(result.modulo));
@@ -177,16 +177,25 @@ try {
   moduleToken = jwt.sign({ id: entryId }, secret, { expiresIn: "1h" });
   exitToken = jwt.sign({ id: exitId }, secret, { expiresIn: "1h" });
   const mobileToken = (await step("mobile login", () => call(adminUrl, "/api/auth/login-correo", null, { correo: mobileEmail, password, app: "OPERATIVE_MOBILE" }))).token;
-  await step("mobile catalogs scoped to assigned project; administrative writes denied", async () => {
+  await step("mobile parking areas expose only geodetection fields; administrative writes denied", async () => {
+    // Every active parking is listed so the app can detect where the user is.
     const catalog = await call(adminUrl, "/api/mobile/proyectos", mobileToken);
-    assert.deepEqual(catalog.proyectos.map(id), [projectId]);
+    const area = catalog.proyectos.find(row => id(row) === projectId);
+    assert(area, "project listed for geodetection");
+    for (const field of ["serverIp", "serverMac", "localApiBaseUrl", "remoteSupport", "installationLinkTokenEncrypted"]) {
+      assert.equal(area[field], undefined, `${field} must not reach the app`);
+    }
     const forbidden = await fetch(adminUrl+"/api/proyectos", { method:"POST", headers:{Authorization:`Bearer ${mobileToken}`,"Content-Type":"application/json"},body:"{}" });
     assert.equal(forbidden.status,403);
     const other = await fetch(adminUrl+`/api/mobile/proyectos/${randomUUID()}`, {headers:{Authorization:`Bearer ${mobileToken}`}});
     assert.equal(other.status,403);
   });
   await waitFor(async () => Number((await admin.db.query("SELECT extract(epoch from last_command_poll_at)*1000 AS last FROM local_installations WHERE installation_id=$1", [installationId])).rows[0]?.last) > Date.now()-8000, "mobile command poll");
-  const mobile = await step("mobile entry command", () => call(adminUrl, "/api/mobile/tickets", mobileToken, { moduleToken }, "POST", { "Idempotency-Key": randomUUID() }));
+  await step("mobile entry rejects a QR from another parking", async () => {
+    const response = await fetch(adminUrl + "/api/mobile/tickets", { method: "POST", headers: { Authorization: `Bearer ${mobileToken}`, "Content-Type": "application/json", "Idempotency-Key": randomUUID() }, body: JSON.stringify({ moduleToken, projectId: randomUUID() }) });
+    assert.equal(response.status, 409);
+  });
+  const mobile = await step("mobile entry command", () => call(adminUrl, "/api/mobile/tickets", mobileToken, { moduleToken, projectId }, "POST", { "Idempotency-Key": randomUUID() }));
   let completed;
   await waitFor(async () => { completed = (await call(adminUrl, `/api/mobile/operations/${mobile.operation.operationId}`, mobileToken)).operation; if (completed.status === "failed") throw new Error(completed.error); return completed.status === "completed"; }, "mobile ticket");
   const mobileTicket = completed.result.ticket;
@@ -194,7 +203,7 @@ try {
   const intent = await step("mobile payment intent (mock provider)", () => call(adminUrl, `/api/mobile/tickets/${mobileTicketId}/payment-intent`, mobileToken, {}, "POST", { "Idempotency-Key": randomUUID() }));
   await step("apply mobile payment locally", () => call(adminUrl, `/api/mobile/tickets/${mobileTicketId}/confirm`, mobileToken, { paymentIntentId: intent.paymentIntent.id }));
   assert.equal((await call(localUrl, `/api/tickets/${mobileTicketId}`, localToken)).ticket.pagado, true);
-  await step("mobile exit", () => call(adminUrl, "/api/mobile/tickets/exit", mobileToken, { moduleToken: exitToken }, "POST", { "Idempotency-Key": randomUUID() }));
+  await step("mobile exit", () => call(adminUrl, "/api/mobile/tickets/exit", mobileToken, { moduleToken: exitToken, projectId }, "POST", { "Idempotency-Key": randomUUID() }));
   const pension = (await step("create pension plan", () => call(adminUrl, "/api/pensiones", adminToken, { nombre: "Smoke Pension", proyecto: projectId, precio: 100, estado: true, validez: Array.from({length:7},(_,weekDay)=>({weekDay,from:[0,0],to:[23,59]})) }))).pension;
   const pass = (await call(adminUrl, "/api/pension-pass", adminToken, { name: "Smoke Pass", pension: id(pension), idPass: `smoke-pass-${runId}`, vigent: false, antiPassback: true, inParking: false, estado: true, created: Date.now(), from: -1, to: -1 })).pensionPass;
   await call(adminUrl, "/api/mobile/pension-pass/precontract", mobileToken, { pensionId: id(pension), contractMonths: 1 }, "POST", { "Idempotency-Key": randomUUID() });

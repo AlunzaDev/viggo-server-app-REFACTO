@@ -1,3 +1,4 @@
+import express from "express";
 import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -42,7 +43,7 @@ let userId = "";
 const provider = async (overrides: Record<string, unknown>) => {
   const created = await catalog.create({
     nombre: `prov-${tag}-${providerIds.length}`, integration: "standard", adapter: "", baseUrl: referenceUrl,
-    credential: "referencia-viggo", active: true, timeoutMs: 2000, ...overrides,
+    credential: "referencia-viggo", active: true, timeoutMs: 2000, authHeader: "", ...overrides,
   });
   providerIds.push(created.id);
   return created;
@@ -86,6 +87,9 @@ describe("payment provider catalog", () => {
     await expect(provider({ baseUrl: "http://proveedor.example.com" })).rejects.toThrow("HTTPS");
     await expect(provider({ integration: "adapter", adapter: "desconocido" })).rejects.toThrow("adapter");
     await expect(provider({ timeoutMs: 50 })).rejects.toThrow("timeoutMs");
+    // The client sets these headers itself: the credential cannot go in them.
+    await expect(provider({ authHeader: "Idempotency-Key" })).rejects.toThrow("authHeader");
+    await expect(provider({ authHeader: "X API Key" })).rejects.toThrow("authHeader");
 
     const standard = await provider({});
     expect(standard).toMatchObject({ integration: "standard", baseUrl: referenceUrl, hasCredential: true });
@@ -157,6 +161,29 @@ describe("external payments through a standard provider configured in the catalo
       await expect(service.resolve(userId, parking, "PRV|000124|plaza-centro")).rejects.toMatchObject({ statusCode: 409 });
     } finally {
       await new Promise((resolve) => fresh.close(resolve));
+    }
+  });
+
+  it("sends the credential in the header the provider asks for", async () => {
+    // A provider whose API expects X-API-Key instead of a Bearer token.
+    const received: Array<Record<string, string | string[] | undefined>> = [];
+    const app = express();
+    app.use(express.json());
+    app.post("/v1/quotes", (req, res) => {
+      received.push(req.headers);
+      res.json({ reference: `REF-${randomUUID()}`, ticket: "777", parking: { id: "p", name: "Con llave" }, amountMinor: 3000,
+        currency: "MXN", expiresAt: new Date(Date.now() + 600_000).toISOString(), status: "payable" });
+    });
+    const keyServer = app.listen(0, "127.0.0.1");
+    await new Promise((resolve) => keyServer.once("listening", resolve));
+    try {
+      const baseUrl = `http://127.0.0.1:${(keyServer.address() as AddressInfo).port}`;
+      const parking = await project((await provider({ baseUrl, credential: "llave-secreta", authHeader: "X-API-Key" })).id, "p");
+      expect(await service.resolve(userId, parking, "QR-CON-LLAVE")).toMatchObject({ amountMinor: 3000, proyectoId: parking });
+      expect(received[0]["x-api-key"]).toBe("llave-secreta");
+      expect(received[0].authorization).toBeUndefined();
+    } finally {
+      await new Promise((resolve) => keyServer.close(resolve));
     }
   });
 });

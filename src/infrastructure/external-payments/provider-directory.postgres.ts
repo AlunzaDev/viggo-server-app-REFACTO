@@ -56,9 +56,11 @@ export class PostgresExternalProviderDirectory extends ExternalProviderDirectory
 
   private client(provider: ProviderRow): ExternalPaymentProvider {
     if (!provider.active) throw new CustomError(503, "El proveedor de pago esta inactivo", "PROVIDER_INACTIVE");
+    const credential = decryptInstallationLinkToken(provider.credentialEncrypted);
     const connection = {
       baseUrl: provider.baseUrl,
-      headers: { Authorization: `Bearer ${decryptInstallationLinkToken(provider.credentialEncrypted)}` },
+      // Bearer by default; some APIs want the key in their own header (X-API-Key, Basic...).
+      headers: provider.authHeader ? { [provider.authHeader]: credential } : { Authorization: `Bearer ${credential}` },
       timeoutMs: provider.timeoutMs,
       allowLocalHttp: this.allowLocalHttp,
     };

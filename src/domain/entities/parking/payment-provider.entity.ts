@@ -11,6 +11,10 @@ export type PaymentProviderIntegration = (typeof PAYMENT_PROVIDER_INTEGRATIONS)[
 /** Adapters coded in the backend. */
 export const PAYMENT_PROVIDER_ADAPTERS = ["seguripass"] as const;
 
+/** Headers the provider client sets itself: a credential cannot go in them. */
+const RESERVED_AUTH_HEADERS = new Set(["content-type", "content-length", "host", "idempotency-key", "x-viggo-request-id"]);
+const HEADER_NAME = /^[A-Za-z0-9-]{1,64}$/;
+
 export const PROVIDER_TIMEOUT_RANGE_MS = { min: 1000, max: 30_000, default: 8000 } as const;
 
 export class PaymentProviderEntity {
@@ -25,6 +29,8 @@ export class PaymentProviderEntity {
     public readonly hasCredential: boolean = false,
     public readonly active: boolean = true,
     public readonly timeoutMs: number = PROVIDER_TIMEOUT_RANGE_MS.default,
+    /** Empty: `Authorization: Bearer <credential>`; a name: the credential as is in that header. */
+    public readonly authHeader: string = "",
   ) {}
 
   static fromObject(value: Record<string, unknown>) {
@@ -45,6 +51,7 @@ export class PaymentProviderEntity {
       Boolean(value.hasCredential),
       value.active !== false,
       Number(value.timeoutMs ?? PROVIDER_TIMEOUT_RANGE_MS.default),
+      String(value.authHeader ?? "").trim(),
     );
   }
 }
@@ -59,6 +66,8 @@ export interface PaymentProviderInput {
   credential?: string;
   active: boolean;
   timeoutMs: number;
+  /** Empty: Bearer in Authorization. A name (e.g. X-API-Key): the credential as is in it. */
+  authHeader: string;
 }
 
 /**
@@ -77,6 +86,9 @@ export const validatePaymentProviderConfig = (
   }
   if (config.integration === "viggo") return null;
 
+  if (config.authHeader && (!HEADER_NAME.test(config.authHeader) || RESERVED_AUTH_HEADERS.has(config.authHeader.toLowerCase()))) {
+    return "'authHeader' debe ser un nombre de encabezado valido (por ejemplo X-API-Key)";
+  }
   if (config.integration === "adapter" && !PAYMENT_PROVIDER_ADAPTERS.includes(config.adapter as never)) {
     return `'adapter' debe ser uno de: ${PAYMENT_PROVIDER_ADAPTERS.join(", ")}`;
   }

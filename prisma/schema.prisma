@@ -361,6 +361,9 @@ model PaymentProvider {
   baseUrl             String                     @default("") @map("base_url")
   /// Credential the provider gave Viggo, encrypted. The API never returns it.
   credentialEncrypted String                     @default("") @map("credential_encrypted")
+  /// Header the credential goes in: empty sends `Authorization: Bearer <credential>`;
+  /// a name (e.g. X-API-Key) sends the credential as is in that header.
+  authHeader          String                     @default("") @map("auth_header")
   /// An inactive provider neither quotes nor charges.
   active              Boolean                    @default(true)
   timeoutMs           Int                        @default(8000) @map("timeout_ms")

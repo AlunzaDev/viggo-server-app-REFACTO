@@ -28,6 +28,7 @@ export class PaymentProviderDto {
       credential: text(body.credential) || undefined,
       active: bool(body.active) ?? true,
       timeoutMs: integer(body.timeoutMs) ?? PROVIDER_TIMEOUT_RANGE_MS.default,
+      authHeader: text(body.authHeader) ?? "",
     }];
   }
 
@@ -44,6 +45,7 @@ export class PaymentProviderDto {
       credential: text(body.credential) || undefined,
       active: bool(body.active),
       timeoutMs: integer(body.timeoutMs),
+      authHeader: text(body.authHeader),
     };
     return [undefined, Object.fromEntries(Object.entries(update).filter(([, value]) => value !== undefined))];
   }

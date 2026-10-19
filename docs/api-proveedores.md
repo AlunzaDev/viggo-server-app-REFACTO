@@ -50,6 +50,7 @@ X-Viggo-Request-Id: 0199f3a2-7c1e-7b55-9d1a-3f2b8c4e5a61
 ```
 
 - `X-Viggo-Request-Id` identifica cada petición para rastrearla en los registros de ambos lados.
+- Si tu API ya usa otro encabezado para su llave (por ejemplo `X-API-Key: <credencial>`), Viggo puede enviarla ahí en lugar de `Authorization: Bearer`; avísanos cuál al darte de alta.
 - Una credencial inválida responde `401`. Para rotarla, el proveedor emite una nueva y se actualiza en Viggo; conviene aceptar ambas durante el cambio.
 
 ### 2.2 Errores

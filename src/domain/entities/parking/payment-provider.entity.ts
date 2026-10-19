@@ -1,15 +1,19 @@
 import { CustomError } from "../../errors/custom.error";
+import { validateProviderApiMapping, type ProviderApiMapping } from "./provider-api-mapping";
 
 /**
  * How a provider charges: `viggo` is Viggo's own ticket flow (OPERATIVO); `standard` is any
- * provider implementing docs/api-proveedores.md (configuration only); `adapter` is an
- * integration coded for one provider that does not follow the standard.
+ * provider implementing docs/api-proveedores.md (configuration only); `adapter` is a provider
+ * with its own API, translated from its configured mapping (`apiMapping`).
  */
 export const PAYMENT_PROVIDER_INTEGRATIONS = ["viggo", "standard", "adapter"] as const;
 export type PaymentProviderIntegration = (typeof PAYMENT_PROVIDER_INTEGRATIONS)[number];
 
-/** Adapters coded in the backend. */
-export const PAYMENT_PROVIDER_ADAPTERS = ["seguripass"] as const;
+/**
+ * Extension point: protocols coded in the backend for what a mapping cannot express
+ * (signatures, OAuth, XML). An adapter provider names one in `adapter`; empty uses its mapping.
+ */
+export const PAYMENT_PROVIDER_EXTENSIONS: readonly string[] = [];
 
 /** Headers the provider client sets itself: a credential cannot go in them. */
 const RESERVED_AUTH_HEADERS = new Set(["content-type", "content-length", "host", "idempotency-key", "x-viggo-request-id"]);
@@ -31,6 +35,8 @@ export class PaymentProviderEntity {
     public readonly timeoutMs: number = PROVIDER_TIMEOUT_RANGE_MS.default,
     /** Empty: `Authorization: Bearer <credential>`; a name: the credential as is in that header. */
     public readonly authHeader: string = "",
+    /** How its own API is spoken (integration = adapter). */
+    public readonly apiMapping: ProviderApiMapping | null = null,
   ) {}
 
   static fromObject(value: Record<string, unknown>) {
@@ -52,6 +58,7 @@ export class PaymentProviderEntity {
       value.active !== false,
       Number(value.timeoutMs ?? PROVIDER_TIMEOUT_RANGE_MS.default),
       String(value.authHeader ?? "").trim(),
+      value.apiMapping && typeof value.apiMapping === "object" ? (value.apiMapping as ProviderApiMapping) : null,
     );
   }
 }
@@ -68,6 +75,8 @@ export interface PaymentProviderInput {
   timeoutMs: number;
   /** Empty: Bearer in Authorization. A name (e.g. X-API-Key): the credential as is in it. */
   authHeader: string;
+  /** null clears it; omitted in an update keeps it. */
+  apiMapping?: ProviderApiMapping | null;
 }
 
 /**
@@ -89,8 +98,17 @@ export const validatePaymentProviderConfig = (
   if (config.authHeader && (!HEADER_NAME.test(config.authHeader) || RESERVED_AUTH_HEADERS.has(config.authHeader.toLowerCase()))) {
     return "'authHeader' debe ser un nombre de encabezado valido (por ejemplo X-API-Key)";
   }
-  if (config.integration === "adapter" && !PAYMENT_PROVIDER_ADAPTERS.includes(config.adapter as never)) {
-    return `'adapter' debe ser uno de: ${PAYMENT_PROVIDER_ADAPTERS.join(", ")}`;
+  if (config.integration === "adapter") {
+    if (config.adapter) {
+      if (!PAYMENT_PROVIDER_EXTENSIONS.includes(config.adapter)) {
+        return PAYMENT_PROVIDER_EXTENSIONS.length
+          ? `'adapter' debe ser uno de: ${PAYMENT_PROVIDER_EXTENSIONS.join(", ")}`
+          : "'adapter' debe ir vacio: no hay extensiones programadas, se usa el mapeo de su API";
+      }
+    } else {
+      const error = validateProviderApiMapping(config.apiMapping, config.authHeader);
+      if (error) return error;
+    }
   }
   let url: URL;
   try {

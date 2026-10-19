@@ -6,9 +6,9 @@ Cobro desde la app en estacionamientos que opera otro proveedor (#17). **Cada es
 | --- | --- |
 | `viggo` | Flujo propio con OPERATIVO (tickets, entrada y salida). No usa este módulo: `POST /orders` responde `409 VIGGO_TICKET_FLOW`. |
 | `standard` | El proveedor implementa la [API de proveedores Viggo](api-proveedores.md); se configura solo con URL y credencial. |
-| `adapter` | Integración programada para un proveedor que no adopta el estándar (por ahora `seguripass`, pendiente de su API real en #18: responde `503 EXTERNAL_PROVIDER_NOT_CONFIGURED`). |
+| `adapter` | El proveedor tiene su propia API: se configura cómo es (`apiMapping`, ver [Adaptador configurable](#adaptador-configurable)) y un motor genérico traduce. Sin mapeo responde `503 EXTERNAL_PROVIDER_NOT_CONFIGURED`. |
 
-La configuración (URL, credencial cifrada, activo, tiempo de espera) se lee en cada llamada, así que se puede cambiar sin reiniciar. No hay cobros ficticios en runtime.
+La configuración (URL, credencial cifrada, activo, tiempo de espera, mapeo) se lee en cada llamada, así que se puede cambiar sin reiniciar. No hay cobros ficticios en runtime.
 
 ## Responsabilidad y extensión
 
@@ -19,11 +19,51 @@ Todo el flujo vive en ADMINISTRATIVO. El proveedor es dueño de sus tickets, tar
 - `src/infrastructure/external-payments/stripe-external.gateway.ts`: PaymentIntent real con una clave estable por orden.
 - `src/infrastructure/external-payments/http-provider.client.ts`: cliente HTTPS genérico (timeout, sin redirecciones, reintentos de cotización, errores traducidos al dominio); lo que cambia por proveedor es solo el `ProviderProtocol`.
 - `src/infrastructure/external-payments/standard-provider.protocol.ts`: protocolo de la API de proveedores Viggo v1.
-- `src/infrastructure/external-payments/seguripass.client.ts`: adaptador de SeguriPass (solo si no adopta el estándar).
+- `src/infrastructure/external-payments/mapped-provider.protocol.ts`: adaptador genérico; habla la API de un proveedor a partir de su mapeo (`src/domain/entities/parking/provider-api-mapping.ts`).
 - `src/infrastructure/external-payments/provider-directory.postgres.ts`: arma la integración del proveedor del proyecto a partir del catálogo.
 - Worker: cada 15 segundos, lotes de hasta 50 órdenes. Verifica cobros pendientes en Stripe y confirma al tercero después de `succeeded`. Espera trabajos activos durante el cierre del servidor.
 
-Un proveedor que implementa el estándar se da de alta solo en el catálogo. Un adaptador nuevo es un `ProviderProtocol` más su caso en el directorio. No hace falta cambiar las reglas del servicio, Stripe ni las tablas.
+Un proveedor que implementa el estándar o cuya API se puede describir con un mapeo se da de alta solo en el catálogo. Solo lo que un mapeo no puede expresar (firmas por petición, OAuth, XML) se programa como extensión: un `ProviderProtocol` en `EXTENSIONS` del directorio y su nombre en `PAYMENT_PROVIDER_EXTENSIONS`; el proveedor lo indica en `adapter`. No hace falta cambiar las reglas del servicio, Stripe ni las tablas.
+
+## Adaptador configurable
+
+`apiMapping` (JSON) describe las dos llamadas. Las rutas son relativas a `baseUrl` y no pueden salir de ella (sin `/` inicial, `..` ni otro dominio). Las variables `{nombre}` se codifican en la ruta, así que un QR no puede alterarla; en el cuerpo, un texto que es solo una variable conserva su tipo (`"{amount}"` → `85.5`).
+
+```json
+{
+  "quote": {
+    "method": "GET",
+    "path": "boletos/{qr}?estacionamiento={parkingId}",
+    "response": {
+      "reference": "data.folio", "ticket": "data.boleto.numero", "parkingName": "data.plaza",
+      "amount": "data.importe", "amountUnit": "pesos", "currency": "data.moneda",
+      "expiresAt": "data.vence", "expiresFormat": "unixSeconds",
+      "status": "data.estatus", "statusValues": { "PENDIENTE": "payable", "PAGADO": "paid", "VENCIDO": "expired" }
+    }
+  },
+  "confirm": {
+    "method": "PUT",
+    "path": "boletos/{reference}/pago",
+    "body": { "monto": "{amount}", "referenciaPago": "{paymentReference}" },
+    "idempotencyHeader": "X-Clave-Unica",
+    "response": { "confirmationReference": "resultado.comprobante" }
+  }
+}
+```
+
+| Campo | Valores |
+| --- | --- |
+| `quote.method` / `confirm.method` | `GET`, `POST` / `POST`, `PUT`, `PATCH` (el cuerpo no aplica a GET). |
+| Variables de cotizar | `{qr}`, `{parkingId}` (el ID del estacionamiento en el proveedor). |
+| Variables de confirmar | `{reference}`, `{paymentReference}` (PaymentIntent), `{amount}` (en la unidad de `amountUnit`), `{amountMinor}`, `{currency}`, `{idempotencyKey}`. |
+| Rutas de datos | Puntos y posiciones: `data.items.0.monto`. Obligatorias: `reference`, `ticket`, `amount`; `parkingId` y `parkingName` usan el ID enviado si se omiten. |
+| `amountUnit` | `pesos` (número o texto, máximo 2 decimales) o `centavos` (entero). |
+| Moneda | `currency` (ruta) o `fixedCurrency` (por defecto `MXN`). |
+| `expiresFormat` | `iso`, `unixSeconds`, `unixMilliseconds`, `secondsLeft` (segundos restantes) o `fixedMinutes` con `expiresMinutes` (1 a 1440). |
+| Estado | `status` (ruta) con `statusValues` que traduce sus valores a `payable`, `paid` o `expired`; un valor no listado es respuesta inválida. Sin `status`, toda cotización es por pagar. |
+| `idempotencyHeader` | Encabezado de la llave de idempotencia (por defecto `Idempotency-Key`); distinto al de la credencial. |
+
+Los códigos HTTP se interpretan igual que en el estándar (404/410 inexistente o expirado, 409 rechazo final, 429/5xx no disponible) y el servicio aplica las mismas reglas de importe y moneda.
 
 ## API para el futuro cliente móvil
 
@@ -109,11 +149,11 @@ Validación real completada el 2026-10-16 con Stripe CLI 1.53.1 (descarga oficia
 
 `tests/integration/external-payments.restart.test.ts` inicia procesos Node distintos usando el servicio y repositorio reales. Comprueba recuperación de un webhook perdido y mata un proceso después de confirmar remotamente con un proveedor simulado, antes del commit local. Un nuevo proceso respeta el lease vigente; tras adelantar su vencimiento en la base de pruebas, otro proceso recupera la orden con la misma clave de confirmación. Resultado: dos intentos remotos, una aplicación remota, un cobro y una auditoría de confirmación. El arnés está en `tests/fixtures/external-payment-process.ts` y solo acepta base `_test` y proveedor loopback.
 
-## Cuando llegue la documentación
+## Cuando llegue la documentación de SeguriPass
 
 1. Obtener QR válidos/erróneos, sandbox y credenciales. Confirmar unicidad y ciclo de vida de referencias, importe final, moneda, vigencia y errores.
-2. Implementar `SeguripassProtocol`: rutas, payloads y normalización de quote/confirmación. El cliente HTTP actual envía POST JSON y headers configurados; adaptar transporte si exigen GET, firmas por petición u otro esquema de autenticación. Los endpoints `/fake/*` existen solo en pruebas.
-3. Cargar URL y credenciales desde configuración de servidor; inyectarlas en dependencies sin valores hardcodeados. El transporte impide redirects y destinos fuera del origen configurado.
+2. Darlo de alta en el catálogo como `adapter` con su mapeo (#20). Solo si exige firmas por petición, OAuth o XML, programar una extensión.
+3. URL y credencial viven en el catálogo (cifrada); el transporte impide redirects y destinos fuera de la URL configurada.
 4. Acordar idempotencia, consulta de estado tras timeouts, ventanas de confirmación, rate limits, comisiones, liquidación, cancelaciones, reembolsos y webhooks del tercero. Añadir esas capacidades cuando exista contrato.
 5. Probar con Stripe test real, webhook real y sandbox SeguriPass; probar pago durante expiración, doble escaneo, confirmación aplicada con respuesta perdida y recuperación después de caídas.
 6. Añadir configuración operativa de intervalos/límites, métricas y herramientas de revisión/reembolso antes de producción.

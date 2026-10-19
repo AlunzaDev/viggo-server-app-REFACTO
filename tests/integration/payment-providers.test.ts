@@ -4,6 +4,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresDatabase } from "../../src/data/postgres";
+import { Prisma } from "../../src/generated/prisma/client";
 import { ExternalPaymentService } from "../../src/domain/external-payments/external-payment.service";
 import type { ExternalIntent, ExternalOrder, ExternalPaymentGateway } from "../../src/domain/external-payments/external-payment";
 import { PaymentProviderPostgresDatasource } from "../../src/infrastructure/datasources/parking/payment-provider.datasource.postgres";
@@ -185,5 +186,121 @@ describe("external payments through a standard provider configured in the catalo
     } finally {
       await new Promise((resolve) => keyServer.close(resolve));
     }
+  });
+});
+
+/** A provider with its own API (Spanish fields, GET quote, PUT confirmation, pesos as text). */
+const MAPPING = {
+  quote: {
+    method: "GET",
+    path: "boletos/{qr}?estacionamiento={parkingId}",
+    response: {
+      reference: "data.folio", ticket: "data.boleto.numero", parkingName: "data.plaza",
+      amount: "data.importe", amountUnit: "pesos", currency: "data.moneda",
+      expiresAt: "data.vence", expiresFormat: "unixSeconds",
+      status: "data.estatus", statusValues: { PENDIENTE: "payable", PAGADO: "paid", VENCIDO: "expired" },
+    },
+  },
+  confirm: {
+    method: "PUT",
+    path: "boletos/{reference}/pago",
+    body: { monto: "{amount}", referenciaPago: "{paymentReference}", nota: "viggo-{idempotencyKey}" },
+    idempotencyHeader: "X-Clave-Unica",
+    response: { confirmationReference: "resultado.comprobante" },
+  },
+};
+
+describe("external payments through a configurable adapter", () => {
+  let server: Server;
+  let baseUrl = "";
+  const seen: Array<{ method: string; url: string; headers: Record<string, unknown>; body: unknown }> = [];
+  const paid = new Set<string>();
+
+  beforeAll(async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => { seen.push({ method: req.method, url: req.originalUrl, headers: req.headers, body: req.body }); next(); });
+    app.get("/api/boletos/:qr", (req, res) => {
+      if (req.header("x-api-key") !== "llave-adaptador") return res.sendStatus(401);
+      if (req.params.qr === "NO-EXISTE") return res.sendStatus(404);
+      const folio = `F-${req.params.qr}`;
+      res.json({ data: { folio, boleto: { numero: 456 }, plaza: "Plaza Sur", importe: "85.50", moneda: "mxn",
+        vence: Math.floor(Date.now() / 1000) + 600, estatus: paid.has(folio) ? "PAGADO" : "PENDIENTE" } });
+    });
+    app.put("/api/boletos/:folio/pago", (req, res) => {
+      paid.add(req.params.folio);
+      res.json({ resultado: { comprobante: `C-${req.params.folio}` } });
+    });
+    server = app.listen(0, "127.0.0.1");
+    await new Promise((resolve) => server.once("listening", resolve));
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
+  });
+
+  afterAll(async () => { await new Promise((resolve) => server.close(resolve)); });
+
+  const adapter = (overrides: Record<string, unknown> = {}) =>
+    provider({ integration: "adapter", baseUrl, credential: "llave-adaptador", authHeader: "X-API-Key", apiMapping: MAPPING, ...overrides });
+
+  it("validates the mapping", async () => {
+    const quote = (changes: Record<string, unknown>) => ({ ...MAPPING, quote: { ...MAPPING.quote, ...changes } });
+    await expect(adapter({ apiMapping: null })).rejects.toThrow("apiMapping");
+    await expect(adapter({ adapter: "seguripass" })).rejects.toThrow("adapter");
+    await expect(adapter({ apiMapping: quote({ path: "boletos/{folio}" }) })).rejects.toThrow("{folio}");
+    await expect(adapter({ apiMapping: quote({ path: "../admin/{qr}" }) })).rejects.toThrow("'..'");
+    await expect(adapter({ apiMapping: quote({ path: "/boletos/{qr}" }) })).rejects.toThrow("quote.path");
+    await expect(adapter({ apiMapping: quote({ path: "https://otro.example.com/{qr}" }) })).rejects.toThrow("quote.path");
+    await expect(adapter({ apiMapping: quote({ body: { qr: "{qr}" } }) })).rejects.toThrow("GET");
+    await expect(adapter({ apiMapping: quote({ response: { ...MAPPING.quote.response, amount: "data.__proto__" } }) })).rejects.toThrow("amount");
+    await expect(adapter({ apiMapping: quote({ response: { ...MAPPING.quote.response, statusValues: { PAGADO: "paid" } } }) })).rejects.toThrow("payable");
+    await expect(adapter({ apiMapping: { ...MAPPING, confirm: { ...MAPPING.confirm, idempotencyHeader: "X-API-Key" } } })).rejects.toThrow("idempotencyHeader");
+
+    const created = await adapter();
+    expect(created).toMatchObject({ integration: "adapter", adapter: "", apiMapping: MAPPING });
+    // An update that does not send the mapping keeps it.
+    expect(await catalog.update(created.id, { timeoutMs: 3000 })).toMatchObject({ apiMapping: MAPPING });
+  });
+
+  it("quotes, charges and confirms speaking the provider's own API", async () => {
+    const parking = await project((await adapter()).id, "sur-01");
+    seen.length = 0;
+    const order = await service.resolve(userId, parking, "QR-777");
+    expect(order).toMatchObject({ amountMinor: 8550, currency: "MXN", ticket: "456", status: "quoted" });
+    expect(seen[0]).toMatchObject({ method: "GET", url: "/api/boletos/QR-777?estacionamiento=sur-01" });
+    expect(seen[0].headers["content-type"]).toBeUndefined();
+
+    await service.createPaymentIntent(userId, order.id);
+    await service.acceptSucceeded(stripe.succeed(order.id));
+    await service.runOnce();
+    const confirmed = await db().externalPaymentOrder.findUniqueOrThrow({ where: { id: order.id } });
+    expect(confirmed).toMatchObject({ status: "confirmed", confirmationReference: "C-F-QR-777", parkingName: "Plaza Sur" });
+    const confirmation = seen.find((request) => request.method === "PUT")!;
+    expect(confirmation.url).toBe("/api/boletos/F-QR-777/pago");
+    expect(confirmation.body).toMatchObject({ monto: 85.5, referenciaPago: `pi_${order.id}` });
+    expect(confirmation.headers["x-clave-unica"]).toBeTruthy();
+    expect((confirmation.body as { nota: string }).nota).toBe(`viggo-${confirmation.headers["x-clave-unica"]}`);
+
+    // Its "PAGADO" is translated to paid: it cannot be quoted again.
+    await expect(service.resolve(userId, parking, "QR-777")).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("keeps the QR from altering the provider's path", async () => {
+    const parking = await project((await adapter()).id, "sur-01");
+    seen.length = 0;
+    await service.resolve(userId, parking, "../../admin?x=1#y").catch(() => undefined);
+    expect(seen[0].url).toBe("/api/boletos/..%2F..%2Fadmin%3Fx%3D1%23y?estacionamiento=sur-01");
+    await expect(service.resolve(userId, parking, "..")).rejects.toMatchObject({ statusCode: 400 });
+    await expect(service.resolve(userId, parking, "NO-EXISTE")).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("answers an invalid response and a missing mapping clearly", async () => {
+    const wrongAmount = { ...MAPPING, quote: { ...MAPPING.quote, response: { ...MAPPING.quote.response, amount: "data.boleto" } } };
+    const parking = await project((await adapter({ apiMapping: wrongAmount })).id, "sur-01");
+    await expect(service.resolve(userId, parking, "QR-1")).rejects.toMatchObject({ code: "INVALID_EXTERNAL_RESPONSE" });
+
+    // A provider switched to adapter before its mapping existed (or the old SeguriPass row).
+    const legacy = await adapter();
+    await db().paymentProvider.update({ where: { id: legacy.id }, data: { apiMapping: Prisma.DbNull } });
+    const legacyParking = await project(legacy.id, "sur-01");
+    await expect(service.resolve(userId, legacyParking, "QR-1")).rejects.toMatchObject({ statusCode: 503, code: "EXTERNAL_PROVIDER_NOT_CONFIGURED" });
   });
 });

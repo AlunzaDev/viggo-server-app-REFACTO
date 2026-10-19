@@ -1,5 +1,5 @@
 import { PostgresDatabase } from "../../../data/postgres";
-import type { PaymentProvider as Row } from "../../../generated/prisma/client";
+import { Prisma, type PaymentProvider as Row } from "../../../generated/prisma/client";
 import { PaymentProviderDatasource } from "../../../domain/datasources/parking/payment-provider.datasource";
 import { PaymentProviderEntity, type PaymentProviderInput } from "../../../domain/entities/parking/payment-provider.entity";
 import { encryptInstallationLinkToken } from "../../../presentation/utils/installation-link-token-crypto.util";
@@ -9,9 +9,10 @@ const entity = (row: Row) =>
   PaymentProviderEntity.fromObject({ ...row, hasCredential: Boolean(row.credentialEncrypted) });
 
 /** Input -> columns; the credential is encrypted and only written when one is given. */
-const columns = ({ credential, ...data }: Partial<PaymentProviderInput>) => ({
+const columns = ({ credential, apiMapping, ...data }: Partial<PaymentProviderInput>) => ({
   ...data,
   ...(credential ? { credentialEncrypted: encryptInstallationLinkToken(credential) } : {}),
+  ...(apiMapping === undefined ? {} : { apiMapping: apiMapping === null ? Prisma.DbNull : (apiMapping as unknown as Prisma.InputJsonValue) }),
 });
 
 export class PaymentProviderPostgresDatasource extends PaymentProviderDatasource {

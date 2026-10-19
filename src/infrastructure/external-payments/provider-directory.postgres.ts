@@ -1,6 +1,7 @@
 import { envs } from "../../config";
 import { PostgresDatabase } from "../../data/postgres";
 import type { PaymentProvider as ProviderRow } from "../../generated/prisma/client";
+import type { ProviderApiMapping } from "../../domain/entities/parking/provider-api-mapping";
 import { CustomError } from "../../domain/errors/custom.error";
 import {
   ExternalProviderDirectory,
@@ -9,9 +10,15 @@ import {
 } from "../../domain/external-payments/external-payment";
 import { decryptInstallationLinkToken } from "../../presentation/utils/installation-link-token-crypto.util";
 import { isUuid } from "../datasources/postgres/prisma-errors";
-import { HttpProviderClient } from "./http-provider.client";
-import { SeguripassClient } from "./seguripass.client";
+import { HttpProviderClient, type ProviderProtocol } from "./http-provider.client";
+import { mappedProviderProtocol } from "./mapped-provider.protocol";
 import { standardProviderProtocol } from "./standard-provider.protocol";
+
+/**
+ * Coded protocols for what a mapping cannot express (signatures, OAuth, XML), by the name in
+ * `adapter`. Each one must also be listed in PAYMENT_PROVIDER_EXTENSIONS. None yet.
+ */
+const EXTENSIONS: Record<string, (mapping: ProviderApiMapping | null) => ProviderProtocol> = {};
 
 /** Integrations built from the payment provider catalog (configuration read on each call). */
 export class PostgresExternalProviderDirectory extends ExternalProviderDirectory {
@@ -67,9 +74,12 @@ export class PostgresExternalProviderDirectory extends ExternalProviderDirectory
     if (provider.integration === "standard") {
       return new HttpProviderClient(provider.id, { ...connection, protocol: standardProviderProtocol });
     }
-    if (provider.integration === "adapter" && provider.adapter === "seguripass") {
-      // Its protocol depends on SeguriPass's actual API (#18); until then it is "not configured".
-      return new SeguripassClient(undefined, provider.id);
+    if (provider.integration === "adapter") {
+      const mapping = provider.apiMapping as ProviderApiMapping | null;
+      const extension = provider.adapter ? EXTENSIONS[provider.adapter] : undefined;
+      if (extension) return new HttpProviderClient(provider.id, { ...connection, protocol: extension(mapping) });
+      if (!provider.adapter && mapping) return new HttpProviderClient(provider.id, { ...connection, protocol: mappedProviderProtocol(mapping) });
+      return new HttpProviderClient(provider.id, undefined, "El proveedor no tiene configurado el mapeo de su API");
     }
     throw new CustomError(503, "La integracion del proveedor no esta disponible", "PROVIDER_INTEGRATION_UNAVAILABLE");
   }

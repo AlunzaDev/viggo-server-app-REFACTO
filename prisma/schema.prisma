@@ -355,7 +355,7 @@ model PaymentProvider {
   nombre              String                     @unique
   logo                String                     @default("")
   integration         PaymentProviderIntegration @default(viggo)
-  /// Adapter coded in the backend (integration = adapter), e.g. "seguripass".
+  /// Coded extension (integration = adapter) for what a mapping cannot express; empty uses apiMapping.
   adapter             String                     @default("")
   /// Base URL of the provider's API (standard/adapter).
   baseUrl             String                     @default("") @map("base_url")
@@ -367,6 +367,9 @@ model PaymentProvider {
   /// An inactive provider neither quotes nor charges.
   active              Boolean                    @default(true)
   timeoutMs           Int                        @default(8000) @map("timeout_ms")
+  /// How its own API is spoken (integration = adapter): requests and where each datum is in
+  /// its answers. See src/domain/entities/parking/provider-api-mapping.ts.
+  apiMapping          Json?                      @map("api_mapping")
   createdAt           DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
   proyectos           Proyecto[]

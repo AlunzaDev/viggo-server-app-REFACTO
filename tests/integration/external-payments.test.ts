@@ -11,7 +11,7 @@ import type { ExternalIntent, ExternalOrder, ExternalPaymentGateway, ExternalPro
 import { CustomError } from "../../src/domain/errors/custom.error";
 import { ExternalOrderPostgresRepository } from "../../src/infrastructure/repositories/payments/external-order.repository.postgres";
 import { PaymentPostgresDatasource } from "../../src/infrastructure/datasources/payments/payment.datasource.postgres";
-import { SeguripassClient } from "../../src/infrastructure/external-payments/seguripass.client";
+import { HttpProviderClient } from "../../src/infrastructure/external-payments/http-provider.client";
 import { externalPaymentRoutes } from "../../src/presentation/routes/payments/external-payment.routes";
 import { externalPaymentAdminRoutes } from "../../src/presentation/routes/payments/external-payment-admin.routes";
 import { StripeWebhookController } from "../../src/presentation/routes/payments/stripe-webhook.controller";
@@ -117,7 +117,7 @@ beforeAll(async () => {
   });
   const providerHost = await listen(providerApp);
   providerServer = providerHost.server;
-  const provider = new SeguripassClient({ baseUrl: providerHost.url, headers: { Authorization: "Bearer test-only" },
+  const provider = new HttpProviderClient("seguripass", { baseUrl: providerHost.url, headers: { Authorization: "Bearer test-only" },
     allowLocalHttp: true, timeoutMs: 100,
     protocol: { quoteRequest: (qr, parkingId) => ({ path: "/fake/quote", body: { qr, parkingId } }), readQuote: body => body as ExternalQuote,
       confirmationRequest: input => ({ path: "/fake/confirm", body: input }),
@@ -488,7 +488,7 @@ describe("external payments: PostgreSQL, HTTP provider, authenticated API and St
   });
 
   it("rejects invalid quotes, unavailable provider, timeouts and unknown protocols", async () => {
-    await expect(new SeguripassClient().resolveOrder("qr", "parking")).rejects.toMatchObject({ statusCode: 503, code: "EXTERNAL_PROVIDER_NOT_CONFIGURED" });
+    await expect(new HttpProviderClient("sin-configurar").resolveOrder("qr", "parking")).rejects.toMatchObject({ statusCode: 503, code: "EXTERNAL_PROVIDER_NOT_CONFIGURED" });
     await expect(service.resolve(user, "unknown", "qr")).rejects.toMatchObject({ statusCode: 400 });
     await expect(service.resolve(user, proyectoId, "")).rejects.toMatchObject({ statusCode: 400 });
     // A parking without an external provider cannot quote.

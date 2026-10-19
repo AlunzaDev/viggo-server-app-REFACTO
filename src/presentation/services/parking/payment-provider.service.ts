@@ -38,8 +38,8 @@ export class PaymentProviderService {
   }
 
   private toInput(provider: PaymentProviderEntity): PaymentProviderInput {
-    const { nombre, integration, adapter, baseUrl, active, timeoutMs, authHeader } = provider;
-    return { nombre, integration, adapter, baseUrl, active, timeoutMs, authHeader };
+    const { nombre, integration, adapter, baseUrl, active, timeoutMs, authHeader, apiMapping } = provider;
+    return { nombre, integration, adapter, baseUrl, active, timeoutMs, authHeader, apiMapping };
   }
 
   private validate(config: PaymentProviderInput & { hasCredential: boolean }) {

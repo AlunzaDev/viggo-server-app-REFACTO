@@ -4,12 +4,23 @@ import { CustomError } from "../../domain/errors/custom.error";
 
 type Confirmation = Parameters<ExternalPaymentProvider["confirmPayment"]>[0];
 
+/** A request to the provider; the path is relative to its base URL. Default method: POST. */
+export interface ProviderRequest {
+  method?: "GET" | "POST" | "PUT" | "PATCH";
+  path: string;
+  /** Not sent with GET. */
+  body?: unknown;
+}
+
 /** How one provider's API is spoken: request paths/bodies and response readers. */
 export interface ProviderProtocol {
-  quoteRequest(qr: string, parkingId: string): { path: string; body: unknown };
-  readQuote(body: unknown): ExternalQuote;
-  confirmationRequest(input: Confirmation): { path: string; body: unknown };
+  quoteRequest(qr: string, parkingId: string): ProviderRequest;
+  /** `parkingId` is the one sent in the request, for providers that do not echo it. */
+  readQuote(body: unknown, parkingId: string): ExternalQuote;
+  confirmationRequest(input: Confirmation): ProviderRequest;
   readConfirmation(body: unknown): { confirmationReference: string };
+  /** Header the confirmation's idempotency key goes in. Default: Idempotency-Key. */
+  idempotencyHeader?: string;
 }
 
 export interface ProviderConnection {
@@ -46,7 +57,7 @@ export class HttpProviderClient implements ExternalPaymentProvider {
     const request = config.protocol.quoteRequest(qr, parkingId);
     // Read-only quotation can be retried; confirmation retries belong to the durable worker.
     for (let attempt = 0; ; attempt++) {
-      try { return this.parse(config.protocol.readQuote.bind(config.protocol), await this.post(request)); }
+      try { return this.parse((body) => config.protocol.readQuote(body, parkingId), await this.send(request)); }
       catch (error) {
         if (attempt >= 2 || !(error instanceof CustomError) || error.code !== "EXTERNAL_PROVIDER_UNAVAILABLE") throw error;
         await new Promise(resolve => setTimeout(resolve, 100 * 2 ** attempt));
@@ -56,7 +67,7 @@ export class HttpProviderClient implements ExternalPaymentProvider {
 
   async confirmPayment(input: Confirmation) {
     const config = this.config();
-    return this.parse(config.protocol.readConfirmation.bind(config.protocol), await this.post(config.protocol.confirmationRequest(input), input.idempotencyKey));
+    return this.parse(config.protocol.readConfirmation.bind(config.protocol), await this.send(config.protocol.confirmationRequest(input), input.idempotencyKey));
   }
 
   private config() {
@@ -69,22 +80,26 @@ export class HttpProviderClient implements ExternalPaymentProvider {
     catch { throw new CustomError(502, "Respuesta invalida del proveedor", "INVALID_EXTERNAL_RESPONSE"); }
   }
 
-  private async post(request: { path: string; body: unknown }, idempotencyKey?: string): Promise<unknown> {
+  private async send(request: ProviderRequest, idempotencyKey?: string): Promise<unknown> {
     const config = this.config();
     // A trailing slash keeps the base path: "https://x/viggo" + "v1/quotes" -> "https://x/viggo/v1/quotes".
     const base = new URL(config.baseUrl.endsWith("/") ? config.baseUrl : `${config.baseUrl}/`);
     const url = new URL(request.path, base);
-    if (url.origin !== base.origin || url.username || url.password) throw new Error("Invalid provider endpoint");
+    // Confined to the configured API: same origin and under its base path.
+    if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname) || url.username || url.password) {
+      throw new Error("Invalid provider endpoint");
+    }
+    const method = request.method ?? "POST";
     try {
       const response = await fetch(url, {
-        method: "POST", redirect: "error", signal: AbortSignal.timeout(config.timeoutMs ?? 8000),
+        method, redirect: "error", signal: AbortSignal.timeout(config.timeoutMs ?? 8000),
         headers: {
           ...config.headers,
-          "Content-Type": "application/json",
+          ...(method === "GET" ? {} : { "Content-Type": "application/json" }),
           "X-Viggo-Request-Id": randomUUID(),
-          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+          ...(idempotencyKey ? { [config.protocol.idempotencyHeader || "Idempotency-Key"]: idempotencyKey } : {}),
         },
-        body: JSON.stringify(request.body),
+        ...(method === "GET" ? {} : { body: JSON.stringify(request.body ?? {}) }),
       });
       if (response.status === 404 || response.status === 410) throw CustomError.conflict("Ticket externo inexistente o expirado");
       // Final answers (already paid, amount mismatch...): not retried, the order goes to review.

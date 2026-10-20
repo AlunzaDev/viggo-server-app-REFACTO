@@ -65,6 +65,9 @@ describe("dashboard consolidated PostgreSQL data",()=>{
     expect(result.paymentMethods.find(p=>p.method==="Efectivo")?.amount).toBe(50);
     expect(result.paymentMethods.find(p=>p.method==="Tarjeta")?.amount).toBe(120);
     expect(result.revenueTrend).toEqual([{label:"2026-10-15",amount:170}]);
+    // Nothing failed; the parking has no OPERATIVO events, so it is reported as behind.
+    expect(result).toMatchObject({partial:false,failedMetrics:[],mixedTimeZones:false});
+    expect(result.coverage).toEqual([{projectId:a,name:"Dashboard A",timeZone:"America/Mexico_City",lastDataAt:null,stale:true}]);
   });
   it("uses exited ticket timestamps and keeps entry/exit hours separate",async()=>{
     const result=await source.getMetrics([a],from,to,now);

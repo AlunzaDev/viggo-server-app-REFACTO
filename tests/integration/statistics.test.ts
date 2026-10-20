@@ -115,4 +115,21 @@ describe("GET /api/estadisticas", () => {
     expect((await get("metricas=ingresos.netos;DROP&desde=2026-10-15&hasta=2026-10-15")).status).toBe(400);
     expect((await get("metricas=tickets.salidas&desde=2026-01-01&hasta=2026-10-15&agrupar=hora")).status).toBe(400);
   });
+
+  it("exports the same metrics as a CSV that says what is missing", async () => {
+    const response = await fetch(`${base}/api/estadisticas/exportar?metricas=ingresos.cobrados,tickets.salidas&desde=2026-10-15&hasta=2026-10-15&agrupar=proyecto&proyectos=${projects.cdmx},${projects.tijuana}`,
+      { headers: { Authorization: `Bearer ${tokens.super}` } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/csv");
+    expect(response.headers.get("content-disposition")).toContain("estadisticas_2026-10-15_2026-10-15.csv");
+    const lines = (await response.text()).replace("\uFEFF", "").trim().split("\r\n");
+    expect(lines[0]).toBe("metrica,descripcion,grupo,valor,unidad,moneda,estado");
+    // Grouped by parking, the file names the parkings.
+    expect(lines).toContain(`ingresos.cobrados,"Cobros exitosos con fecha de pago en el periodo, incluidos los externos (sin restar reembolsos)",TIJ ${tag},200.00,dinero,MXN,ok`);
+    expect(lines.some((line) => line.startsWith("tickets.salidas,") && line.includes(`TIJ ${tag},1,conteo,,ok`))).toBe(true);
+    // Mexico City never synchronized: the file itself warns about it.
+    expect(lines.at(-1)).toContain(`Sedes sin sincronizar en los últimos 15 minutos: CDMX ${tag}`);
+    expect((await fetch(`${base}/api/estadisticas/exportar?metricas=ingresos.cobrados&desde=2026-10-15&hasta=2026-10-15&proyectos=${projects.tijuana}`,
+      { headers: { Authorization: `Bearer ${tokens.scoped}` } })).status).toBe(403);
+  });
 });

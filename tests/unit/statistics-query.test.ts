@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseStatisticsQuery, previousRange } from "../../src/domain/statistics/statistics";
+import { csvRow } from "../../src/presentation/routes/statistics/csv";
 
 const parse = (raw: Record<string, unknown>) => parseStatisticsQuery({ metricas: "ingresos.netos", desde: "2026-10-01", hasta: "2026-10-15", ...raw });
 
@@ -27,5 +28,13 @@ describe("statistics query", () => {
   it("compares with the previous period of the same length", () => {
     expect(previousRange({ kind: "dates", desde: "2026-10-01", hasta: "2026-10-15" })).toEqual({ kind: "dates", desde: "2026-09-16", hasta: "2026-09-30" });
     expect(previousRange({ kind: "instants", from: 1000, to: 4000 })).toEqual({ kind: "instants", from: -2000, to: 1000 });
+  });
+});
+
+describe("statistics CSV", () => {
+  it("quotes what needs it and keeps formulas as text", () => {
+    expect(csvRow(["a", "b,c", 'd"e', -50.5, null])).toBe('a,"b,c","d""e",-50.5,\r\n');
+    expect(csvRow(["=HYPERLINK(\"x\")", "+1", "@SUM", "-50.00"])).toBe(`"'=HYPERLINK(""x"")",'+1,'@SUM,-50.00\r\n`);
+    expect(csvRow([{ tickets: 1 }])).toBe('"{""tickets"":1}"\r\n');
   });
 });

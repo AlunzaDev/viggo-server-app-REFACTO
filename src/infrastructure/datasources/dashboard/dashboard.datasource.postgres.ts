@@ -23,8 +23,12 @@ export class DashboardPostgresDatasource {
 
   async getMetrics(projectIds: string[], from: number, to: number, now = Date.now()) {
     const base: Omit<StatisticsQuery, "metricas" | "agrupar"> = { proyectos: projectIds, rango: { kind: "instants", from, to }, comparar: false };
-    const metric = async (id: MetricId, agrupar: StatisticsQuery["agrupar"] = null, comparar = false): Promise<MetricResult> =>
-      (await this.statistics.run({ ...base, metricas: [id], agrupar, comparar }, now, { coverage: false })).metricas[0];
+    const results: MetricResult[] = [];
+    const metric = async (id: MetricId, agrupar: StatisticsQuery["agrupar"] = null, comparar = false): Promise<MetricResult> => {
+      const result = (await this.statistics.run({ ...base, metricas: [id], agrupar, comparar }, now, { coverage: false })).metricas[0];
+      results.push(result);
+      return result;
+    };
 
     const net = await metric("ingresos.netos", null, true);
     const byMethod = await metric("ingresos.netos", "metodo");
@@ -52,6 +56,7 @@ export class DashboardPostgresDatasource {
       where: { proyectoId: { in: projectIds }, lastSeenAt: { gte: new Date(from), lt: new Date(to) } }, orderBy: { lastSeenAt: "desc" }, take: 20,
     }) : [];
     const projects = (health.valor as Connectivity[] | null) ?? [];
+    const coverage = (await this.statistics.run({ ...base, metricas: [], agrupar: null }, now)).cobertura;
     const methods = (byMethod.serie ?? []).filter((point) => money(point.valor) !== 0);
 
     return {
@@ -84,7 +89,15 @@ export class DashboardPostgresDatasource {
         severity: incident.status === "resolved" ? "success" : incident.severity === "critical" ? "error" : incident.severity,
         category: "system", location: projects.find((project) => project.proyectoId === incident.proyectoId)?.nombre,
       })),
-      generatedAt: now, range: { from, to }, currency: "MXN", timeZone: "America/Mexico_City",
+      // A figure never passes for complete: which metrics failed and which parkings are behind.
+      partial: results.some((result) => result.estado === "error"),
+      failedMetrics: results.filter((result) => result.estado === "error").map((result) => result.id),
+      coverage: coverage.map((item) => ({
+        projectId: item.proyectoId, name: projects.find((project) => project.proyectoId === item.proyectoId)?.nombre ?? "",
+        timeZone: item.zonaHoraria, lastDataAt: item.ultimoDato, stale: item.desactualizada,
+      })),
+      mixedTimeZones: new Set(coverage.map((item) => item.zonaHoraria)).size > 1,
+      generatedAt: now, range: { from, to }, currency: "MXN",
     };
   }
 }

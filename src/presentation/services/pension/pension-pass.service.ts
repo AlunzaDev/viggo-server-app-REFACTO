@@ -54,6 +54,15 @@ export class PensionPassService {
     return pensionPass;
   }
 
+  /** Passages of the user's own pass; someone else's pass looks like no pass at all. */
+  async getMyPensionPassMovements(usuarioId: string, id: string, range: { from?: number; to?: number; page: number; limit: number }) {
+    const pensionPass = await this.pensionPassRepository.findById(id);
+    if (!pensionPass || pensionPass.usuario !== usuarioId) throw CustomError.notFound("PensionPass no encontrado");
+    const pension = await this.pensionRepository.findById(pensionPass.pension);
+    if (!pension) throw CustomError.notFound("Pension no encontrada");
+    return this.pensionPassRepository.listMovements({ pensionPassId: id, proyectoId: pension.proyecto, ...range });
+  }
+
   async getPensionPassesByPension(pensionId: string): Promise<PensionPassEntity[]> {
     const pension = await this.pensionRepository.findById(pensionId);
     if (!pension) throw CustomError.notFound("Pension no encontrada");

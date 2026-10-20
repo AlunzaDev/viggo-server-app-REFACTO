@@ -1,4 +1,4 @@
-import type { PensionPassFinancialOperation } from "../../datasources/pension/pension-pass.datasource";
+import type { PensionPassDatasource, PensionPassFinancialOperation } from "../../datasources/pension/pension-pass.datasource";
 import { PensionPassEntity } from "../../entities/pension/pension-pass.entity";
 
 export abstract class PensionPassRepository {
@@ -38,6 +38,7 @@ export abstract class PensionPassRepository {
 
     abstract create(pensionPass: Omit<PensionPassEntity, "id">): Promise<PensionPassEntity>;
     abstract findById(id: string): Promise<PensionPassEntity | null>;
+    abstract listMovements(input: Parameters<PensionPassDatasource["listMovements"]>[0]): ReturnType<PensionPassDatasource["listMovements"]>;
     abstract findByIdPass(idPass: string): Promise<PensionPassEntity | null>;
     abstract findAvailableByPension(pensionId: string): Promise<PensionPassEntity | null>;
     abstract findByUsuarioAndPension(

@@ -12,7 +12,32 @@ export interface PensionPassFinancialOperation {
     processedAt: number;
 }
 
+/** A passage recorded by OPERATIVO, as the app shows it. */
+export interface PensionPassMovement {
+    uid: string;
+    modulo: { _id: string; nombre: string };
+    proyecto: string;
+    pensionPass: string;
+    /** ENTRADA, SALIDA, ENTRADA-PENSION or SALIDA-PENSION. */
+    tipo: string;
+    /** Epoch milliseconds. */
+    fecha: number;
+}
+
 export abstract class PensionPassDatasource {
+    /**
+     * Passages of a pass from the copy OPERATIVO synchronizes (works while it is offline), newest
+     * first. Only rows of `proyectoId`, the pass's parking: another installation cannot add to it.
+     */
+    abstract listMovements(input: {
+        pensionPassId: string;
+        proyectoId: string;
+        from?: number;
+        to?: number;
+        page: number;
+        limit: number;
+    }): Promise<{ total: number; movements: PensionPassMovement[] }>;
+
     /** Pension pass that already recorded the operation key (optionally restricted to one pass). */
     abstract findByFinancialOperationKey(
         key: string,

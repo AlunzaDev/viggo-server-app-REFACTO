@@ -7,6 +7,7 @@ import {
   isSuperAdminRequest,
 } from "../../middlewares";
 import { ErrorService } from "../../services/error.service";
+import { buildPaginatedResponse, parsePaginationDateQuery } from "../../services/shared/pagination-query";
 import { PensionPassService } from "../../services/pension/pension-pass.service";
 import { envs } from "../../../config";
 import { StripePlugin } from "../../../config/plugins/stripe.plugin";
@@ -223,6 +224,19 @@ export class PensionPassController {
       const uid = String((req as AuthenticatedRequest).uid ?? "");
       const reason = String(req.body?.reason ?? "Cancelacion administrativa").trim();
       return res.status(200).json({ pensionPass: await this.service.deletePensionPass(id, uid, reason) });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  getMyPensionPassMovements = async (req: Request, res: Response) => {
+    try {
+      const uid = (req as AuthenticatedRequest).uid;
+      if (!uid) return res.status(401).json({ error: "Unauthorized" });
+      const { page, limit, from, to } = parsePaginationDateQuery(req.query);
+      if (from !== undefined && to !== undefined && from > to) throw CustomError.badRequest("Rango de fechas invalido");
+      const result = await this.service.getMyPensionPassMovements(uid, String(req.params.id), { page, limit, from, to });
+      return res.status(200).json(buildPaginatedResponse("pensionMoves", result.movements, result.total, page, limit));
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

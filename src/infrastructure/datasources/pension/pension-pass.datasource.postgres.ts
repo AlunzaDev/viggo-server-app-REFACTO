@@ -1,8 +1,9 @@
 import { PostgresDatabase } from "../../../data/postgres";
-import type { PensionPass, PensionPassOperation, Prisma } from "../../../generated/prisma/client";
+import { Prisma, type PensionPass, type PensionPassOperation } from "../../../generated/prisma/client";
 import {
   PensionPassDatasource,
   type PensionPassFinancialOperation,
+  type PensionPassMovement,
 } from "../../../domain/datasources/pension/pension-pass.datasource";
 import { PensionPassEntity } from "../../../domain/entities/pension/pension-pass.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
@@ -82,6 +83,38 @@ const assertReferences = (pensionPass: PensionPassInput) => {
 export class PensionPassPostgresDatasource extends PensionPassDatasource {
   private get passes() {
     return PostgresDatabase.client.pensionPass;
+  }
+
+  async listMovements(input: { pensionPassId: string; proyectoId: string; from?: number; to?: number; page: number; limit: number }) {
+    if (!isUuid(input.pensionPassId) || !isUuid(input.proyectoId)) return { total: 0, movements: [] };
+    // The synchronized row keeps OPERATIVO's columns in `payload` (to_jsonb of pension_moves).
+    const where = Prisma.sql`
+      WHERE m.proyecto_id = ${input.proyectoId}::uuid
+        AND m.payload->>'pension_pass_id' = ${input.pensionPassId}
+        ${input.from !== undefined ? Prisma.sql`AND (m.payload->>'fecha')::timestamptz >= ${new Date(input.from)}` : Prisma.empty}
+        ${input.to !== undefined ? Prisma.sql`AND (m.payload->>'fecha')::timestamptz <= ${new Date(input.to)}` : Prisma.empty}`;
+    // One snapshot: the count and the page cannot disagree with a passage arriving in between.
+    const [[{ total }], rows] = await PostgresDatabase.client.$transaction([
+      PostgresDatabase.client.$queryRaw<Array<{ total: number }>>(Prisma.sql`
+        SELECT count(*)::int AS total FROM operational_pension_moves m ${where}`),
+      PostgresDatabase.client.$queryRaw<Array<{ id: string; modulo_id: string; modulo_nombre: string | null; tipo: string; fecha: Date }>>(Prisma.sql`
+        SELECT m.payload->>'id' AS id, m.payload->>'modulo_id' AS modulo_id, mo.nombre AS modulo_nombre,
+               m.payload->>'tipo' AS tipo, (m.payload->>'fecha')::timestamptz AS fecha
+        FROM operational_pension_moves m
+        LEFT JOIN modulos mo ON mo.id::text = m.payload->>'modulo_id'
+        ${where}
+        ORDER BY (m.payload->>'fecha')::timestamptz DESC, m.source_position DESC NULLS LAST, m.aggregate_id DESC
+        LIMIT ${input.limit} OFFSET ${(input.page - 1) * input.limit}`),
+    ], { isolationLevel: "RepeatableRead" });
+    const movements: PensionPassMovement[] = rows.map((row) => ({
+      uid: row.id,
+      modulo: { _id: row.modulo_id, nombre: row.modulo_nombre ?? "" },
+      proyecto: input.proyectoId,
+      pensionPass: input.pensionPassId,
+      tipo: row.tipo,
+      fecha: row.fecha.getTime(),
+    }));
+    return { total, movements };
   }
 
   private async findEntity(where: Prisma.PensionPassWhereInput): Promise<PensionPassEntity | null> {

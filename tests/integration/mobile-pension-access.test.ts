@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PostgresDatabase } from "../../src/data/postgres";
 import { buildMobileOperationController } from "../../src/presentation/dependencies/mobile.dependencies";
+import { buildPensionPassController } from "../../src/presentation/dependencies";
 import { buildMobileOperationRepository } from "../../src/presentation/dependencies/repositories.dependencies";
 
 // The app opens a barrier with its Pension Pass through OPERATIVO (#32).
@@ -75,6 +76,7 @@ describe("POST /api/mobile/pension-pass/:id/access", () => {
     app.use(express.json());
     app.use((req, _res, next) => { (req as express.Request & { uid: string }).uid = String(req.header("X-User")); next(); });
     app.post("/pension-pass/:id/access", controller.accessWithPensionPass);
+    app.get("/pension-pass/:id/movements", buildPensionPassController().getMyPensionPassMovements);
     server = app.listen(0, "127.0.0.1");
     await new Promise((resolve) => server.once("listening", resolve));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -88,6 +90,7 @@ describe("POST /api/mobile/pension-pass/:id/access", () => {
     clearInterval(installationLoop);
     await new Promise((resolve) => server.close(resolve));
     await db().mobileOperation.deleteMany({ where: { installationId } });
+    await db().operationalPensionMove.deleteMany({ where: { installationId } });
     await db().localInstallation.deleteMany({ where: { installationId } });
     await db().pensionPass.deleteMany({ where: { usuarioId: userId } });
     await db().pension.deleteMany({ where: { proyectoId: { in: [ids.project, ids.other] } } });
@@ -154,5 +157,61 @@ describe("POST /api/mobile/pension-pass/:id/access", () => {
     const before = await db().mobileOperation.count({ where: { installationId } });
     expect(await access(passId, { projectId: ids.project, moduleToken: moduleToken(ids.entrada) })).toMatchObject({ status: 503, body: { code: "PARKING_OFFLINE" } });
     expect(await db().mobileOperation.count({ where: { installationId } })).toBe(before);
+  });
+
+  describe("GET /api/mobile/pension-pass/:id/movements", () => {
+    const day = (n: number) => Date.UTC(2026, 9, n, 15, 0, 0);
+    /** A passage as OPERATIVO synchronizes it: its row in `payload`. */
+    const synced = (proyectoId: string, tipo: string, fecha: number, position: number, pass = passId, modulo = ids.entrada) => {
+      const id = randomUUID();
+      return { proyectoId, installationId, aggregateId: id, eventId: randomUUID(), occurredAt: new Date(fecha), sourcePosition: BigInt(position),
+        payload: { id, modulo_id: modulo, proyecto_id: proyectoId, pension_pass_id: pass, tipo, fecha: new Date(fecha).toISOString() } };
+    };
+    const movements = (pass: string, query = "", user = userId) =>
+      fetch(`${base}/pension-pass/${pass}/movements${query}`, { headers: { "X-User": user } })
+        .then(async (response) => ({ status: response.status, body: await response.json() as Record<string, any> }));
+
+    beforeAll(async () => {
+      await db().operationalPensionMove.createMany({ data: [
+        synced(ids.project, "ENTRADA", day(1), 1),
+        synced(ids.project, "SALIDA", day(2), 2, passId, ids.salida),
+        synced(ids.project, "ENTRADA", day(3), 3),
+        synced(ids.project, "SALIDA", day(4), 4, passId, ids.salida),
+        synced(ids.project, "ENTRADA", day(5), 5),
+        // Another pass of the same parking.
+        synced(ids.project, "ENTRADA", day(5), 6, foreignPassId),
+        // Another installation claiming this pass: never shown.
+        synced(ids.other, "ENTRADA", day(6), 7, passId, ids.foreign),
+      ] });
+    });
+
+    it("lists the user's passages newest first, paginated, in the shape the app reads", async () => {
+      // The parking is offline (previous test): the history comes from the cloud copy.
+      const page1 = await movements(passId, "?page=1&limit=2");
+      expect(page1.status).toBe(200);
+      expect(page1.body).toMatchObject({ total: 5, page: 1, limit: 2, totalPages: 3 });
+      expect(page1.body.pensionMoves).toHaveLength(2);
+      expect(page1.body.pensionMoves[0]).toEqual({
+        uid: expect.any(String), modulo: { _id: ids.entrada, nombre: "Entrada" }, proyecto: ids.project,
+        pensionPass: passId, tipo: "ENTRADA", fecha: day(5),
+      });
+      expect(page1.body.pensionMoves.map((move: { fecha: number }) => move.fecha)).toEqual([day(5), day(4)]);
+      const page3 = await movements(passId, "?page=3&limit=2");
+      expect(page3.body.pensionMoves.map((move: { fecha: number; modulo: { nombre: string } }) => move.fecha)).toEqual([day(1)]);
+    });
+
+    it("filters by date range", async () => {
+      const ranged = await movements(passId, `?from=${day(2)}&to=${day(4)}`);
+      expect(ranged.body.total).toBe(3);
+      expect(ranged.body.pensionMoves.map((move: { tipo: string }) => move.tipo)).toEqual(["SALIDA", "ENTRADA", "SALIDA"]);
+      expect((await movements(passId, `?from=${day(4)}&to=${day(2)}`)).status).toBe(400);
+    });
+
+    it("shows only the user's own pass", async () => {
+      expect((await movements(passId, "", strangerId)).status).toBe(404);
+      expect((await movements(randomUUID())).status).toBe(404);
+      // The other pass of the user only shows its own passage (its parking is another one: none).
+      expect((await movements(foreignPassId)).body.total).toBe(0);
+    });
   });
 });

@@ -101,4 +101,8 @@ export class PensionPassRepositoryImpl implements PensionPassRepository {
     delete(id: string): Promise<PensionPassEntity | null> {
         return this.pensionPassDatasource.delete(id);
     }
+
+    listMovements(input: Parameters<PensionPassDatasource["listMovements"]>[0]) {
+        return this.pensionPassDatasource.listMovements(input);
+    }
 }

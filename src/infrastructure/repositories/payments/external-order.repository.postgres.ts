@@ -121,7 +121,8 @@ export class ExternalOrderPostgresRepository extends ExternalOrderRepository {
       usuarioId: row.usuarioId, type: "external", concept: `Estacionamiento externo: ${row.parkingName}`,
       amount: (row.amountMinor / 100).toFixed(2), currency: row.currency, status: "pending", paidAt: row.createdAt,
       stripePaymentIntentId: intent.id, idempotencyKey: `external-intent:${row.id}`,
-      referenceType: "external", referenceId: row.id, parkingName: row.parkingName,
+      // The parking where the QR was scanned: external charges add to its income (docs/estadisticas.md §4.1).
+      referenceType: "external", referenceId: row.id, parkingName: row.parkingName, proyectoId: row.proyectoId,
       rawProviderStatus: intent.status, metadata: { provider: row.provider, externalReference: row.reference },
     } });
   }
@@ -233,7 +234,7 @@ export class ExternalOrderPostgresRepository extends ExternalOrderRepository {
         events: event("refunded", JSON.stringify({ actorId, reason, refundId: refund.id, refundStatus: refund.status, amountMinor: refund.amountMinor })),
       } });
       await tx.payment.updateMany({ where: { stripePaymentIntentId: row.stripePaymentIntentId! }, data: {
-        status: "refunded", reconciliationStatus: "reconciled", reconciledAt: new Date(now), reconciliationError: "",
+        status: "refunded", refundedAt: new Date(now), reconciliationStatus: "reconciled", reconciledAt: new Date(now), reconciliationError: "",
       } });
       await tx.operationalIncident.updateMany({ where: { incidentKey: `external-payment:${id}` },
         data: { status: "resolved", resolvedAt: new Date(now), lastSeenAt: new Date(now) } });

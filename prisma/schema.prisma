@@ -679,6 +679,8 @@ model Payment {
   parkingName           String               @default("") @map("parking_name")
   parkingCity           String               @default("") @map("parking_city")
   rawProviderStatus     String               @default("") @map("raw_provider_status")
+  /// When it was refunded: statistics count a refund on this date, not the charge's.
+  refundedAt            DateTime?            @map("refunded_at") @db.Timestamptz(3)
   createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
 

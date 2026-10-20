@@ -473,7 +473,9 @@ describe("refunding an order in review", () => {
       expect(row.status).toBe("refunded");
       const refunded = row.events.find((item) => item.kind === "refunded")!;
       expect(JSON.parse(refunded.detail)).toMatchObject({ actorId: userId, reason: "Pagado en caseta por el usuario", refundId: `re_${order.id}` });
-      expect(await db().payment.findFirstOrThrow({ where: { stripePaymentIntentId: `pi_${order.id}` } })).toMatchObject({ status: "refunded" });
+      // The refund keeps its own date (statistics count it then) and the charge its parking.
+      expect(await db().payment.findFirstOrThrow({ where: { stripePaymentIntentId: `pi_${order.id}` } }))
+        .toMatchObject({ status: "refunded", refundedAt: expect.any(Date), proyectoId: parking });
       expect(await db().operationalIncident.count({ where: { incidentKey: `external-payment:${order.id}`, status: "open" } })).toBe(0);
 
       // Not twice, and a refunded order cannot be retried.

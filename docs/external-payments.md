@@ -25,6 +25,12 @@ Todo el flujo vive en ADMINISTRATIVO. El proveedor es dueño de sus tickets, tar
 
 Un proveedor que implementa el estándar o cuya API se puede describir con un mapeo se da de alta solo en el catálogo. Solo lo que un mapeo no puede expresar (firmas por petición, OAuth, XML) se programa como extensión: un `ProviderProtocol` en `EXTENSIONS` del directorio y su nombre en `PAYMENT_PROVIDER_EXTENSIONS`; el proveedor lo indica en `adapter`. No hace falta cambiar las reglas del servicio, Stripe ni las tablas.
 
+## Probar la conexión y activar
+
+Un proveedor `standard` o `adapter` **nace inactivo**. `POST /api/payment-providers/:id/test` con `{ "qr", "parkingId" }` cotiza un ticket real de prueba contra su API y responde lo que entendió Viggo (`ok`, ticket, monto, vigencia, estado, avisos) o el error, sin crear órdenes; limitado a 20 pruebas por minuto. Una prueba exitosa guarda `verifiedAt` y entonces se puede activar.
+
+Cambiar la URL, la credencial, el encabezado, la integración o el mapeo borra `verifiedAt` y desactiva al proveedor hasta probarlo de nuevo: una conexión sin probar nunca cobra. Activar sin prueba responde `409 PROVIDER_NOT_VERIFIED`.
+
 ## Adaptador configurable
 
 `apiMapping` (JSON) describe las dos llamadas. Las rutas son relativas a `baseUrl` y no pueden salir de ella (sin `/` inicial, `..` ni otro dominio). Las variables `{nombre}` se codifican en la ruta, así que un QR no puede alterarla; en el cuerpo, un texto que es solo una variable conserva su tipo (`"{amount}"` → `85.5`).

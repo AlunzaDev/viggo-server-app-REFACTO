@@ -370,6 +370,9 @@ model PaymentProvider {
   /// How its own API is spoken (integration = adapter): requests and where each datum is in
   /// its answers. See src/domain/entities/parking/provider-api-mapping.ts.
   apiMapping          Json?                      @map("api_mapping")
+  /// Last successful connection test; cleared when the connection changes. An external
+  /// provider can only be active once tested.
+  verifiedAt          DateTime?                  @map("verified_at") @db.Timestamptz(3)
   createdAt           DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
   proyectos           Proyecto[]

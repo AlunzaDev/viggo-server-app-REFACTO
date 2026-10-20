@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { CustomError } from "../errors/custom.error";
-import { ExternalOrderRepository, ExternalProviderDirectory, type ExternalIntent, type ExternalOrder, type ExternalPaymentGateway } from "./external-payment";
+import { ExternalOrderRepository, ExternalProviderDirectory, type ExternalIntent, type ExternalOrder, type ExternalPaymentGateway, type ExternalQuote } from "./external-payment";
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 /**
@@ -11,6 +11,19 @@ const isFinalConfirmationError = (error: unknown) =>
   error instanceof CustomError && (error.statusCode === 409 || error.code === "EXTERNAL_PROVIDER_REJECTED");
 
 const validText = (value: unknown): value is string => typeof value === "string" && !!value.trim() && value.length <= 256;
+
+/** Why Viggo cannot charge a provider's quote (null: acceptable). Same rules for every provider. */
+export const invalidQuoteReason = (quote: ExternalQuote | null | undefined): string | null => {
+  if (!quote || !validText(quote.reference) || !validText(quote.ticket) || !validText(quote.parking?.id) || !validText(quote.parking?.name)) {
+    return "Faltan la referencia, el ticket o el estacionamiento";
+  }
+  if (!Number.isSafeInteger(quote.amountMinor) || quote.amountMinor < 1000 || quote.amountMinor > 99_999_999) {
+    return "El monto debe estar entre $10.00 y $999,999.99";
+  }
+  if (quote.currency !== "MXN") return "La moneda debe ser MXN";
+  if (!Number.isSafeInteger(quote.expiresAt) || quote.expiresAt > 8.64e15) return "La vigencia no es una fecha valida";
+  return null;
+};
 
 export class ExternalPaymentService {
   constructor(
@@ -29,9 +42,7 @@ export class ExternalPaymentService {
     if (typeof qr !== "string" || !qr.trim() || qr.length > 4096) throw CustomError.badRequest("QR invalido");
     const { provider, providerId, parkingId } = await this.directory.forProject(projectId);
     const quote = await provider.resolveOrder(qr.trim(), parkingId);
-    if (!quote || !validText(quote.reference) || !validText(quote.ticket) || !validText(quote.parking?.id) || !validText(quote.parking?.name) ||
-        !Number.isSafeInteger(quote.amountMinor) || quote.amountMinor < 1000 || quote.amountMinor > 99_999_999 ||
-        quote.currency !== "MXN" || !Number.isSafeInteger(quote.expiresAt) || quote.expiresAt > 8.64e15) {
+    if (invalidQuoteReason(quote)) {
       throw new CustomError(502, "Cotizacion invalida del proveedor", "INVALID_EXTERNAL_QUOTE");
     }
     if (quote.status !== "payable" || quote.expiresAt <= this.now()) throw CustomError.conflict("Ticket pagado, expirado o no disponible");

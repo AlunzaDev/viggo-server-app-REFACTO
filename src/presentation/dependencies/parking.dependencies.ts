@@ -6,6 +6,7 @@ import { buildModuloRepository, buildProyectoRepository } from "./repositories.d
 import { buildPaymentProviderRepository } from "./repositories.dependencies";
 import { PaymentProviderController } from "../routes/parking/payment-provider.controller";
 import { PaymentProviderService } from "../services/parking/payment-provider.service";
+import { PostgresExternalProviderDirectory } from "../../infrastructure/external-payments/provider-directory.postgres";
 
 
 export const buildModuloController = (): ModuloController => {
@@ -22,4 +23,4 @@ export const buildProyectoController = (): ProyectoController => {
 };
 
 export const buildPaymentProviderController = () =>
-  new PaymentProviderController(new PaymentProviderService(buildPaymentProviderRepository()));
+  new PaymentProviderController(new PaymentProviderService(buildPaymentProviderRepository(), new PostgresExternalProviderDirectory()));

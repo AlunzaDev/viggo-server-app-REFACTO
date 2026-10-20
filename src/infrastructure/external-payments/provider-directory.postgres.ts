@@ -55,14 +55,15 @@ export class PostgresExternalProviderDirectory extends ExternalProviderDirectory
     return { providerId: provider.id, parkingId, provider: this.client(provider) };
   }
 
-  async forProvider(providerId: string): Promise<ExternalPaymentProvider> {
+  async forProvider(providerId: string, options: { includeInactive?: boolean } = {}): Promise<ExternalPaymentProvider> {
     const provider = isUuid(providerId) ? await this.db.paymentProvider.findUnique({ where: { id: providerId } }) : null;
     if (!provider) throw CustomError.notFound("Proveedor de pago no encontrado");
-    return this.client(provider);
+    if (provider.integration === "viggo") throw CustomError.conflict("Este proveedor cobra con tickets de Viggo", undefined, "VIGGO_TICKET_FLOW");
+    return this.client(provider, options.includeInactive);
   }
 
-  private client(provider: ProviderRow): ExternalPaymentProvider {
-    if (!provider.active) throw new CustomError(503, "El proveedor de pago esta inactivo", "PROVIDER_INACTIVE");
+  private client(provider: ProviderRow, includeInactive = false): ExternalPaymentProvider {
+    if (!provider.active && !includeInactive) throw new CustomError(503, "El proveedor de pago esta inactivo", "PROVIDER_INACTIVE");
     const credential = decryptInstallationLinkToken(provider.credentialEncrypted);
     const connection = {
       baseUrl: provider.baseUrl,

@@ -8,4 +8,5 @@ export class PaymentProviderRepositoryImpl extends PaymentProviderRepository {
   create(data: Parameters<PaymentProviderDatasource["create"]>[0]) { return this.datasource.create(data); }
   update(id: string, data: Parameters<PaymentProviderDatasource["update"]>[1]) { return this.datasource.update(id, data); }
   delete(id: string) { return this.datasource.delete(id); }
+  setVerifiedAt(id: string, at: Date | null) { return this.datasource.setVerifiedAt(id, at); }
 }

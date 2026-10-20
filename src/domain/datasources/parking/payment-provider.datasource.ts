@@ -7,4 +7,6 @@ export abstract class PaymentProviderDatasource {
   abstract create(data: PaymentProviderInput): Promise<PaymentProviderEntity>;
   abstract update(id: string, data: Partial<PaymentProviderInput>): Promise<PaymentProviderEntity | null>;
   abstract delete(id: string): Promise<PaymentProviderEntity | null>;
+  /** Marks the connection as tested (a date) or untested (null). */
+  abstract setVerifiedAt(id: string, at: Date | null): Promise<PaymentProviderEntity | null>;
 }

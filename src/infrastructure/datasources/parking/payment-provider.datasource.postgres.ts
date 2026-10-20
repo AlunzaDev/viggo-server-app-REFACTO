@@ -37,6 +37,12 @@ export class PaymentProviderPostgresDatasource extends PaymentProviderDatasource
     catch (error) { throw translatePrismaError(error); }
   }
 
+  async setVerifiedAt(id: string, at: Date | null) {
+    if (!isUuid(id)) return null;
+    try { return entity(await this.providers.update({ where: { id }, data: { verifiedAt: at } })); }
+    catch (error) { throw translatePrismaError(error); }
+  }
+
   async delete(id: string) {
     const current = await this.findById(id); if (!current) return null;
     try { await this.providers.delete({ where: { id } }); return current; }

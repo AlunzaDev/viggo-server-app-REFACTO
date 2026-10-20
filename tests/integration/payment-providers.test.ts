@@ -31,7 +31,7 @@ class FakeStripe implements ExternalPaymentGateway {
 
 const db = () => PostgresDatabase.client;
 const tag = randomUUID().slice(0, 8);
-const catalog = new PaymentProviderService(new PaymentProviderRepositoryImpl(new PaymentProviderPostgresDatasource()), true);
+const catalog = new PaymentProviderService(new PaymentProviderRepositoryImpl(new PaymentProviderPostgresDatasource()), new PostgresExternalProviderDirectory(true), true);
 const stripe = new FakeStripe();
 const orders = new ExternalOrderPostgresRepository();
 const service = new ExternalPaymentService(orders, new PostgresExternalProviderDirectory(true), stripe);
@@ -41,13 +41,16 @@ let referenceServer: Server;
 let referenceUrl = "";
 let userId = "";
 
+/** External providers are born inactive; unless `active: false` is asked, this one counts as tested and active. */
 const provider = async (overrides: Record<string, unknown>) => {
   const created = await catalog.create({
     nombre: `prov-${tag}-${providerIds.length}`, integration: "standard", adapter: "", baseUrl: referenceUrl,
     credential: "referencia-viggo", active: true, timeoutMs: 2000, authHeader: "", ...overrides,
   });
   providerIds.push(created.id);
-  return created;
+  if (created.integration === "viggo" || overrides.active === false) return created;
+  await db().paymentProvider.update({ where: { id: created.id }, data: { active: true, verifiedAt: new Date() } });
+  return { ...created, active: true };
 };
 
 const project = async (paymentProviderId: string, externalParkingId = "plaza-centro") => {
@@ -101,6 +104,43 @@ describe("payment provider catalog", () => {
     // An update without a credential keeps the stored one; switching to standard needs a URL.
     expect(await catalog.update(standard.id, { timeoutMs: 3000 })).toMatchObject({ hasCredential: true, timeoutMs: 3000 });
     await expect(catalog.update(viggo.id, { integration: "standard" })).rejects.toThrow("baseUrl");
+  });
+});
+
+describe("connection test before activating a provider", () => {
+  it("is born inactive and is activated only after a successful test", async () => {
+    const created = await catalog.create({ nombre: `prov-${tag}-nuevo`, integration: "standard", adapter: "", baseUrl: referenceUrl,
+      credential: "referencia-viggo", active: true, timeoutMs: 2000, authHeader: "" });
+    providerIds.push(created.id);
+    expect(created).toMatchObject({ active: false, verifiedAt: null });
+    await expect(catalog.update(created.id, { active: true })).rejects.toMatchObject({ code: "PROVIDER_NOT_VERIFIED" });
+
+    // A ticket from another parking or an unknown QR: what failed, and still not tested.
+    expect(await catalog.testConnection(created.id, { qr: "PRV|000123|plaza-centro", parkingId: "otro" })).toMatchObject({ ok: false });
+    await expect(catalog.testConnection(created.id, { qr: "", parkingId: "plaza-centro" })).rejects.toMatchObject({ statusCode: 400 });
+
+    const result = await catalog.testConnection(created.id, { qr: "PRV|000123|plaza-centro", parkingId: "plaza-centro" });
+    expect(result).toMatchObject({ ok: true, warnings: [], quote: { ticket: "000123", amountMinor: 12550, currency: "MXN", status: "payable" } });
+    // A test creates no orders.
+    expect(await db().externalPaymentOrder.count({ where: { provider: created.id } })).toBe(0);
+
+    const active = await catalog.update(created.id, { active: true });
+    expect(active.active).toBe(true);
+    expect(active.verifiedAt).toBeTruthy();
+
+    // Saving the same mapping or other fields keeps it active; a new connection needs a new test.
+    expect(await catalog.update(created.id, { timeoutMs: 3000, baseUrl: referenceUrl })).toMatchObject({ active: true });
+    expect(await catalog.update(created.id, { credential: "otra-credencial" })).toMatchObject({ active: false, verifiedAt: null });
+  });
+
+  it("warns when the ticket cannot be charged and refuses unusable quotes", async () => {
+    const created = await provider({ active: false });
+    const paid = await catalog.testConnection(created.id, { qr: "PRV|000124|plaza-centro", parkingId: "plaza-centro" });
+    expect(paid).toMatchObject({ ok: true, quote: { status: "paid" } });
+    expect((paid as { warnings: string[] }).warnings[0]).toContain("pagado");
+
+    const viggo = await provider({ integration: "viggo", baseUrl: "", credential: undefined });
+    expect(await catalog.testConnection(viggo.id, { qr: "x", parkingId: "y" })).toMatchObject({ ok: false, code: "VIGGO_TICKET_FLOW" });
   });
 });
 
@@ -256,8 +296,9 @@ describe("external payments through a configurable adapter", () => {
 
     const created = await adapter();
     expect(created).toMatchObject({ integration: "adapter", adapter: "", apiMapping: MAPPING });
-    // An update that does not send the mapping keeps it.
-    expect(await catalog.update(created.id, { timeoutMs: 3000 })).toMatchObject({ apiMapping: MAPPING });
+    // An update that does not send the mapping keeps it; sending it again (keys reordered by JSONB) is no change.
+    expect(await catalog.update(created.id, { timeoutMs: 3000 })).toMatchObject({ apiMapping: MAPPING, active: true });
+    expect(await catalog.update(created.id, { apiMapping: JSON.parse(JSON.stringify(MAPPING)) })).toMatchObject({ active: true });
   });
 
   it("quotes, charges and confirms speaking the provider's own API", async () => {

@@ -37,6 +37,8 @@ export class PaymentProviderEntity {
     public readonly authHeader: string = "",
     /** How its own API is spoken (integration = adapter). */
     public readonly apiMapping: ProviderApiMapping | null = null,
+    /** Last successful connection test; cleared when the connection changes. External providers need it to be active. */
+    public readonly verifiedAt: string | null = null,
   ) {}
 
   static fromObject(value: Record<string, unknown>) {
@@ -59,6 +61,7 @@ export class PaymentProviderEntity {
       Number(value.timeoutMs ?? PROVIDER_TIMEOUT_RANGE_MS.default),
       String(value.authHeader ?? "").trim(),
       value.apiMapping && typeof value.apiMapping === "object" ? (value.apiMapping as ProviderApiMapping) : null,
+      value.verifiedAt instanceof Date ? value.verifiedAt.toISOString() : typeof value.verifiedAt === "string" ? value.verifiedAt : null,
     );
   }
 }

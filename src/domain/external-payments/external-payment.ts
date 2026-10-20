@@ -99,6 +99,9 @@ export interface ProjectPaymentProvider {
 export abstract class ExternalProviderDirectory {
   /** The provider of the parking; a CustomError explains why it cannot charge there. */
   abstract forProject(proyectoId: string): Promise<ProjectPaymentProvider>;
-  /** A catalog provider with its current configuration (to confirm its orders). */
-  abstract forProvider(providerId: string): Promise<ExternalPaymentProvider>;
+  /**
+   * A catalog provider with its current configuration (to confirm its orders). `includeInactive`
+   * only for the connection test, which runs before activating it.
+   */
+  abstract forProvider(providerId: string, options?: { includeInactive?: boolean }): Promise<ExternalPaymentProvider>;
 }

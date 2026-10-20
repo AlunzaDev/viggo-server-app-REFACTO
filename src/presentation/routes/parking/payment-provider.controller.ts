@@ -17,6 +17,10 @@ export class PaymentProviderController {
     try { const body = { ...req.body, ...(req.file?.filename ? { logo: `/uploads/providers/${req.file.filename}` } : {}) }; const [error, dto] = PaymentProviderDto.update(body); if (error) return res.status(400).json({ error }); return res.json({ proveedor: await this.service.update(String(req.params.id), dto!) }); }
     catch (error) { return ErrorService.handleApiError(error, res); }
   };
+  testConnection = async (req: Request, res: Response) => {
+    try { return res.json(await this.service.testConnection(String(req.params.id), req.body ?? {})); }
+    catch (error) { return ErrorService.handleApiError(error, res); }
+  };
   delete = async (req: Request, res: Response) => {
     try { return res.json({ proveedor: await this.service.delete(String(req.params.id)) }); }
     catch (error) { return ErrorService.handleApiError(error, res); }

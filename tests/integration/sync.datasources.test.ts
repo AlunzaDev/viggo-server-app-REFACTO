@@ -269,6 +269,15 @@ describe("SyncPostgresDatasource", () => {
     expect((await sync.getConfiguration(proyectoId))!.version).toBe(configuration.version);
     await db.modulo.update({ where: { id: moduloId }, data: { nombre: "Entrada norte" } });
     expect((await sync.getConfiguration(proyectoId))!.version).not.toBe(configuration.version);
+
+    // The parking's time zone travels with the project, and changing it is a new configuration.
+    expect(configuration.proyecto.zonaHoraria).toBe("America/Mexico_City");
+    const before = (await sync.getConfiguration(proyectoId))!.version;
+    await db.proyecto.update({ where: { id: proyectoId }, data: { zonaHoraria: "America/Tijuana" } });
+    const after = (await sync.getConfiguration(proyectoId))!;
+    expect(after.proyecto.zonaHoraria).toBe("America/Tijuana");
+    expect(after.version).not.toBe(before);
+    await db.proyecto.update({ where: { id: proyectoId }, data: { zonaHoraria: "America/Mexico_City" } });
     expect(await sync.getConfiguration(randomUUID())).toBeNull();
   });
 

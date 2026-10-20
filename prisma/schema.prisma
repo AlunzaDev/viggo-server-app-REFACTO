@@ -310,6 +310,8 @@ model Proyecto {
   installationLinkTokenIssuedAt  DateTime? @map("installation_link_token_issued_at") @db.Timestamptz(3)
   img                            String    @default("")
   descripcion                    String    @default("")
+  /// IANA time zone of the parking: its days, hours and pension schedules use it.
+  zonaHoraria                    String    @default("America/Mexico_City") @map("zona_horaria")
   estado                         Boolean   @default(true)
   createdAt                      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)

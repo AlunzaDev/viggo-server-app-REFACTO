@@ -48,6 +48,7 @@ const toProyectoEntity = (row: ProyectoRow) =>
     remoteSupport: row.remoteSupport,
     img: row.img,
     descripcion: row.descripcion,
+    zonaHoraria: row.zonaHoraria,
     estado: row.estado,
   });
 
@@ -65,6 +66,7 @@ const toProyectoScalars = (proyecto: ProyectoInput) => ({
   paymentProviderId: proyecto.paymentProviderId,
   img: proyecto.img,
   descripcion: proyecto.descripcion,
+  zonaHoraria: proyecto.zonaHoraria,
   estado: proyecto.estado,
 });
 

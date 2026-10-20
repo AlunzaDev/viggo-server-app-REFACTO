@@ -28,6 +28,7 @@ export const toProyectoDocument = (row: ProyectoRow) => ({
     : undefined,
   img: row.img,
   descripcion: row.descripcion,
+  zonaHoraria: row.zonaHoraria,
   estado: row.estado,
 });
 

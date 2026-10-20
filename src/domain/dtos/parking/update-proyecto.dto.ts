@@ -1,4 +1,5 @@
 import { parseRemoteSupportProvider } from "../../entities/parking/remote-support.entity";
+import { DEFAULT_TIME_ZONE, isValidTimeZone } from "../../entities/parking/time-zone";
 
 export class UpdateProyectoDto {
     private static normalizeRemoteSupport(value: unknown) {
@@ -61,9 +62,14 @@ export class UpdateProyectoDto {
         public readonly img?: string,
         public readonly descripcion?: string,
         public readonly estado?: boolean,
+        public readonly zonaHoraria?: string,
     ) {}
 
     static create(body: Record<string, unknown>): [string?, UpdateProyectoDto?] {
+        const zonaHoraria = typeof body.zonaHoraria === "string" && body.zonaHoraria.trim() ? body.zonaHoraria.trim() : undefined;
+        if (zonaHoraria !== undefined && !isValidTimeZone(zonaHoraria)) {
+            return ["'zonaHoraria' debe ser una zona horaria valida (por ejemplo America/Tijuana)"];
+        }
         return [
             undefined,
             new UpdateProyectoDto(
@@ -94,6 +100,7 @@ export class UpdateProyectoDto {
                     ? body.descripcion.trim()
                     : undefined,
                 typeof body.estado === "boolean" ? body.estado : undefined,
+                zonaHoraria,
             ),
         ];
     }

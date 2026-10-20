@@ -1,4 +1,5 @@
 import { CustomError } from "../../errors/custom.error";
+import { DEFAULT_TIME_ZONE, isValidTimeZone } from "./time-zone";
 import {
     parseRemoteSupportProvider,
     RemoteSupportProvider,
@@ -30,6 +31,8 @@ export interface ProyectoEntityOptions {
     remoteSupport?: ProyectoRemoteSupport | null;
     img?: string;
     descripcion?: string;
+    /** IANA zone; its days, hours and pension schedules are local to the parking. */
+    zonaHoraria?: string;
     estado: boolean;
 }
 
@@ -50,10 +53,11 @@ export class ProyectoEntity {
     public remoteSupport?: ProyectoRemoteSupport | null;
     public img?: string;
     public descripcion?: string;
+    public zonaHoraria?: string;
     public estado: boolean;
 
     constructor(options: ProyectoEntityOptions) {
-        const { id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, paymentProvider, externalParkingId, paymentProviderId, remoteSupport, img, descripcion, estado } =
+        const { id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, paymentProvider, externalParkingId, paymentProviderId, remoteSupport, img, descripcion, zonaHoraria, estado } =
             options;
 
         this.id = id;
@@ -72,11 +76,12 @@ export class ProyectoEntity {
         this.remoteSupport = remoteSupport;
         this.img = img;
         this.descripcion = descripcion;
+        this.zonaHoraria = zonaHoraria ?? DEFAULT_TIME_ZONE;
         this.estado = estado;
     }
 
     static fromObject(object: { [key: string]: unknown }): ProyectoEntity {
-        const { _id, id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, paymentProvider, externalParkingId, paymentProviderId, remoteSupport, img, descripcion, estado } =
+        const { _id, id, nombre, coordinates, ciudad, direccion, identificador, codigoProyecto, serverIp, serverMac, localApiBaseUrl, paymentProvider, externalParkingId, paymentProviderId, remoteSupport, img, descripcion, zonaHoraria, estado } =
             object;
 
         const proyectoId = id || (_id ? String(_id) : undefined);
@@ -122,6 +127,7 @@ export class ProyectoEntity {
             remoteSupport: ProyectoEntity.parseRemoteSupport(remoteSupport),
             img: typeof img === "string" ? img : undefined,
             descripcion: typeof descripcion === "string" ? descripcion : undefined,
+            zonaHoraria: isValidTimeZone(zonaHoraria) ? zonaHoraria : DEFAULT_TIME_ZONE,
             estado: Boolean(estado),
         });
     }

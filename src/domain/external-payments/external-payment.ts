@@ -70,7 +70,11 @@ export interface ExternalPaymentGateway {
   create(order: ExternalOrder): Promise<ExternalIntent>;
   retrieve(id: string): Promise<ExternalIntent>;
   cancel(id: string): Promise<ExternalIntent>;
+  /** Full refund of the order's charge; idempotent per order (never refunds twice). */
+  refund(intentId: string, orderId: string): Promise<ExternalRefund>;
 }
+
+export interface ExternalRefund { id: string; status: string; amountMinor: number }
 
 export abstract class ExternalOrderRepository {
   abstract listAdmin(filters: ExternalOrderFilters, page: number, limit: number): Promise<{ total: number; orders: ExternalOrderAdmin[] }>;
@@ -98,6 +102,13 @@ export abstract class ExternalOrderRepository {
    * or of one in review (no lease, actor given). Same effects as `confirmed`.
    */
   abstract confirmedByStatusCheck(id: string, reference: string, now: number, by: { lease: string } | { actorId: string }): Promise<boolean>;
+  /**
+   * Holds an order in review while it is refunded, so a manual retry cannot send it to the
+   * provider meanwhile. False if it is no longer refundable or someone else holds it.
+   */
+  abstract beginRefund(id: string, lease: string, now: number): Promise<boolean>;
+  abstract refunded(id: string, lease: string, refund: ExternalRefund, actorId: string, reason: string, now: number): Promise<void>;
+  abstract releaseRefund(id: string, lease: string): Promise<void>;
 }
 
 /** The integration that charges in a parking, and the parking's id in the provider's system. */

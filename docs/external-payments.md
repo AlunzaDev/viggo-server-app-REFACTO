@@ -37,6 +37,16 @@ Cuando una confirmación falla (tiempo de espera, `5xx` o un rechazo final), el 
 
 Para una orden en revisión, `POST /api/admin/external-payments/orders/:id/check-provider` (SUPER_ROLE) hace la consulta: responde `applied` (y confirma la orden, cerrando el incidente), `not_applied` o `unsupported`. Nunca reenvía la confirmación ni cobra.
 
+## Reembolsar una orden en revisión
+
+`POST /api/admin/external-payments/orders/:id/refund` con `{ "reason" }` (10 a 256 caracteres; SUPER_ROLE) reembolsa completo el cobro de una orden `confirmation_failed`:
+
+1. Pregunta al proveedor si sí aplicó el pago. Si lo aplicó, la orden se confirma y responde `409 EXTERNAL_PROVIDER_APPLIED` sin reembolsar. Si el proveedor no responde o no tiene la consulta, sigue la decisión del administrador.
+2. Retiene la orden (nadie puede reintentar su confirmación mientras tanto) y reembolsa en Stripe con la llave `external-refund:<orderId>`: repetir la petición nunca reembolsa dos veces.
+3. La orden pasa a `refunded`, el pago a `refunded`, se registra el evento `refunded` con el actor, el motivo y el id del reembolso, y se cierra el incidente.
+
+Si Stripe falla, la orden queda como estaba y se puede volver a intentar.
+
 ## Adaptador configurable
 
 `apiMapping` (JSON) describe las dos llamadas. Las rutas son relativas a `baseUrl` y no pueden salir de ella (sin `/` inicial, `..` ni otro dominio). Las variables `{nombre}` se codifican en la ruta, así que un QR no puede alterarla; en el cuerpo, un texto que es solo una variable conserva su tipo (`"{amount}"` → `85.5`).

@@ -17,6 +17,7 @@ async function main() {
       return await response.json() as ExternalIntent;
     },
     cancel: async () => { throw new Error("Unexpected cancellation"); },
+    refund: async () => { throw new Error("Unexpected refund"); },
   };
   const provider: ExternalPaymentProvider = {
     code: "seguripass",

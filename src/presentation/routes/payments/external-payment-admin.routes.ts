@@ -48,6 +48,9 @@ export const externalPaymentAdminRoutes = (
     await service.retryConfirmation(orderId(req), (req as Request & { uid: string }).uid, req.body?.reason);
     return { orderId: String(req.params.id), queued: true };
   }, 202));
+  // Full refund of an order in review (asks the provider first); idempotent per order in Stripe.
+  router.post("/orders/:id/refund", handle(async req =>
+    service.refund(orderId(req), (req as Request & { uid: string }).uid, req.body?.reason)));
   // Did the provider apply it after all? Confirms the order if so; never sends or charges.
   router.post("/orders/:id/check-provider", handle(async req => {
     const id = orderId(req);

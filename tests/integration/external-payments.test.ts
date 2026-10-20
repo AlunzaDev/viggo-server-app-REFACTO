@@ -22,6 +22,7 @@ import { AuthMiddleware } from "../../src/presentation/middlewares/auth.middlewa
 
 class FakeStripe implements ExternalPaymentGateway {
   intents = new Map<string, ExternalIntent>();
+  async refund(intentId: string) { return { id: `re_${intentId}`, status: "succeeded", amountMinor: [...this.intents.values()].find((intent) => intent.id === intentId)!.amountMinor }; }
   creates = 0;
   loseResponse = false;
   async create(order: ExternalOrder) {

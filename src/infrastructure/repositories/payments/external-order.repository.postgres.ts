@@ -1,6 +1,6 @@
 import { PostgresDatabase } from "../../../data/postgres";
 import type { ExternalPaymentOrder as Row, Prisma } from "../../../generated/prisma/client";
-import { ExternalOrderRepository, type ExternalOrder, type ExternalQuote, type ExternalIntent } from "../../../domain/external-payments/external-payment";
+import { ExternalOrderRepository, type ExternalOrder, type ExternalQuote, type ExternalIntent, type ExternalRefund } from "../../../domain/external-payments/external-payment";
 import { CustomError } from "../../../domain/errors/custom.error";
 import type { ExternalOrderFilters, ExternalOrderAdmin } from "../../../domain/external-payments/external-payment";
 
@@ -216,6 +216,32 @@ export class ExternalOrderPostgresRepository extends ExternalOrderRepository {
     } });
     await tx.operationalIncident.updateMany({ where: { incidentKey: `external-payment:${id}` },
       data: { status: "resolved", resolvedAt: new Date(now), lastSeenAt: new Date(now) } });
+  }
+
+  async beginRefund(id: string, lease: string, now: number) {
+    const result = await this.db.externalPaymentOrder.updateMany({ where: {
+      id, status: "confirmation_failed", stripePaymentIntentId: { not: null }, OR: [{ leaseUntil: null }, { leaseUntil: { lte: new Date(now) } }],
+    }, data: { leaseOwner: lease, leaseUntil: new Date(now + 5 * 60_000) } });
+    return result.count === 1;
+  }
+
+  async refunded(id: string, lease: string, refund: ExternalRefund, actorId: string, reason: string, now: number) {
+    await this.locked(id, async (tx, row) => {
+      if (row.status !== "confirmation_failed" || row.leaseOwner !== lease) throw CustomError.conflict("La orden cambio durante el reembolso");
+      await tx.externalPaymentOrder.update({ where: { id }, data: {
+        status: "refunded", leaseOwner: "", leaseUntil: null, lastError: "",
+        events: event("refunded", JSON.stringify({ actorId, reason, refundId: refund.id, refundStatus: refund.status, amountMinor: refund.amountMinor })),
+      } });
+      await tx.payment.updateMany({ where: { stripePaymentIntentId: row.stripePaymentIntentId! }, data: {
+        status: "refunded", reconciliationStatus: "reconciled", reconciledAt: new Date(now), reconciliationError: "",
+      } });
+      await tx.operationalIncident.updateMany({ where: { incidentKey: `external-payment:${id}` },
+        data: { status: "resolved", resolvedAt: new Date(now), lastSeenAt: new Date(now) } });
+    });
+  }
+
+  async releaseRefund(id: string, lease: string) {
+    await this.db.externalPaymentOrder.updateMany({ where: { id, leaseOwner: lease }, data: { leaseOwner: "", leaseUntil: null } });
   }
 
   async confirmationFailed(id: string, lease: string, now: number, maxAttempts: number) {

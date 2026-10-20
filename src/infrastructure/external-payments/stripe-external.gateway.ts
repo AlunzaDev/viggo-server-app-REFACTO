@@ -2,7 +2,7 @@ import type Stripe from "stripe";
 import { envs } from "../../config";
 import { StripePlugin } from "../../config/plugins/stripe.plugin";
 import { CustomError } from "../../domain/errors/custom.error";
-import type { ExternalIntent, ExternalOrder, ExternalPaymentGateway } from "../../domain/external-payments/external-payment";
+import type { ExternalIntent, ExternalOrder, ExternalPaymentGateway, ExternalRefund } from "../../domain/external-payments/external-payment";
 
 export const externalIntent = (intent: Stripe.PaymentIntent): ExternalIntent => ({
   id: intent.id, clientSecret: intent.client_secret, status: intent.status,
@@ -25,6 +25,12 @@ export class StripeExternalGateway implements ExternalPaymentGateway {
     }, { idempotencyKey: `external-intent:${order.id}` }));
   }
   async retrieve(id: string) { return externalIntent(await this.stripe.paymentIntents.retrieve(id)); }
+  async refund(intentId: string, orderId: string): Promise<ExternalRefund> {
+    // One key per order: repeating the request returns the same refund instead of a second one.
+    const refund = await this.stripe.refunds.create({ payment_intent: intentId, metadata: { type: "external", externalOrderId: orderId } },
+      { idempotencyKey: `external-refund:${orderId}` });
+    return { id: refund.id, status: refund.status ?? "", amountMinor: refund.amount };
+  }
   async cancel(id: string) {
     try { return externalIntent(await this.stripe.paymentIntents.cancel(id)); }
     catch {

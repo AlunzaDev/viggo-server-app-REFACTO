@@ -89,6 +89,45 @@ export class ExternalPaymentService {
     return status;
   }
 
+  /**
+   * Refunds the charge of an order in review. First asks the provider: if it did apply the
+   * payment, the order is confirmed instead and nothing is refunded.
+   */
+  async refund(id: string, actorId: string, reason: unknown) {
+    if (!validText(reason) || reason.trim().length < 10) throw CustomError.badRequest("Indica un motivo de 10 a 256 caracteres");
+    const order = await this.orders.find(id);
+    if (!order) throw CustomError.notFound("Orden externa no encontrada");
+    if (order.status !== "confirmation_failed" || !order.stripePaymentIntentId) {
+      throw CustomError.conflict("Solo se reembolsa una orden en revision con cobro");
+    }
+    // Without an answer (provider down, no query) the administrator's decision stands.
+    const status = await this.confirmationStatus(order, { includeInactive: true }).catch((): ConfirmationStatus => ({ state: "unsupported" }));
+    if (status.state === "applied") {
+      await this.orders.confirmedByStatusCheck(id, status.confirmationReference, this.now(), { actorId });
+      throw CustomError.conflict("El proveedor si aplico el pago: la orden quedo confirmada y no se reembolsa", undefined, "EXTERNAL_PROVIDER_APPLIED");
+    }
+
+    const intent = await this.gateway.retrieve(order.stripePaymentIntentId);
+    this.validateIntent(order, intent);
+    if (intent.status !== "succeeded") throw CustomError.conflict("Stripe no muestra un cobro exitoso que reembolsar");
+
+    const lease = randomUUID();
+    if (!await this.orders.beginRefund(id, lease, this.now())) throw CustomError.conflict("La orden se esta procesando; vuelve a intentarlo en unos minutos");
+    let refund;
+    try {
+      refund = await this.gateway.refund(intent.id, order.id);
+    } catch (error) {
+      await this.orders.releaseRefund(id, lease);
+      throw error instanceof CustomError ? error : new CustomError(502, "Stripe no pudo hacer el reembolso", "EXTERNAL_REFUND_FAILED");
+    }
+    if (!["succeeded", "pending"].includes(refund.status) || refund.amountMinor !== order.amountMinor) {
+      await this.orders.releaseRefund(id, lease);
+      throw new CustomError(502, `Stripe respondio el reembolso como "${refund.status}"`, "EXTERNAL_REFUND_FAILED");
+    }
+    await this.orders.refunded(id, lease, refund, actorId, reason.trim(), this.now());
+    return { orderId: id, refundId: refund.id, status: refund.status };
+  }
+
   async createPaymentIntent(userId: string, id: string) {
     let order = await this.owned(userId, id);
     if (!["quoted", "payment_pending"].includes(order.status) || order.expiresAt <= this.now()) {

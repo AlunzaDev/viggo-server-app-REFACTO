@@ -27,6 +27,17 @@ class FakeStripe implements ExternalPaymentGateway {
   async retrieve(id: string) { return { ...[...this.intents.values()].find((intent) => intent.id === id)! }; }
   async cancel(id: string) { return this.retrieve(id); }
   succeed(orderId: string) { const intent = this.intents.get(orderId)!; intent.status = "succeeded"; return { ...intent }; }
+  /** Refunds by order, like Stripe's idempotency key: a repeated request gets the same refund. */
+  refunds = new Map<string, { id: string; status: string; amountMinor: number }>();
+  refundCalls = 0;
+  failRefund = false;
+  async refund(intentId: string, orderId: string) {
+    this.refundCalls++;
+    if (this.failRefund) throw new Error("Stripe caido");
+    const intent = [...this.intents.values()].find((item) => item.id === intentId)!;
+    if (!this.refunds.has(orderId)) this.refunds.set(orderId, { id: `re_${orderId}`, status: "succeeded", amountMinor: intent.amountMinor });
+    return { ...this.refunds.get(orderId)! };
+  }
 }
 
 const db = () => PostgresDatabase.client;
@@ -428,6 +439,78 @@ describe("confirmation status: an answer the provider applied but Viggo lost", (
       await expect(service.checkProvider(order.id, userId)).rejects.toMatchObject({ statusCode: 409 });
     } finally {
       await new Promise((resolve) => fake.server.close(resolve));
+    }
+  });
+});
+
+describe("refunding an order in review", () => {
+  it("refunds once, records who did it and closes the review", async () => {
+    // Fresh reference provider: its ticket gets paid at the booth, so the confirmation is rejected.
+    const fresh = createProviderReferenceApp().listen(0, "127.0.0.1");
+    await new Promise((resolve) => fresh.once("listening", resolve));
+    const baseUrl = `http://127.0.0.1:${(fresh.address() as AddressInfo).port}`;
+    try {
+      const parking = await project((await provider({ baseUrl })).id);
+      const order = await service.resolve(userId, parking, "PRV|000123|plaza-centro");
+      await expect(service.refund(order.id, userId, "Cobro duplicado en caseta")).rejects.toMatchObject({ statusCode: 409 });
+
+      await service.createPaymentIntent(userId, order.id);
+      await service.acceptSucceeded(stripe.succeed(order.id));
+      await fetch(`${baseUrl}/v1/confirmations`, { method: "POST", headers: { Authorization: "Bearer referencia-viggo", "Content-Type": "application/json", "Idempotency-Key": "caseta" },
+        body: JSON.stringify({ reference: "TCK-000123", paymentReference: "efectivo", amountMinor: 12550, currency: "MXN" }) });
+      await service.runOnce();
+      expect((await db().externalPaymentOrder.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("confirmation_failed");
+
+      await expect(service.refund(order.id, userId, "corto")).rejects.toMatchObject({ statusCode: 400 });
+      // Stripe fails: nothing changes and the order can be refunded later.
+      stripe.failRefund = true;
+      await expect(service.refund(order.id, userId, "Pagado en caseta por el usuario")).rejects.toMatchObject({ code: "EXTERNAL_REFUND_FAILED" });
+      expect(await db().externalPaymentOrder.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ status: "confirmation_failed", leaseUntil: null });
+      stripe.failRefund = false;
+
+      expect(await service.refund(order.id, userId, "Pagado en caseta por el usuario")).toMatchObject({ refundId: `re_${order.id}`, status: "succeeded" });
+      const row = await db().externalPaymentOrder.findUniqueOrThrow({ where: { id: order.id }, include: { events: true } });
+      expect(row.status).toBe("refunded");
+      const refunded = row.events.find((item) => item.kind === "refunded")!;
+      expect(JSON.parse(refunded.detail)).toMatchObject({ actorId: userId, reason: "Pagado en caseta por el usuario", refundId: `re_${order.id}` });
+      expect(await db().payment.findFirstOrThrow({ where: { stripePaymentIntentId: `pi_${order.id}` } })).toMatchObject({ status: "refunded" });
+      expect(await db().operationalIncident.count({ where: { incidentKey: `external-payment:${order.id}`, status: "open" } })).toBe(0);
+
+      // Not twice, and a refunded order cannot be retried.
+      await expect(service.refund(order.id, userId, "Pagado en caseta por el usuario")).rejects.toMatchObject({ statusCode: 409 });
+      await expect(service.retryConfirmation(order.id, userId, "Reintento despues del reembolso")).rejects.toMatchObject({ statusCode: 409 });
+      expect(stripe.refunds.size).toBe(1);
+    } finally {
+      await new Promise((resolve) => fresh.close(resolve));
+    }
+  });
+
+  it("does not refund what the provider did apply: it confirms the order instead", async () => {
+    const applied = new Map<string, string>();
+    let reject = true;
+    const app = express();
+    app.use(express.json());
+    app.post("/v1/quotes", (_req, res) => res.json({ reference: `REF-${randomUUID()}`, ticket: "901", parking: { id: "p", name: "Aplicada" },
+      amountMinor: 5000, currency: "MXN", expiresAt: new Date(Date.now() + 600_000).toISOString(), status: "payable" }));
+    app.post("/v1/confirmations", (_req, res) => (reject ? res.sendStatus(409) : res.json({ confirmationReference: "X" })));
+    app.get("/v1/confirmations/:key", (req, res) => (applied.has(req.params.key) ? res.json({ confirmationReference: applied.get(req.params.key) }) : res.sendStatus(404)));
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise((resolve) => server.once("listening", resolve));
+    try {
+      const parking = await project((await provider({ baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}` })).id, "p");
+      const order = await service.resolve(userId, parking, `QR-${randomUUID()}`);
+      await service.createPaymentIntent(userId, order.id);
+      await service.acceptSucceeded(stripe.succeed(order.id));
+      await service.runOnce();
+      reject = false;
+      applied.set(`external-confirm:${order.id}`, "APLICADA-TARDE");
+      const before = stripe.refundCalls;
+
+      await expect(service.refund(order.id, userId, "El usuario pide su dinero")).rejects.toMatchObject({ code: "EXTERNAL_PROVIDER_APPLIED" });
+      expect(stripe.refundCalls).toBe(before);
+      expect(await db().externalPaymentOrder.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ status: "confirmed", confirmationReference: "APLICADA-TARDE" });
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
     }
   });
 });

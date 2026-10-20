@@ -87,23 +87,23 @@ export class PensionPassPostgresDatasource extends PensionPassDatasource {
 
   async listMovements(input: { pensionPassId: string; proyectoId: string; from?: number; to?: number; page: number; limit: number }) {
     if (!isUuid(input.pensionPassId) || !isUuid(input.proyectoId)) return { total: 0, movements: [] };
-    // The synchronized row keeps OPERATIVO's columns in `payload` (to_jsonb of pension_moves).
+    // pension_pass_id and fecha are copied from the payload on arrival: (proyecto_id, pension_pass_id, fecha) is indexed.
     const where = Prisma.sql`
       WHERE m.proyecto_id = ${input.proyectoId}::uuid
-        AND m.payload->>'pension_pass_id' = ${input.pensionPassId}
-        ${input.from !== undefined ? Prisma.sql`AND (m.payload->>'fecha')::timestamptz >= ${new Date(input.from)}` : Prisma.empty}
-        ${input.to !== undefined ? Prisma.sql`AND (m.payload->>'fecha')::timestamptz <= ${new Date(input.to)}` : Prisma.empty}`;
+        AND m.pension_pass_id = ${input.pensionPassId}::uuid
+        ${input.from !== undefined ? Prisma.sql`AND m.fecha >= ${new Date(input.from)}` : Prisma.empty}
+        ${input.to !== undefined ? Prisma.sql`AND m.fecha <= ${new Date(input.to)}` : Prisma.empty}`;
     // One snapshot: the count and the page cannot disagree with a passage arriving in between.
     const [[{ total }], rows] = await PostgresDatabase.client.$transaction([
       PostgresDatabase.client.$queryRaw<Array<{ total: number }>>(Prisma.sql`
         SELECT count(*)::int AS total FROM operational_pension_moves m ${where}`),
       PostgresDatabase.client.$queryRaw<Array<{ id: string; modulo_id: string; modulo_nombre: string | null; tipo: string; fecha: Date }>>(Prisma.sql`
         SELECT m.payload->>'id' AS id, m.payload->>'modulo_id' AS modulo_id, mo.nombre AS modulo_nombre,
-               m.payload->>'tipo' AS tipo, (m.payload->>'fecha')::timestamptz AS fecha
+               m.payload->>'tipo' AS tipo, m.fecha
         FROM operational_pension_moves m
         LEFT JOIN modulos mo ON mo.id::text = m.payload->>'modulo_id'
         ${where}
-        ORDER BY (m.payload->>'fecha')::timestamptz DESC, m.source_position DESC NULLS LAST, m.aggregate_id DESC
+        ORDER BY m.fecha DESC, m.source_position DESC NULLS LAST, m.aggregate_id DESC
         LIMIT ${input.limit} OFFSET ${(input.page - 1) * input.limit}`),
     ], { isolationLevel: "RepeatableRead" });
     const movements: PensionPassMovement[] = rows.map((row) => ({

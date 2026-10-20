@@ -950,16 +950,21 @@ model OperationalCashCut {
 
 /// Read-only row snapshot owned by OPERATIVO; references stay in the payload so arrivals need no parent ordering.
 model OperationalPensionMove {
-  proyectoId     String   @map("proyecto_id") @db.Uuid
-  installationId String   @map("installation_id")
-  aggregateId    String   @map("aggregate_id")
-  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(3)
-  sourcePosition BigInt?  @map("source_position")
-  eventId        String   @map("event_id")
+  proyectoId     String    @map("proyecto_id") @db.Uuid
+  installationId String    @map("installation_id")
+  aggregateId    String    @map("aggregate_id")
+  occurredAt     DateTime  @map("occurred_at") @db.Timestamptz(3)
+  sourcePosition BigInt?   @map("source_position")
+  eventId        String    @map("event_id")
   payload        Json
-  proyecto       Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  /// Copied from the payload on arrival so a pass's history is an index lookup (app history).
+  pensionPassId  String?   @map("pension_pass_id") @db.Uuid
+  /// When the passage happened (payload `fecha`).
+  fecha          DateTime? @db.Timestamptz(3)
+  proyecto       Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([proyectoId, installationId, aggregateId])
   @@index([proyectoId, occurredAt])
+  @@index([proyectoId, pensionPassId, fecha(sort: Desc)])
   @@map("operational_pension_moves")
 }

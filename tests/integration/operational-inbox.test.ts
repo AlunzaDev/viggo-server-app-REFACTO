@@ -31,13 +31,33 @@ afterAll(async () => {
 describe("operational inbox", () => {
   it("projects every trigger type even when dependent parents are missing", async () => {
     for (const kind of Object.keys(operationalTables)) {
-      const e = event(kind, randomUUID(), "1", { ticket_id: randomUUID(), shift_id: randomUUID() });
+      const e = event(kind, randomUUID(), "1", { ticket_id: randomUUID(), shift_id: randomUUID(),
+        ...(kind === "pension_move" ? { pension_pass_id: randomUUID(), fecha: new Date(now).toISOString() } : {}) });
       await sync.receiveEvent(e);
       expect((await PostgresDatabase.client.inboxEvent.findUniqueOrThrow({ where: { eventId: e.eventId } })).processedAt).not.toBeNull();
       const rows = await PostgresDatabase.client.$queryRaw<Array<{ payload: unknown }>>(Prisma.sql`
         SELECT payload FROM ${Prisma.raw(operationalTables[kind])} WHERE aggregate_id = ${e.aggregateId}`);
       expect(rows[0].payload).toEqual(e.payload);
     }
+  });
+  it("copies a pension move's pass and time to its indexed columns, and holds a malformed one", async () => {
+    const passId = randomUUID();
+    const fecha = "2026-10-20T09:15:00.123-06:00";
+    const move = event("pension_move", randomUUID(), "1", { pension_pass_id: passId, fecha, tipo: "ENTRADA" });
+    await sync.receiveEvent(move);
+    const row = await PostgresDatabase.client.operationalPensionMove.findFirstOrThrow({ where: { aggregateId: move.aggregateId } });
+    expect(row).toMatchObject({ pensionPassId: passId, fecha: new Date(fecha) });
+
+    // A later update of the same move keeps the columns in step with the payload.
+    const corrected = event("pension_move", move.aggregateId, "2", { pension_pass_id: passId, fecha: "2026-10-20T15:20:00.000Z", tipo: "ENTRADA" });
+    await sync.receiveEvent(corrected);
+    expect((await PostgresDatabase.client.operationalPensionMove.findFirstOrThrow({ where: { aggregateId: move.aggregateId } })).fecha)
+      .toEqual(new Date("2026-10-20T15:20:00.000Z"));
+
+    const malformed = event("pension_move", randomUUID(), "1", { pension_pass_id: "no-es-uuid", fecha });
+    await sync.receiveEvent(malformed);
+    const pending = await PostgresDatabase.client.inboxEvent.findUniqueOrThrow({ where: { eventId: malformed.eventId } });
+    expect(pending).toMatchObject({ processedAt: null, processingError: "Invalid snapshot pension_pass_id" });
   });
   it("does not regress on late creates, duplicate retries or concurrent deliveries", async () => {
     const id = randomUUID();

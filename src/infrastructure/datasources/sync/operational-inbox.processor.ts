@@ -12,6 +12,17 @@ export const operationalTables: Record<string, string> = {
   pension_move: "operational_pension_moves",
 };
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Columns of a pension move; a malformed row stays pending instead of entering the history. */
+const pensionMoveColumns = (payload: Record<string, unknown>) => {
+  const pensionPassId = payload.pension_pass_id;
+  const fecha = typeof payload.fecha === "string" ? Date.parse(payload.fecha) : Number.NaN;
+  if (typeof pensionPassId !== "string" || !UUID.test(pensionPassId)) throw new Error("Invalid snapshot pension_pass_id");
+  if (!Number.isFinite(fecha)) throw new Error("Invalid snapshot date: fecha");
+  return { pensionPassId, fecha: new Date(fecha) };
+};
+
 export class OperationalInboxProcessor {
   async processEvent(eventId: string): Promise<void> {
     const db = PostgresDatabase.client;
@@ -38,15 +49,18 @@ export class OperationalInboxProcessor {
           }
         }
         if (payload.pagado !== undefined && typeof payload.pagado !== "boolean") throw new Error("Invalid snapshot pagado");
+        // A pension move also fills its own columns, so the app's history is an index lookup.
+        const pensionMove = kind === "pension_move" ? pensionMoveColumns(payload) : null;
         // Full snapshots allow updates to arrive before inserts. The upsert's predicate
         // is atomic even when different workers process the same aggregate concurrently.
         await tx.$executeRaw(Prisma.sql`
           INSERT INTO ${Prisma.raw(table)} AS current
-            (proyecto_id, installation_id, aggregate_id, occurred_at, source_position, event_id, payload)
-          VALUES (${event.proyectoId}::uuid, ${event.installationId}, ${event.aggregateId}, ${event.occurredAt}, ${event.sourcePosition}, ${event.eventId}, ${JSON.stringify(payload)}::jsonb)
+            (proyecto_id, installation_id, aggregate_id, occurred_at, source_position, event_id, payload${pensionMove ? Prisma.sql`, pension_pass_id, fecha` : Prisma.empty})
+          VALUES (${event.proyectoId}::uuid, ${event.installationId}, ${event.aggregateId}, ${event.occurredAt}, ${event.sourcePosition}, ${event.eventId}, ${JSON.stringify(payload)}::jsonb${pensionMove ? Prisma.sql`, ${pensionMove.pensionPassId}::uuid, ${pensionMove.fecha}` : Prisma.empty})
           ON CONFLICT (proyecto_id, installation_id, aggregate_id) DO UPDATE SET
             occurred_at = EXCLUDED.occurred_at, source_position = EXCLUDED.source_position,
-            event_id = EXCLUDED.event_id, payload = EXCLUDED.payload
+            event_id = EXCLUDED.event_id, payload = EXCLUDED.payload${pensionMove ? Prisma.sql`,
+            pension_pass_id = EXCLUDED.pension_pass_id, fecha = EXCLUDED.fecha` : Prisma.empty}
           WHERE CASE WHEN current.source_position IS NOT NULL AND EXCLUDED.source_position IS NOT NULL
             THEN EXCLUDED.source_position > current.source_position
             ELSE (EXCLUDED.occurred_at, EXCLUDED.event_id) > (current.occurred_at, current.event_id) END

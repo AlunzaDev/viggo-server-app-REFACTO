@@ -165,7 +165,9 @@ describe("POST /api/mobile/pension-pass/:id/access", () => {
     const synced = (proyectoId: string, tipo: string, fecha: number, position: number, pass = passId, modulo = ids.entrada) => {
       const id = randomUUID();
       return { proyectoId, installationId, aggregateId: id, eventId: randomUUID(), occurredAt: new Date(fecha), sourcePosition: BigInt(position),
-        payload: { id, modulo_id: modulo, proyecto_id: proyectoId, pension_pass_id: pass, tipo, fecha: new Date(fecha).toISOString() } };
+        payload: { id, modulo_id: modulo, proyecto_id: proyectoId, pension_pass_id: pass, tipo, fecha: new Date(fecha).toISOString() },
+        // Filled by the inbox processor on arrival.
+        pensionPassId: pass, fecha: new Date(fecha) };
     };
     const movements = (pass: string, query = "", user = userId) =>
       fetch(`${base}/pension-pass/${pass}/movements${query}`, { headers: { "X-User": user } })

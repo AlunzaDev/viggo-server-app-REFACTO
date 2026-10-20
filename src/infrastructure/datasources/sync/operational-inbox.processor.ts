@@ -30,13 +30,75 @@ const validateParkingRate = (payload: Record<string, unknown>) => {
   if (payload.daily_max !== null && !MONEY.test(String(payload.daily_max))) throw new Error("Invalid snapshot money: daily_max");
 };
 
-/** Columns of a pension move; a malformed row stays pending instead of entering the history. */
-const pensionMoveColumns = (payload: Record<string, unknown>) => {
-  const pensionPassId = payload.pension_pass_id;
-  const fecha = typeof payload.fecha === "string" ? Date.parse(payload.fecha) : Number.NaN;
-  if (typeof pensionPassId !== "string" || !UUID.test(pensionPassId)) throw new Error("Invalid snapshot pension_pass_id");
-  if (!Number.isFinite(fecha)) throw new Error("Invalid snapshot date: fecha");
-  return { pensionPassId, fecha: new Date(fecha) };
+type Payload = Record<string, unknown>;
+type TypedColumn = { name: string; value: Prisma.Sql };
+
+const EARLIEST = Date.UTC(2020, 0, 1);
+const DAY_MS = 86_400_000;
+
+/**
+ * An instant from the snapshot. Impossible dates (before 2020 or more than a day ahead, like
+ * the year-2200 tickets seen in cobrocaja) keep the event pending instead of entering reports.
+ */
+const instant = (payload: Payload, field: string, options: { nullable?: boolean } = {}) => {
+  const value = payload[field];
+  if ((value === null || value === undefined) && options.nullable) return null;
+  const time = typeof value === "string" ? Date.parse(value) : Number.NaN;
+  if (!Number.isFinite(time) || time < EARLIEST || time > Date.now() + DAY_MS) throw new Error(`Invalid snapshot date: ${field}`);
+  return new Date(time);
+};
+
+const money = (payload: Payload, field: string) => {
+  const value = String(payload[field]);
+  if (!/^-?\d{1,10}(\.\d{1,2})?$/.test(value)) throw new Error(`Invalid snapshot money: ${field}`);
+  return Prisma.sql`${value}::numeric`;
+};
+
+const text = (payload: Payload, field: string, max = 64) => {
+  const value = payload[field];
+  return typeof value === "string" && value.length <= max ? value : null;
+};
+
+/** How a payment was made, from what OPERATIVO records about it. */
+const paymentMethod = (payload: Payload) => {
+  const reference = String(payload.provider_reference ?? "");
+  if (reference.startsWith("pos_session_") || payload.raw_provider_status === "cash") return "efectivo";
+  if (reference.startsWith("pi_")) return "tarjeta";
+  return "sin_identificar";
+};
+
+/**
+ * Typed copies of what statistics filter and add up (docs/estadisticas.md §2), so queries use
+ * indexes instead of casting the JSON of every row. A malformed value keeps the event pending.
+ */
+const typedColumns: Record<string, (payload: Payload) => TypedColumn[]> = {
+  pension_move: (payload) => {
+    const pensionPassId = payload.pension_pass_id;
+    if (typeof pensionPassId !== "string" || !UUID.test(pensionPassId)) throw new Error("Invalid snapshot pension_pass_id");
+    return [
+      { name: "pension_pass_id", value: Prisma.sql`${pensionPassId}::uuid` },
+      { name: "fecha", value: Prisma.sql`${instant(payload, "fecha")}` },
+    ];
+  },
+  payment: (payload) => [
+    { name: "paid_at", value: Prisma.sql`${instant(payload, "paid_at")}` },
+    { name: "amount", value: money(payload, "amount") },
+    { name: "currency", value: Prisma.sql`${String(payload.currency ?? "").toUpperCase().slice(0, 3)}` },
+    { name: "status", value: Prisma.sql`${text(payload, "status")}` },
+    { name: "payment_type", value: Prisma.sql`${text(payload, "type")}` },
+    { name: "method", value: Prisma.sql`${paymentMethod(payload)}` },
+    { name: "provider_reference", value: Prisma.sql`${text(payload, "provider_reference", 256)}` },
+  ],
+  ticket: (payload) => {
+    if (typeof payload.pagado !== "boolean") throw new Error("Invalid snapshot pagado");
+    return [
+      { name: "hora_inicio", value: Prisma.sql`${instant(payload, "hora_inicio")}` },
+      { name: "hora_salida", value: Prisma.sql`${instant(payload, "hora_salida", { nullable: true })}` },
+      { name: "monto", value: money(payload, "monto") },
+      { name: "pagado", value: Prisma.sql`${payload.pagado}` },
+      { name: "status", value: Prisma.sql`${text(payload, "status")}` },
+    ];
+  },
 };
 
 export class OperationalInboxProcessor {
@@ -65,19 +127,18 @@ export class OperationalInboxProcessor {
           }
         }
         if (payload.pagado !== undefined && typeof payload.pagado !== "boolean") throw new Error("Invalid snapshot pagado");
-        // A pension move also fills its own columns, so the app's history is an index lookup.
-        const pensionMove = kind === "pension_move" ? pensionMoveColumns(payload) : null;
+        const typed = Object.hasOwn(typedColumns, kind) ? typedColumns[kind](payload) : [];
         if (kind === "parking_rate") validateParkingRate(payload);
+        const typedNames = typed.map((column) => Prisma.raw(column.name));
         // Full snapshots allow updates to arrive before inserts. The upsert's predicate
         // is atomic even when different workers process the same aggregate concurrently.
         await tx.$executeRaw(Prisma.sql`
           INSERT INTO ${Prisma.raw(table)} AS current
-            (proyecto_id, installation_id, aggregate_id, occurred_at, source_position, event_id, payload${pensionMove ? Prisma.sql`, pension_pass_id, fecha` : Prisma.empty})
-          VALUES (${event.proyectoId}::uuid, ${event.installationId}, ${event.aggregateId}, ${event.occurredAt}, ${event.sourcePosition}, ${event.eventId}, ${JSON.stringify(payload)}::jsonb${pensionMove ? Prisma.sql`, ${pensionMove.pensionPassId}::uuid, ${pensionMove.fecha}` : Prisma.empty})
+            (proyecto_id, installation_id, aggregate_id, occurred_at, source_position, event_id, payload${typed.length ? Prisma.sql`, ${Prisma.join(typedNames)}` : Prisma.empty})
+          VALUES (${event.proyectoId}::uuid, ${event.installationId}, ${event.aggregateId}, ${event.occurredAt}, ${event.sourcePosition}, ${event.eventId}, ${JSON.stringify(payload)}::jsonb${typed.length ? Prisma.sql`, ${Prisma.join(typed.map((column) => column.value))}` : Prisma.empty})
           ON CONFLICT (proyecto_id, installation_id, aggregate_id) DO UPDATE SET
             occurred_at = EXCLUDED.occurred_at, source_position = EXCLUDED.source_position,
-            event_id = EXCLUDED.event_id, payload = EXCLUDED.payload${pensionMove ? Prisma.sql`,
-            pension_pass_id = EXCLUDED.pension_pass_id, fecha = EXCLUDED.fecha` : Prisma.empty}
+            event_id = EXCLUDED.event_id, payload = EXCLUDED.payload${typed.length ? Prisma.sql`, ${Prisma.join(typed.map((column) => Prisma.sql`${Prisma.raw(column.name)} = EXCLUDED.${Prisma.raw(column.name)}`))}` : Prisma.empty}
           WHERE CASE WHEN current.source_position IS NOT NULL AND EXCLUDED.source_position IS NOT NULL
             THEN EXCLUDED.source_position > current.source_position
             ELSE (EXCLUDED.occurred_at, EXCLUDED.event_id) > (current.occurred_at, current.event_id) END

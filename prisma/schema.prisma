@@ -857,33 +857,54 @@ model JobLease {
 
 /// Read-only row snapshot owned by OPERATIVO; references stay in the payload so arrivals need no parent ordering.
 model OperationalTicket {
-  proyectoId     String   @map("proyecto_id") @db.Uuid
-  installationId String   @map("installation_id")
-  aggregateId    String   @map("aggregate_id")
-  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(3)
-  sourcePosition BigInt?  @map("source_position")
-  eventId        String   @map("event_id")
+  proyectoId     String    @map("proyecto_id") @db.Uuid
+  installationId String    @map("installation_id")
+  aggregateId    String    @map("aggregate_id")
+  occurredAt     DateTime  @map("occurred_at") @db.Timestamptz(3)
+  sourcePosition BigInt?   @map("source_position")
+  eventId        String    @map("event_id")
   payload        Json
-  proyecto       Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  /// Typed copies of the payload for statistics (docs/estadisticas.md), filled on arrival.
+  horaInicio     DateTime? @map("hora_inicio") @db.Timestamptz(3)
+  horaSalida     DateTime? @map("hora_salida") @db.Timestamptz(3)
+  monto          Decimal?  @db.Decimal(12, 2)
+  pagado         Boolean?
+  status         String?
+  proyecto       Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([proyectoId, installationId, aggregateId])
   @@index([proyectoId, occurredAt])
+  @@index([proyectoId, horaInicio])
+  @@index([proyectoId, horaSalida])
   @@map("operational_tickets")
 }
 
 /// Read-only row snapshot owned by OPERATIVO; references stay in the payload so arrivals need no parent ordering.
 model OperationalPayment {
-  proyectoId     String   @map("proyecto_id") @db.Uuid
-  installationId String   @map("installation_id")
-  aggregateId    String   @map("aggregate_id")
-  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(3)
-  sourcePosition BigInt?  @map("source_position")
-  eventId        String   @map("event_id")
-  payload        Json
-  proyecto       Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  proyectoId        String    @map("proyecto_id") @db.Uuid
+  installationId    String    @map("installation_id")
+  aggregateId       String    @map("aggregate_id")
+  occurredAt        DateTime  @map("occurred_at") @db.Timestamptz(3)
+  sourcePosition    BigInt?   @map("source_position")
+  eventId           String    @map("event_id")
+  payload           Json
+  /// Typed copies of the payload for statistics (docs/estadisticas.md), filled on arrival.
+  paidAt            DateTime? @map("paid_at") @db.Timestamptz(3)
+  amount            Decimal?  @db.Decimal(12, 2)
+  currency          String?   @db.Char(3)
+  status            String?
+  /// ticket, pension, renewal (OPERATIVO's payment type).
+  paymentType       String?   @map("payment_type")
+  /// efectivo, tarjeta or sin_identificar.
+  method            String?
+  /// Stripe PaymentIntent (pi_...) for app payments: the key that joins them with the cloud's.
+  providerReference String?   @map("provider_reference")
+  proyecto          Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([proyectoId, installationId, aggregateId])
   @@index([proyectoId, occurredAt])
+  @@index([proyectoId, paidAt])
+  @@index([providerReference])
   @@map("operational_payments")
 }
 

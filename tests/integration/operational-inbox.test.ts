@@ -16,10 +16,19 @@ const now = Date.now();
 /** A parking_rates row of OPERATIVO as to_jsonb sends it. */
 const rateRow = (version: number, extra: object = {}) => ({ version, proyecto_id: project, tolerance_minutes: 15, first_block_minutes: 60,
   first_block_price: 20.00, fraction_minutes: 15, fraction_price: 5.00, daily_max: 150.00, created_by: "admin-op", created_at: new Date(now).toISOString(), ...extra });
+/**
+ * What OPERATIVO's rows always carry, so a fixture only states what its test is about. Dated
+ * in the past so they never fall inside a report window another test checks.
+ */
+const PAST = "2026-01-15T12:00:00.000Z";
+const rowDefaults: Record<string, object> = {
+  ticket: { hora_inicio: PAST, hora_salida: null, monto: "0", pagado: false, status: "ACTIVE" },
+  payment: { paid_at: PAST, amount: "10.00", currency: "MXN", status: "succeeded", type: "ticket", provider_reference: null },
+};
 const event = (kind: string, id: string, position: string, payload: object = {}) => ({
   eventId: randomUUID(), installationId, proyectoId: project, aggregateId: id,
   eventType: `${kind}.updated`, occurredAt: now, sourcePosition: position,
-  payload: { id, ...payload },
+  payload: { id, ...rowDefaults[kind], ...payload },
 });
 beforeAll(async () => {
   const db = await PostgresDatabase.connect({ databaseUrl: process.env.DATABASE_URL!, poolMax: 8 });
@@ -86,6 +95,41 @@ describe("operational inbox", () => {
       .toMatchObject({ processedAt: null, processingError: "Invalid snapshot money: fraction_price" });
     expect(await rates.listRates(other, 10)).toEqual([]);
   });
+  it("copies tickets and payments to typed columns for statistics, and holds impossible dates", async () => {
+    const db = PostgresDatabase.client;
+    const ticketId = randomUUID();
+    await sync.receiveEvent(event("ticket", ticketId, "1", { hora_inicio: "2026-10-20T08:00:00.000-06:00", hora_salida: "2026-10-20T09:20:00.000-06:00", monto: 30, pagado: true, status: "COMPLETED" }));
+    expect(await db.operationalTicket.findFirstOrThrow({ where: { aggregateId: ticketId } })).toMatchObject({
+      horaInicio: new Date("2026-10-20T14:00:00.000Z"), horaSalida: new Date("2026-10-20T15:20:00.000Z"), pagado: true, status: "COMPLETED",
+    });
+    expect((await db.operationalTicket.findFirstOrThrow({ where: { aggregateId: ticketId } })).monto?.toString()).toBe("30");
+
+    const cash = randomUUID();
+    const card = randomUUID();
+    await sync.receiveEvent(event("payment", cash, "1", { amount: "42.50", provider_reference: "pos_session_123" }));
+    await sync.receiveEvent(event("payment", card, "1", { amount: 99, currency: "mxn", provider_reference: "pi_abc", type: "pension" }));
+    const rows = await db.operationalPayment.findMany({ where: { aggregateId: { in: [cash, card] } }, orderBy: { aggregateId: "asc" } });
+    const byId = Object.fromEntries(rows.map((row) => [row.aggregateId, row]));
+    expect(byId[cash]).toMatchObject({ method: "efectivo", currency: "MXN", status: "succeeded", paymentType: "ticket", providerReference: "pos_session_123" });
+    expect(byId[cash].amount?.toString()).toBe("42.5");
+    expect(byId[card]).toMatchObject({ method: "tarjeta", currency: "MXN", paymentType: "pension", providerReference: "pi_abc" });
+
+    // A later exit updates the columns along with the payload.
+    await sync.receiveEvent(event("ticket", ticketId, "2", { hora_inicio: "2026-10-20T08:00:00.000-06:00", hora_salida: null, monto: 0, pagado: false, status: "ACTIVE" }));
+    expect(await db.operationalTicket.findFirstOrThrow({ where: { aggregateId: ticketId } })).toMatchObject({ horaSalida: null, pagado: false });
+
+    // Like the year-2200 tickets seen in cobrocaja: the event waits instead of polluting reports.
+    for (const [kind, payload, error] of [
+      ["ticket", { hora_inicio: "2200-01-01T00:00:00.000Z" }, "Invalid snapshot date: hora_inicio"],
+      ["ticket", { hora_inicio: "2019-12-31T00:00:00.000Z" }, "Invalid snapshot date: hora_inicio"],
+      ["payment", { paid_at: "2200-01-01T00:00:00.000Z" }, "Invalid snapshot date: paid_at"],
+      ["ticket", { pagado: "si" }, "Invalid snapshot pagado"],
+    ] as const) {
+      const bad = event(kind, randomUUID(), "1", payload);
+      await sync.receiveEvent(bad);
+      expect(await db.inboxEvent.findUniqueOrThrow({ where: { eventId: bad.eventId } })).toMatchObject({ processedAt: null, processingError: error });
+    }
+  });
   it("does not regress on late creates, duplicate retries or concurrent deliveries", async () => {
     const id = randomUUID();
     const latest = event("ticket", id, "9007199254740993", { pagado: true, monto: "42.50" });
@@ -111,7 +155,7 @@ describe("operational inbox", () => {
     await sync.receiveEvent(e);
     const row = await PostgresDatabase.client.inboxEvent.findUniqueOrThrow({ where: { eventId: e.eventId } });
     expect(row.processedAt).toBeNull(); expect(row.processingError).toContain("another project");
-    await PostgresDatabase.client.inboxEvent.update({ where: { eventId: e.eventId }, data: { payload: { id: e.aggregateId, proyecto_id: project } } });
+    await PostgresDatabase.client.inboxEvent.update({ where: { eventId: e.eventId }, data: { payload: { ...e.payload, proyecto_id: project } } });
     await sync.receiveEvent(e); // Redelivery processes the stored receipt, never replaces it.
     expect((await PostgresDatabase.client.inboxEvent.findUniqueOrThrow({ where: { eventId: e.eventId } })).processedAt).not.toBeNull();
     const unknown = { ...event("unknown", randomUUID(), "1") };

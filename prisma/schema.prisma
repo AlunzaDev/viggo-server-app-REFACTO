@@ -134,6 +134,8 @@ enum MobileOperationType {
   QUOTE_TICKET
   APPLY_TICKET_PAYMENT
   EXIT_TICKET
+  /// Opens a barrier with the user's Pension Pass (OPERATIVO applies schedule and anti-passback).
+  PENSION_PASS_ACCESS
 
   @@map("mobile_operation_type")
 }

@@ -10,6 +10,8 @@ import type { PaymentRepository } from "../../../domain/repositories/payments/pa
 import type { ModuloRepository } from "../../../domain/repositories/parking/modulo.repository";
 import type { InstallationsRepository } from "../../../domain/repositories/installations/installations.repository";
 import type { UsuarioRepository } from "../../../domain/repositories/auth/usuario.repository";
+import type { PensionPassRepository } from "../../../domain/repositories/pension/pension-pass.repository";
+import type { PensionRepository } from "../../../domain/repositories/pension/pension.repository";
 
 type AuthenticatedRequest = Request & { uid?: string };
 
@@ -36,6 +38,8 @@ export class MobileOperationController {
     private readonly modulos: ModuloRepository,
     private readonly installations: InstallationsRepository,
     private readonly usuarios: UsuarioRepository,
+    private readonly pensionPasses?: PensionPassRepository,
+    private readonly pensions?: PensionRepository,
   ) {}
 
   createTicket = async (req: Request, res: Response) => {
@@ -104,6 +108,83 @@ export class MobileOperationController {
       return ErrorService.handleApiError(error, res);
     }
   };
+
+  /**
+   * Opens the barrier of the scanned module with the user's Pension Pass. The project comes from
+   * the module, never from the client; OPERATIVO applies schedule and anti-passback and opens it.
+   */
+  accessWithPensionPass = async (req: Request, res: Response) => {
+    try {
+      const userId = String((req as AuthenticatedRequest).uid ?? "").trim();
+      const key = String(req.header("Idempotency-Key") ?? "").trim();
+      const pensionPassId = String(req.params.id ?? "").trim();
+      const moduleToken = String(req.body?.moduleToken ?? "").trim();
+      const requestedProjectId = String(req.body?.projectId ?? "").trim();
+      if (!/^[A-Za-z0-9._:-]{16,128}$/.test(key)) return res.status(400).json({ error: "Idempotency-Key invalida" });
+      if (!moduleToken || !requestedProjectId) return res.status(400).json({ error: "projectId y moduleToken son requeridos" });
+
+      // Same key: the same answer (never a second barrier opening).
+      const existing = await this.operations.findByIdempotencyKey(key);
+      if (existing) {
+        if (String(existing.userId) !== userId || existing.type !== "PENSION_PASS_ACCESS" || existing.payload?.pensionPassId !== pensionPassId) {
+          return res.status(409).json({ error: "La clave ya fue usada para otra operacion" });
+        }
+        return this.pensionAccessResponse(res, existing);
+      }
+
+      const pass = this.pensionPasses ? await this.pensionPasses.findById(pensionPassId) : null;
+      if (!pass || pass.usuario !== userId) return res.status(404).json({ error: "PensionPass no encontrado" });
+      if (!pass.estado || !pass.vigent || (pass.to !== -1 && pass.to < Date.now())) {
+        return res.status(409).json({ error: "La pension no esta vigente", code: "PENSION_PASS_NOT_VALID" });
+      }
+      const pension = this.pensions ? await this.pensions.findById(pass.pension) : null;
+      const moduloId = decodeModuleId(moduleToken);
+      const modulo = moduloId ? await this.modulos.findById(moduloId) : null;
+      if (!modulo || !["ENTRADA", "SALIDA"].includes(String(modulo.tipo))) {
+        return res.status(400).json({ error: "El QR no identifica una entrada o salida" });
+      }
+      const proyectoId = String(modulo.proyecto ?? "");
+      if (proyectoId !== requestedProjectId || !pension || pension.proyecto !== proyectoId) {
+        return res.status(409).json({ error: "El QR no pertenece al estacionamiento de la pension", code: "PARKING_QR_MISMATCH" });
+      }
+
+      const installation = await this.installations.findApprovedByProyectoId(proyectoId);
+      if (!installation || Date.now() - Number(installation.lastCommandPollAt ?? 0) > 10_000) {
+        return res.status(503).json({ error: "El estacionamiento esta desconectado; no se abrio la pluma", code: "PARKING_OFFLINE" });
+      }
+      const operation = await this.enqueueAndWait({
+        idempotencyKey: key,
+        type: "PENSION_PASS_ACCESS",
+        installationId: installation.installationId,
+        proyectoId,
+        userId,
+        payload: { pensionPassId, moduleToken },
+      });
+      return this.pensionAccessResponse(res, operation);
+    } catch (error) {
+      if (error instanceof UniqueConstraintError) {
+        const existing = await this.operations.findByIdempotencyKey(String(req.header("Idempotency-Key") ?? "").trim());
+        if (existing) return this.pensionAccessResponse(res, existing);
+      }
+      return ErrorService.handleApiError(error, res);
+    }
+  };
+
+  private pensionAccessResponse(res: Response, operation: MobileOperationRecord) {
+    const move = operation.result?.pensionMove as { tipo?: string } | undefined;
+    if (operation.status === "completed" && move) {
+      return res.status(200).json({
+        operation, pensionMove: move,
+        // After an entry the pass is inside the parking; after an exit, outside.
+        pensionPass: { id: operation.payload?.pensionPassId, inParking: move.tipo === "ENTRADA" },
+      });
+    }
+    if (operation.status === "failed") {
+      // OPERATIVO's answer: anti-passback, schedule, expired pass...
+      return res.status(409).json({ operation, error: operation.error || "No se pudo abrir la pluma", code: "PENSION_ACCESS_REJECTED" });
+    }
+    return res.status(503).json({ operation, error: "El estacionamiento no respondio; no se abrio la pluma", code: "PARKING_OFFLINE" });
+  }
 
   getOperation = async (req: Request, res: Response) => {
     try {
@@ -367,8 +448,10 @@ export class MobileOperationController {
     let operation = await this.operations.findByIdempotencyKey(input.idempotencyKey);
     if (!operation) {
       const now = Date.now();
-      const expiresAt = input.type === "APPLY_TICKET_PAYMENT" ? undefined : now + 30_000;
-      const maxAttempts = input.type === "APPLY_TICKET_PAYMENT" ? 12 : 3;
+      // Opening a barrier late, once the user left, is worse than not opening it: short life.
+      const expiresAt = input.type === "APPLY_TICKET_PAYMENT" ? undefined : now + (input.type === "PENSION_PASS_ACCESS" ? 15_000 : 30_000);
+      // A rejected barrier opening is final: the app already showed the error to the user.
+      const maxAttempts = input.type === "APPLY_TICKET_PAYMENT" ? 12 : input.type === "PENSION_PASS_ACCESS" ? 1 : 3;
       operation = await this.operations.create({ operationId: randomUUID(), ...input, status: "pending", attempts: 0, maxAttempts, nextRetryAt: now, createdAt: now, expiresAt, updatedAt: now });
     }
     for (let attempt = 0; attempt < 30 && !["completed", "failed"].includes(String(operation.status)); attempt += 1) {

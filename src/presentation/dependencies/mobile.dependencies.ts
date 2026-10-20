@@ -5,6 +5,8 @@ import {
   buildMobileOperationRepository,
   buildModuloRepository,
   buildPaymentRepository,
+  buildPensionPassRepository,
+  buildPensionRepository,
   buildUsuarioRepository,
 } from "./repositories.dependencies";
 
@@ -15,6 +17,8 @@ export const buildMobileOperationController = (): MobileOperationController =>
     buildModuloRepository(),
     buildInstallationsRepository(),
     buildUsuarioRepository(),
+    buildPensionPassRepository(),
+    buildPensionRepository(),
   );
 
 export const buildMobileOperationAdminController = (): MobileOperationAdminController =>

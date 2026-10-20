@@ -25,6 +25,7 @@ Default policy:
 
 - `CREATE_TICKET`, `QUOTE_TICKET`, `EXIT_TICKET`: `maxAttempts = 3`.
 - `APPLY_TICKET_PAYMENT`: `maxAttempts = 12`.
+- `PENSION_PASS_ACCESS` (`POST /api/mobile/pension-pass/:id/access`): `maxAttempts = 1` and a 15s expiration. It opens a barrier: a late or repeated opening is worse than a failed one, and OPERATIVO's rejection (anti-passback, schedule) is final. OPERATIVO stores the command receipt in the same transaction as the passage, so a re-delivery returns the recorded move instead of failing anti-passback.
 - Retry backoff: immediate, 30s, 2min, 5min, 15min.
 - Short-lived commands can expire.
 - Payment application commands are created without short expiration.

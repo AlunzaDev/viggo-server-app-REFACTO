@@ -34,6 +34,7 @@ export class MobileOperationRoutes {
     router.patch("/pension-pass/:id/renew", pensionController.renewPensionPass);
     router.patch("/pension-pass/:id/contract", pensionController.contractPensionPass);
     router.get("/pension-pass/:id", pensionController.getMyPensionPassById);
+    router.post("/pension-pass/:id/access", controller.accessWithPensionPass);
     router.post("/stripe/payment-intents", stripeController.createPaymentIntent);
     return router;
   }

@@ -14,7 +14,7 @@ import { CustomError } from "../../../domain/errors/custom.error";
 import { UniqueConstraintError } from "../../../domain/errors/unique-constraint.error";
 import { isUuid, withPrismaErrors } from "../postgres/prisma-errors";
 
-const MOBILE_OPERATION_TYPES = ["CREATE_TICKET", "QUOTE_TICKET", "APPLY_TICKET_PAYMENT", "EXIT_TICKET"] as const;
+const MOBILE_OPERATION_TYPES = ["CREATE_TICKET", "QUOTE_TICKET", "APPLY_TICKET_PAYMENT", "EXIT_TICKET", "PENSION_PASS_ACCESS"] as const;
 type MobileOperationType = (typeof MOBILE_OPERATION_TYPES)[number];
 
 const isType = (value: string): value is MobileOperationType =>

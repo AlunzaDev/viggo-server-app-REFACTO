@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import type { ParkingRateCopyDatasource } from "../../../domain/datasources/parking/parking-rate-copy.datasource";
 import { CreateProyectoDto } from "../../../domain/dtos/parking/create-proyecto.dto";
 import { UpdateProyectoDto } from "../../../domain/dtos/parking/update-proyecto.dto";
 import { ErrorService } from "../../services/error.service";
@@ -90,7 +91,23 @@ const normalizeProyectoRequestBody = (body: Record<string, unknown>) => {
 };
 
 export class ProyectoController {
-  constructor(private readonly proyectoService: ProyectoService) {}
+  constructor(
+    private readonly proyectoService: ProyectoService,
+    private readonly parkingRates?: ParkingRateCopyDatasource,
+  ) {}
+
+  /** The rate the project's OPERATIVO charges with (read-only copy) and its earlier versions. */
+  getParkingRate = async (req: Request, res: Response) => {
+    try {
+      const id = String(req.params.id);
+      if (!canAccessProjectFromRequest(req, id)) return res.status(403).json({ error: "Forbidden" });
+      await this.proyectoService.getProyectoById(id);
+      const historial = this.parkingRates ? await this.parkingRates.listRates(id, 20) : [];
+      return res.status(200).json({ tarifa: historial[0] ?? null, historial });
+    } catch (error) {
+      return ErrorService.handleApiError(error, res);
+    }
+  };
 
   createProyecto = async (req: Request, res: Response) => {
     try {

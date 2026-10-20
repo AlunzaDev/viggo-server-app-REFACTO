@@ -5,6 +5,7 @@ import { SyncPostgresDatasource } from "../../src/infrastructure/datasources/syn
 import { OperationalInboxProcessor, operationalTables } from "../../src/infrastructure/datasources/sync/operational-inbox.processor";
 import { LocalProjectsPostgresDatasource } from "../../src/infrastructure/datasources/local-projects/local-projects.datasource.postgres";
 import { Prisma } from "../../src/generated/prisma/client";
+import { ParkingRateCopyPostgresDatasource } from "../../src/infrastructure/datasources/parking/parking-rate-copy.datasource.postgres";
 
 const sync = new SyncPostgresDatasource();
 const processor = new OperationalInboxProcessor();
@@ -12,6 +13,9 @@ let project: string;
 let other: string;
 const installationId = randomUUID();
 const now = Date.now();
+/** A parking_rates row of OPERATIVO as to_jsonb sends it. */
+const rateRow = (version: number, extra: object = {}) => ({ version, proyecto_id: project, tolerance_minutes: 15, first_block_minutes: 60,
+  first_block_price: 20.00, fraction_minutes: 15, fraction_price: 5.00, daily_max: 150.00, created_by: "admin-op", created_at: new Date(now).toISOString(), ...extra });
 const event = (kind: string, id: string, position: string, payload: object = {}) => ({
   eventId: randomUUID(), installationId, proyectoId: project, aggregateId: id,
   eventType: `${kind}.updated`, occurredAt: now, sourcePosition: position,
@@ -32,7 +36,8 @@ describe("operational inbox", () => {
   it("projects every trigger type even when dependent parents are missing", async () => {
     for (const kind of Object.keys(operationalTables)) {
       const e = event(kind, randomUUID(), "1", { ticket_id: randomUUID(), shift_id: randomUUID(),
-        ...(kind === "pension_move" ? { pension_pass_id: randomUUID(), fecha: new Date(now).toISOString() } : {}) });
+        ...(kind === "pension_move" ? { pension_pass_id: randomUUID(), fecha: new Date(now).toISOString() } : {}),
+        ...(kind === "parking_rate" ? rateRow(1) : {}) });
       await sync.receiveEvent(e);
       expect((await PostgresDatabase.client.inboxEvent.findUniqueOrThrow({ where: { eventId: e.eventId } })).processedAt).not.toBeNull();
       const rows = await PostgresDatabase.client.$queryRaw<Array<{ payload: unknown }>>(Prisma.sql`
@@ -58,6 +63,28 @@ describe("operational inbox", () => {
     await sync.receiveEvent(malformed);
     const pending = await PostgresDatabase.client.inboxEvent.findUniqueOrThrow({ where: { eventId: malformed.eventId } });
     expect(pending).toMatchObject({ processedAt: null, processingError: "Invalid snapshot pension_pass_id" });
+  });
+  it("keeps a copy of OPERATIVO's parking rate, the last one saved in force, and holds malformed ones", async () => {
+    const rates = new ParkingRateCopyPostgresDatasource();
+    // Saved after the rate the first test left in this project.
+    const saved = (version: number, minutesLater: number, extra: object = {}) =>
+      ({ ...event("parking_rate", randomUUID(), String(version), rateRow(version, extra)), eventType: "parking_rate.created", occurredAt: now + minutesLater * 60_000 });
+    await sync.receiveEvent(saved(1, 1));
+    await sync.receiveEvent(saved(2, 2, { daily_max: null, first_block_price: 25.5 }));
+    // A reset installation starts again at version 1: being the last saved, it is the one in force.
+    const afterReset = saved(1, 3, { first_block_price: 30 });
+    await sync.receiveEvent(afterReset);
+
+    const list = await rates.listRates(project, 3);
+    expect(list.map((rate) => [rate.version, rate.firstBlockPrice])).toEqual([[1, 30], [2, 25.5], [1, 20]]);
+    expect(list[1]).toMatchObject({ dailyMax: null, toleranceMinutes: 15, createdBy: "admin-op", installationId });
+    expect(list[0].savedAt).toBe(afterReset.occurredAt);
+
+    const malformed = saved(3, 4, { fraction_price: "cinco" });
+    await sync.receiveEvent(malformed);
+    expect(await PostgresDatabase.client.inboxEvent.findUniqueOrThrow({ where: { eventId: malformed.eventId } }))
+      .toMatchObject({ processedAt: null, processingError: "Invalid snapshot money: fraction_price" });
+    expect(await rates.listRates(other, 10)).toEqual([]);
   });
   it("does not regress on late creates, duplicate retries or concurrent deliveries", async () => {
     const id = randomUUID();

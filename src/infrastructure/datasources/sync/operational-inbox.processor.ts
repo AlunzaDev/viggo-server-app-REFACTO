@@ -10,9 +10,25 @@ export const operationalTables: Record<string, string> = {
   cash_register_movement: "operational_cash_register_movements",
   cash_register_cut: "operational_cash_register_cuts",
   pension_move: "operational_pension_moves",
+  parking_rate: "operational_parking_rates",
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
+
+/** A malformed parking rate version stays pending instead of becoming the rate in force. */
+const validateParkingRate = (payload: Record<string, unknown>) => {
+  const version = payload.version;
+  if (typeof version !== "number" || !Number.isInteger(version) || version < 1) throw new Error("Invalid snapshot version");
+  for (const field of ["tolerance_minutes", "first_block_minutes", "fraction_minutes"]) {
+    if (typeof payload[field] !== "number" || !Number.isInteger(payload[field])) throw new Error(`Invalid snapshot minutes: ${field}`);
+  }
+  for (const field of ["first_block_price", "fraction_price"]) {
+    if (!MONEY.test(String(payload[field]))) throw new Error(`Invalid snapshot money: ${field}`);
+  }
+  if (payload.daily_max !== null && !MONEY.test(String(payload.daily_max))) throw new Error("Invalid snapshot money: daily_max");
+};
 
 /** Columns of a pension move; a malformed row stays pending instead of entering the history. */
 const pensionMoveColumns = (payload: Record<string, unknown>) => {
@@ -51,6 +67,7 @@ export class OperationalInboxProcessor {
         if (payload.pagado !== undefined && typeof payload.pagado !== "boolean") throw new Error("Invalid snapshot pagado");
         // A pension move also fills its own columns, so the app's history is an index lookup.
         const pensionMove = kind === "pension_move" ? pensionMoveColumns(payload) : null;
+        if (kind === "parking_rate") validateParkingRate(payload);
         // Full snapshots allow updates to arrive before inserts. The upsert's predicate
         // is atomic even when different workers process the same aggregate concurrently.
         await tx.$executeRaw(Prisma.sql`

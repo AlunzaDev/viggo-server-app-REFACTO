@@ -25,6 +25,7 @@ export class ProyectoRoutes {
     );
     router.get("/", AuthMiddleware.requireAuth, projectModuleAccess, controller.getProyectos);
     router.get("/:id", AuthMiddleware.requireAuth, projectModuleAccess, controller.getProyectoById);
+    router.get("/:id/tarifa", AuthMiddleware.requireAuth, projectModuleAccess, controller.getParkingRate);
     router.get(
       "/:id/installation-link-token",
       AuthMiddleware.requireAuth,

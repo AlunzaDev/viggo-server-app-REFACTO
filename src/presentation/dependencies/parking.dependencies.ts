@@ -1,4 +1,5 @@
 import { ModuloController } from "../routes/parking/modulo.controller";
+import { ParkingRateCopyPostgresDatasource } from "../../infrastructure/datasources/parking/parking-rate-copy.datasource.postgres";
 import { ProyectoController } from "../routes/parking/proyecto.controller";
 import { ModuloCrudService } from "../services/parking/modulo-crud.service";
 import { ProyectoService } from "../services/parking/proyecto.service";
@@ -19,7 +20,7 @@ export const buildModuloController = (): ModuloController => {
 
 export const buildProyectoController = (): ProyectoController => {
   const service = new ProyectoService(buildProyectoRepository());
-  return new ProyectoController(service);
+  return new ProyectoController(service, new ParkingRateCopyPostgresDatasource());
 };
 
 export const buildPaymentProviderController = () =>

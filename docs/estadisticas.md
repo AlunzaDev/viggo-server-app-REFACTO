@@ -11,7 +11,7 @@ El `/api/dashboard` actual trae a Node todos los pagos y tickets del rango (y de
 ## 2. Decisión
 
 1. **Se agrega en PostgreSQL, no en Node.** Cada métrica es una consulta SQL que devuelve el resultado ya agregado (sumas, conteos, series, distribuciones). Node solo valida filtros, ejecuta y da formato. Ninguna consulta trae filas de detalle sin límite.
-2. **Columnas tipadas en los espejos (#48).** El procesador del inbox copia a columnas reales los datos que se filtran o suman (fechas, montos, estado, método). Las consultas no castean el JSON en cada fila y pueden usar índices.
+2. **Columnas tipadas en los espejos (#48).** El procesador del inbox copia a columnas reales los datos que se filtran o suman (fechas, montos, estado, método). Las consultas no castean el JSON en cada fila y pueden usar índices. Una fecha imposible (antes de 2020 o más de un día en el futuro) deja el evento pendiente con su error en vez de ensuciar las estadísticas: en cobrocaja aparecieron 1,151 tickets fechados en el año 2200.
 3. **Una sola fuente canónica de pagos (#49).** Una vista une los pagos de la nube y los del espejo operativo sin contar dos veces el mismo cobro (§4.1).
 4. **Métricas como piezas independientes (#50).** Cada una declara su definición, su consulta y sus pruebas, y se registra en un catálogo. Agregar una no modifica las demás ni la infraestructura común.
 5. **Sin agregados precalculados por ahora.** Primero se mide con datos de carga (#52). Solo si las consultas directas no cumplen los objetivos (§7) se agregan tablas por hora/día o vistas materializadas, con su recomputación documentada.
@@ -49,10 +49,11 @@ Cada métrica lleva un identificador estable. Dimensiones permitidas: `proyecto`
 
 | Id | Definición | Fuente | Unidad |
 |---|---|---|---|
-| `ingresos.confirmados` | Suma de pagos `succeeded` con `paid_at` en el periodo, menos lo reembolsado de esos mismos pagos | vista canónica (§4.1) | dinero |
-| `ingresos.reembolsos` | Suma de pagos `refunded` cuyo cobro original cae en el periodo | vista canónica | dinero |
-| `ingresos.por_metodo` | `ingresos.confirmados` por método: efectivo, tarjeta (app), sin identificar | vista canónica | dinero |
-| `ingresos.por_tipo` | por tipo: ticket, pensión, renovación | vista canónica | dinero |
+| `ingresos.cobrados` | Suma de pagos `succeeded` con `paid_at` en el periodo, incluidos los externos | vista canónica (§4.1) | dinero |
+| `ingresos.reembolsos` | Suma de reembolsos **hechos** en el periodo (fecha del reembolso, §4.3) | vista canónica | dinero |
+| `ingresos.netos` | `ingresos.cobrados − ingresos.reembolsos` del mismo periodo | vista canónica | dinero |
+| `ingresos.por_metodo` | `ingresos.cobrados` por método: efectivo, tarjeta (app), sin identificar | vista canónica | dinero |
+| `ingresos.por_tipo` | por tipo: ticket, pensión, renovación, externo | vista canónica | dinero |
 | `tickets.entradas` | Tickets con `hora_inicio` en el periodo | `operational_tickets` | conteo |
 | `tickets.salidas` | Tickets con `hora_salida` en el periodo | `operational_tickets` | conteo |
 | `tickets.ticket_promedio` | Promedio de `monto` de tickets pagados con salida en el periodo | `operational_tickets` | dinero |
@@ -61,7 +62,7 @@ Cada métrica lleva un identificador estable. Dimensiones permitidas: `proyecto`
 | `pensiones.vigentes` | Pases con usuario, activos y `valid_from ≤ ahora < valid_to` (estado actual, no del periodo) | `pension_passes` | conteo |
 | `pensiones.por_vencer` | Vigentes que vencen en los próximos 7 días | `pension_passes` | conteo |
 | `pensiones.movimientos` | Entradas y salidas de pensionados en el periodo | `operational_pension_moves` | conteo |
-| `externos.cobros` | Órdenes externas `confirmed` y `refunded` por proveedor | `external_payment_orders` | dinero |
+| `externos.cobros` | Detalle de lo cobrado por cuenta de proveedores externos, por proveedor (ya incluido en `ingresos.*` como tipo `externo`) | `external_payment_orders` | dinero |
 | `operacion.autos_dentro` | Tickets sin salida + pensionados dentro (estado actual) (#54) | espejos | conteo |
 | `operacion.ocupacion` | `autos_dentro / capacidad`; `no_disponible` sin capacidad (#54) | espejos + `proyectos` | % |
 | `operacion.conectividad` | Último contacto de la instalación y estado (en línea ≤ 15 s, intermitente ≤ 60 s, desconectada) | `local_installations`, heartbeats | estado |
@@ -75,7 +76,11 @@ Un mismo cobro puede existir dos veces: el pago de la app se registra en `paymen
 - **Llave de identidad:** `stripe_payment_intent_id` / `provider_reference` cuando existe; si no, `(installation_id, aggregate_id)` del espejo (efectivo) o el `id` del pago en la nube.
 - **Gana la nube** para cobros de Stripe: refleja reembolsos y su estado es el de Stripe.
 - **Efectivo** (`pos_session_*`) solo existe en el espejo.
-- **Órdenes externas** son cobros por cuenta de un tercero: no suman a `ingresos.*` de la sede; van en `externos.cobros`.
+- **Órdenes externas** (cobros por cuenta de un proveedor, por ejemplo SeguriPass) **sí suman** a `ingresos.*` del estacionamiento donde se escaneó el QR, marcadas como tipo `externo` para poder separarlas; su detalle por proveedor está en `externos.cobros`.
+
+### 4.3 Reembolsos
+
+Un reembolso se cuenta **en la fecha en que se hizo**, no en la del cobro original, para que un periodo ya consultado no cambie después. Un cobro del 30 de septiembre reembolsado el 3 de octubre suma en septiembre como cobrado y resta en octubre como reembolso. Por eso cada reembolso guarda su propia fecha (`refunded_at`) además de la del cobro.
 
 ### 4.2 Cobertura de datos
 
@@ -105,7 +110,19 @@ La exportación CSV (#51) usa las mismas métricas y filtros y se envía por str
 
 ## 7. Objetivos de carga
 
-Para el hardware de referencia que se documente en #52, con 120 sedes, 18 meses de historia y 10 consultas simultáneas:
+**Volumen de referencia.** Medido en cobrocaja (cobro de tickets en tiendas, otro sistema de la empresa) del 1 de septiembre al 20 de octubre de 2026: 20 tiendas con cobros, **784 tickets por tienda al día en promedio** (mediana 636, p95 2,062, máximo 2,657), la tienda de más movimiento con 2,150 diarios y un pico de 457 en una hora. Suponiendo estacionamientos parecidos:
+
+| Escenario | Tickets |
+|---|---|
+| 120 sedes, por día | ~96 mil |
+| 1 año | ~35 millones |
+| 18 meses | ~52 millones |
+
+Cada ticket trae además su pago y sus eventos en las tablas espejo. El dataset de #52 debe reproducir esa distribución: la mayoría de sedes alrededor de 600–800 tickets diarios, un 10 % con 2,000–2,700 y picos horarios de ~450.
+
+Con este volumen, leer el JSON fila por fila es inviable (por eso #48), y el consolidado de 12 meses por día probablemente requiera totales precalculados por día y sede; se decide midiendo en #52.
+
+Objetivos para el hardware de referencia que se documente en #52, con 120 sedes, 18 meses de historia y 10 consultas simultáneas:
 
 | Consulta | p95 | p99 |
 |---|---|---|

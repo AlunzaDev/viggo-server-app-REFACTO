@@ -23,15 +23,20 @@ beforeAll(async()=>{
   await db.pensionPass.create({data:{pensionId:plan.id,name:tag,idPass:tag+"inventory",vigent:false,estado:true}});
   const expiredPlan=await db.pension.create({data:{proyectoId:a,nombre:tag,precio:20}});
   await db.pensionPass.create({data:{pensionId:expiredPlan.id,usuarioId:userId,name:tag,idPass:tag+"expired",vigent:true,validFrom:new Date(now-20000),validTo:new Date(now-1)}});
-  const payment=async(project:string|null,amount:number,reference:string,status:"succeeded"|"pending"|"refunded"="succeeded",paidAt=from+1000,passId?:string)=>db.payment.create({data:{usuarioId:userId,type:passId?"pension":"ticket",concept:tag,amount,currency:"MXN",status,paidAt:new Date(paidAt),stripePaymentIntentId:reference,referenceType:passId?"pension":"ticket",referenceId:passId??randomUUID(),proyectoId:project}});
+  // A refund counts on its own date (here, inside the period), not the charge's.
+  const payment=async(project:string|null,amount:number,reference:string,status:"succeeded"|"pending"|"refunded"="succeeded",paidAt=from+1000,passId?:string)=>db.payment.create({data:{usuarioId:userId,type:passId?"pension":"ticket",concept:tag,amount,currency:"MXN",status,paidAt:new Date(paidAt),refundedAt:status==="refunded"?new Date(from+2000):null,stripePaymentIntentId:reference,referenceType:passId?"pension":"ticket",referenceId:passId??randomUUID(),proyectoId:project}});
   await payment(a,100,tag+"stripe"); await payment(a,900,tag+"pending","pending");
   await payment(b,777,tag+"other"); await payment(a,40,tag+"previous","succeeded",from-1000);
   await payment(a,90,tag+"refund","refunded"); await payment(null,20,tag+"pension","succeeded",from+1000,pass.id);
-  const mirror=async(project:string,reference:string,amount:number,currency="MXN")=>db.operationalPayment.create({data:{proyectoId:project,installationId:tag,aggregateId:randomUUID(),occurredAt:new Date(now),eventId:randomUUID(),payload:{id:randomUUID(),provider_reference:reference,amount,status:"succeeded",currency,paid_at:new Date(from+1000).toISOString()}}});
+  // Mirror rows as the inbox processor stores them: payload plus its typed columns.
+  const mirror=async(project:string,reference:string,amount:number,currency="MXN")=>db.operationalPayment.create({data:{proyectoId:project,installationId:tag,aggregateId:randomUUID(),occurredAt:new Date(now),eventId:randomUUID(),payload:{id:randomUUID(),provider_reference:reference,amount,status:"succeeded",currency,paid_at:new Date(from+1000).toISOString()},
+    paidAt:new Date(from+1000),amount,currency,status:"succeeded",paymentType:"ticket",providerReference:reference,method:reference.startsWith("pos_session_")?"efectivo":reference.startsWith("pi_")?"tarjeta":"sin_identificar"}});
   await mirror(a,tag+"stripe",100); await mirror(a,"pos_session_"+tag,50);
   await mirror(a,tag+"refund",90); await mirror(a,tag+"usd",500,"USD"); await mirror(b,tag+"foreign",777);
-  await db.operationalTicket.create({data:{proyectoId:a,installationId:tag,aggregateId:randomUUID(),occurredAt:new Date(now),eventId:randomUUID(),payload:{hora_inicio:new Date(from-3_600_000).toISOString(),hora_salida:new Date(from+3_600_000).toISOString(),pagado:true,monto:"150.00"}}});
-  await db.operationalTicket.create({data:{proyectoId:a,installationId:tag,aggregateId:randomUUID(),occurredAt:new Date(now),eventId:randomUUID(),payload:{hora_inicio:new Date(from+2*3_600_000).toISOString(),hora_salida:null,pagado:false,monto:"0"}}});
+  await db.operationalTicket.create({data:{proyectoId:a,installationId:tag,aggregateId:randomUUID(),occurredAt:new Date(now),eventId:randomUUID(),payload:{hora_inicio:new Date(from-3_600_000).toISOString(),hora_salida:new Date(from+3_600_000).toISOString(),pagado:true,monto:"150.00"},
+    horaInicio:new Date(from-3_600_000),horaSalida:new Date(from+3_600_000),pagado:true,monto:"150.00"}});
+  await db.operationalTicket.create({data:{proyectoId:a,installationId:tag,aggregateId:randomUUID(),occurredAt:new Date(now),eventId:randomUUID(),payload:{hora_inicio:new Date(from+2*3_600_000).toISOString(),hora_salida:null,pagado:false,monto:"0"},
+    horaInicio:new Date(from+2*3_600_000),horaSalida:null,pagado:false,monto:"0"}});
   await db.localInstallation.create({data:{installationId:tag,proyectoId:a,status:"approved",lastCommandPollAt:new Date(now-1000)}});
   const module=await db.modulo.create({data:{proyectoId:a,nombre:tag,tipo:"ENTRADA",identificador:tag,deviceState:{create:{syncedAt:new Date(now),isConnected:true,isAuthorized:true,lastHeartbeatAt:new Date(now-1000)}}}});
   expect(module.id).toBeTruthy();

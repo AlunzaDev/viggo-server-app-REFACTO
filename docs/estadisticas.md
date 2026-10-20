@@ -105,10 +105,12 @@ La exportación CSV (#51) usa las mismas métricas y filtros y se envía por str
 
 ## 6. Cómo agregar una métrica
 
-1. Definirla en `domain/statistics/catalog` (id, descripción, fuente, unidad, dimensiones permitidas, si es de periodo o de estado actual).
-2. Escribir su consulta en `infrastructure/statistics/metrics/<id>.sql.ts` usando los helpers comunes de periodo, zona y alcance.
-3. Pruebas: unitaria de la definición, de integración con PostgreSQL real que concilie el resultado con una consulta de control independiente.
-4. Registrarla en el catálogo. Nada más cambia.
+1. Definirla en `src/domain/statistics/catalog.ts` (id, descripción, alcance de periodo o actual, unidad, agrupaciones permitidas y si se compara con el periodo anterior).
+2. Escribir su consulta en `src/infrastructure/statistics/metrics/*.metrics.ts` con los helpers de `statistics-sql.ts`: `scope` (sedes y rango en la zona de cada una), `groupKey`, `inRange` y `moneyOutput`/`countOutput`. Debe agregar en SQL y devolver filas `(clave, valor)`.
+3. Registrarla en `METRIC_QUERIES` (`metrics-reader.postgres.ts`); si falta, el servidor no arranca.
+4. Pruebas: de integración con PostgreSQL real que concilien el resultado con los datos sembrados.
+
+`GET /api/estadisticas/catalogo` devuelve el catálogo para que la web o una exportación sepan qué se puede pedir. Cada métrica se ejecuta en su propia transacción de solo lectura con `statement_timeout` de 15 s; si una falla, solo esa queda en `error` (sin detalles internos en la respuesta) y la respuesta marca `parcial: true`.
 
 ## 7. Objetivos de carga
 

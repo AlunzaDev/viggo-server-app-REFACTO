@@ -31,6 +31,12 @@ Un proveedor `standard` o `adapter` **nace inactivo**. `POST /api/payment-provid
 
 Cambiar la URL, la credencial, el encabezado, la integración o el mapeo borra `verifiedAt` y desactiva al proveedor hasta probarlo de nuevo: una conexión sin probar nunca cobra. Activar sin prueba responde `409 PROVIDER_NOT_VERIFIED`.
 
+## Estado de una confirmación
+
+Cuando una confirmación falla (tiempo de espera, `5xx` o un rechazo final), el worker pregunta al proveedor si ya la aplicó (`GET /v1/confirmations/{llave}` en el estándar, `confirmStatus` en el adaptador). Si la aplicó, la orden pasa a `confirmed` con el evento `confirmed_by_status_check`, sin reenviarla; si no, sigue el reintento o la revisión. Lo mismo antes de agotar los intentos.
+
+Para una orden en revisión, `POST /api/admin/external-payments/orders/:id/check-provider` (SUPER_ROLE) hace la consulta: responde `applied` (y confirma la orden, cerrando el incidente), `not_applied` o `unsupported`. Nunca reenvía la confirmación ni cobra.
+
 ## Adaptador configurable
 
 `apiMapping` (JSON) describe las dos llamadas. Las rutas son relativas a `baseUrl` y no pueden salir de ella (sin `/` inicial, `..` ni otro dominio). Las variables `{nombre}` se codifican en la ruta, así que un QR no puede alterarla; en el cuerpo, un texto que es solo una variable conserva su tipo (`"{amount}"` → `85.5`).
@@ -68,6 +74,7 @@ Cambiar la URL, la credencial, el encabezado, la integración o el mapeo borra `
 | `expiresFormat` | `iso`, `unixSeconds`, `unixMilliseconds`, `secondsLeft` (segundos restantes) o `fixedMinutes` con `expiresMinutes` (1 a 1440). |
 | Estado | `status` (ruta) con `statusValues` que traduce sus valores a `payable`, `paid` o `expired`; un valor no listado es respuesta inválida. Sin `status`, toda cotización es por pagar. |
 | `idempotencyHeader` | Encabezado de la llave de idempotencia (por defecto `Idempotency-Key`); distinto al de la credencial. |
+| `confirmStatus` (opcional) | Consulta de si una confirmación ya se aplicó: `method` (`GET`/`POST`), `path`, `body` con `{reference}` e `{idempotencyKey}`, y `response.confirmationReference`. Su "no existe" debe ser HTTP 404. |
 
 Los códigos HTTP se interpretan igual que en el estándar (404/410 inexistente o expirado, 409 rechazo final, 429/5xx no disponible) y el servicio aplica las mismas reglas de importe y moneda.
 

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { ExternalPaymentProvider, ExternalQuote } from "../../domain/external-payments/external-payment";
+import type { ConfirmationStatus, ExternalPaymentProvider, ExternalQuote } from "../../domain/external-payments/external-payment";
 import { CustomError } from "../../domain/errors/custom.error";
 
 type Confirmation = Parameters<ExternalPaymentProvider["confirmPayment"]>[0];
+const NOT_FOUND = Symbol("not found");
 
 /** A request to the provider; the path is relative to its base URL. Default method: POST. */
 export interface ProviderRequest {
@@ -21,7 +22,12 @@ export interface ProviderProtocol {
   readConfirmation(body: unknown): { confirmationReference: string };
   /** Header the confirmation's idempotency key goes in. Default: Idempotency-Key. */
   idempotencyHeader?: string;
+  /** Optional query of a confirmation by its key; a 404 answer means "not applied". */
+  confirmationStatusRequest?(input: StatusQuery): ProviderRequest;
+  readConfirmationStatus?(body: unknown): { confirmationReference: string };
 }
+
+type StatusQuery = { reference: string; idempotencyKey: string };
 
 export interface ProviderConnection {
   baseUrl: string;
@@ -70,6 +76,15 @@ export class HttpProviderClient implements ExternalPaymentProvider {
     return this.parse(config.protocol.readConfirmation.bind(config.protocol), await this.send(config.protocol.confirmationRequest(input), input.idempotencyKey));
   }
 
+  async confirmationStatus(input: StatusQuery): Promise<ConfirmationStatus> {
+    const { protocol } = this.config();
+    if (!protocol.confirmationStatusRequest || !protocol.readConfirmationStatus) return { state: "unsupported" };
+    const body = await this.send(protocol.confirmationStatusRequest(input), undefined, true);
+    if (body === NOT_FOUND) return { state: "not_applied" };
+    const read = protocol.readConfirmationStatus.bind(protocol);
+    return { state: "applied", ...this.parse(read, body) };
+  }
+
   private config() {
     if (!this.connection) throw new CustomError(503, this.notConfiguredMessage, "EXTERNAL_PROVIDER_NOT_CONFIGURED");
     return this.connection;
@@ -80,7 +95,7 @@ export class HttpProviderClient implements ExternalPaymentProvider {
     catch { throw new CustomError(502, "Respuesta invalida del proveedor", "INVALID_EXTERNAL_RESPONSE"); }
   }
 
-  private async send(request: ProviderRequest, idempotencyKey?: string): Promise<unknown> {
+  private async send(request: ProviderRequest, idempotencyKey?: string, notFoundIsAnswer = false): Promise<unknown> {
     const config = this.config();
     // A trailing slash keeps the base path: "https://x/viggo" + "v1/quotes" -> "https://x/viggo/v1/quotes".
     const base = new URL(config.baseUrl.endsWith("/") ? config.baseUrl : `${config.baseUrl}/`);
@@ -101,6 +116,7 @@ export class HttpProviderClient implements ExternalPaymentProvider {
         },
         ...(method === "GET" ? {} : { body: JSON.stringify(request.body ?? {}) }),
       });
+      if (notFoundIsAnswer && response.status === 404) return NOT_FOUND;
       if (response.status === 404 || response.status === 410) throw CustomError.conflict("Ticket externo inexistente o expirado");
       // Final answers (already paid, amount mismatch...): not retried, the order goes to review.
       if (response.status === 409) throw CustomError.conflict("El proveedor rechazo la operacion", undefined, "EXTERNAL_PROVIDER_CONFLICT");

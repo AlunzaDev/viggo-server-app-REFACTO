@@ -8,6 +8,7 @@
  */
 export const QUOTE_VARIABLES = ["qr", "parkingId"] as const;
 export const CONFIRM_VARIABLES = ["reference", "paymentReference", "amount", "amountMinor", "currency", "idempotencyKey"] as const;
+export const STATUS_VARIABLES = ["reference", "idempotencyKey"] as const;
 
 export const QUOTE_STATUSES = ["payable", "paid", "expired"] as const;
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
@@ -55,6 +56,16 @@ export interface ProviderApiMapping {
     body?: unknown;
     /** Header the idempotency key goes in (default Idempotency-Key). */
     idempotencyHeader?: string;
+    response: { confirmationReference: string };
+  };
+  /**
+   * Optional: whether a confirmation was already applied (after a lost answer). Its "not found"
+   * answer must be HTTP 404; any other answer is read as applied.
+   */
+  confirmStatus?: {
+    method: "GET" | "POST";
+    path: string;
+    body?: unknown;
     response: { confirmationReference: string };
   };
 }
@@ -166,6 +177,21 @@ export const validateProviderApiMapping = (mapping: unknown, authHeader = ""): s
   }
   if (!isRecord(confirm.response) || !isFieldPath(confirm.response.confirmationReference)) {
     return "'apiMapping.confirm.response.confirmationReference' debe ser la ruta de su comprobante";
+  }
+
+  const status = mapping.confirmStatus;
+  if (status === undefined || status === null) return null;
+  if (!isRecord(status)) return "'apiMapping.confirmStatus' debe describir la consulta de estado";
+  if (!["GET", "POST"].includes(status.method as string)) return "'apiMapping.confirmStatus.method' debe ser GET o POST";
+  const statusPath = checkPath(status.path, STATUS_VARIABLES);
+  if (statusPath) return `'apiMapping.confirmStatus.path' ${statusPath}`;
+  if (status.body !== undefined) {
+    if (status.method === "GET") return "'apiMapping.confirmStatus.body' no aplica a GET";
+    const error = checkBody(status.body, STATUS_VARIABLES);
+    if (error) return `'apiMapping.confirmStatus.body' ${error}`;
+  }
+  if (!isRecord(status.response) || !isFieldPath(status.response.confirmationReference)) {
+    return "'apiMapping.confirmStatus.response.confirmationReference' debe ser la ruta de su comprobante";
   }
   return null;
 };

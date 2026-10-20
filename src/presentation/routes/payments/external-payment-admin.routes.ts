@@ -48,5 +48,10 @@ export const externalPaymentAdminRoutes = (
     await service.retryConfirmation(orderId(req), (req as Request & { uid: string }).uid, req.body?.reason);
     return { orderId: String(req.params.id), queued: true };
   }, 202));
+  // Did the provider apply it after all? Confirms the order if so; never sends or charges.
+  router.post("/orders/:id/check-provider", handle(async req => {
+    const id = orderId(req);
+    return { orderId: id, ...await service.checkProvider(id, (req as Request & { uid: string }).uid) };
+  }));
   return router;
 };

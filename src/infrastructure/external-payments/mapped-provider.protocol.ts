@@ -62,6 +62,19 @@ const toMinor = (value: unknown, unit: ProviderApiMapping["quote"]["response"]["
   return Number(whole) * 100 + Number(cents.padEnd(2, "0"));
 };
 
+const statusQuery = (status: NonNullable<ProviderApiMapping["confirmStatus"]>): Pick<ProviderProtocol, "confirmationStatusRequest" | "readConfirmationStatus"> => ({
+  confirmationStatusRequest({ reference, idempotencyKey }) {
+    const variables = { reference, idempotencyKey };
+    return {
+      method: status.method,
+      path: fillPath(status.path, variables, () =>
+        new CustomError(502, "Referencia del proveedor no valida para su API", "EXTERNAL_PROVIDER_REJECTED")),
+      ...(status.method === "POST" ? { body: fillBody(status.body ?? {}, variables) } : {}),
+    };
+  },
+  readConfirmationStatus: (body) => ({ confirmationReference: text(read(body, status.response.confirmationReference)) }),
+});
+
 /**
  * Generic adapter: speaks a provider's own API from its mapping (configured in the catalog).
  * Amount and currency limits are still enforced by the payment service, as for the standard.
@@ -130,5 +143,7 @@ export const mappedProviderProtocol = (mapping: ProviderApiMapping, now: () => n
     },
 
     readConfirmation: (body) => ({ confirmationReference: text(read(body, confirm.response.confirmationReference)) }),
+
+    ...(mapping.confirmStatus ? statusQuery(mapping.confirmStatus) : {}),
   };
 };

@@ -183,6 +183,20 @@ Una confirmación puede llegar **más de una vez**: si tu respuesta se pierde, V
 - Acepta la confirmación aunque ya haya pasado el `expiresAt` de la cotización, **hasta 24 h después**, siempre que el ticket no se haya pagado por otro medio. El usuario pagó dentro de la vigencia; la confirmación puede retrasarse por reintentos.
 - Si el ticket ya se había pagado por otro medio, responde `409 TICKET_ALREADY_PAID`. Viggo manda ese cobro a revisión para reembolsarlo.
 
+## 4.1 `GET /v1/confirmations/{idempotencyKey}` — Estado de una confirmación (recomendado)
+
+Si la respuesta de una confirmación se pierde (tiempo de espera, `5xx`), Viggo pregunta si la aplicaste antes de reintentar o de mandar el cobro a revisión. Con esto un pago que sí aplicaste no termina reembolsado por error.
+
+```http
+GET /v1/confirmations/external-confirm%3A0199f3a2-7c1e-7b55-9d1a-3f2b8c4e5a61
+Authorization: Bearer <credencial>
+```
+
+- **`200`** con la misma respuesta que diste al confirmar: `{ "confirmationReference": "CONF-88123" }`.
+- **`404 CONFIRMATION_NOT_FOUND`** si no aplicaste ninguna confirmación con esa llave.
+
+La llave va codificada en la ruta (`:` es `%3A`). Es opcional: sin ella Viggo solo reintenta con la misma llave, y una confirmación que no logre entregar queda en revisión manual.
+
 ## 5. Ejemplo completo
 
 ```bash
@@ -196,6 +210,10 @@ curl -s https://api.proveedor.com/viggo/v1/confirmations \
   -H "Authorization: Bearer $CREDENCIAL" -H "Content-Type: application/json" \
   -H "Idempotency-Key: external-confirm:prueba-1" \
   -d '{"reference":"TCK-2026-000123","paymentReference":"pi_prueba","amountMinor":12550,"currency":"MXN"}'
+
+# ¿Se aplicó esa confirmación?
+curl -s https://api.proveedor.com/viggo/v1/confirmations/external-confirm%3Aprueba-1 \
+  -H "Authorization: Bearer $CREDENCIAL"
 ```
 
 ## 6. Servidor de referencia
@@ -218,6 +236,7 @@ npm run provider:reference          # http://127.0.0.1:4010, credencial "referen
 - [ ] HTTPS con certificado válido y credencial para Viggo.
 - [ ] `POST /v1/quotes` sin efectos, con monto en centavos y vigencia.
 - [ ] `POST /v1/confirmations` idempotente por `Idempotency-Key` (7 días).
+- [ ] (Recomendado) `GET /v1/confirmations/{idempotencyKey}`: `200` con la confirmación aplicada o `404`.
 - [ ] Validación de monto contra lo cotizado y tolerancia de 24 h tras la vigencia.
 - [ ] Errores con el formato y los códigos de la sección 2.2.
 - [ ] Respuestas en menos de 8 s.

@@ -19,7 +19,17 @@ export interface ExternalPaymentProvider {
     reference: string; paymentReference: string; amountMinor: number;
     currency: string; idempotencyKey: string;
   }): Promise<{ confirmationReference: string }>;
+  /**
+   * Whether the provider already applied the confirmation sent with this key (e.g. it applied
+   * it but its answer was lost). Providers without the query answer "unsupported".
+   */
+  confirmationStatus?(input: { reference: string; idempotencyKey: string }): Promise<ConfirmationStatus>;
 }
+
+export type ConfirmationStatus =
+  | { state: "applied"; confirmationReference: string }
+  | { state: "not_applied" }
+  | { state: "unsupported" };
 
 export type ExternalOrderStatus = "quoted" | "payment_pending" | "paid" | "confirmed" | "confirmation_failed" | "expired" | "refunded";
 export interface ExternalOrder {
@@ -83,6 +93,11 @@ export abstract class ExternalOrderRepository {
   abstract confirmed(id: string, lease: string, reference: string, now: number): Promise<void>;
   abstract confirmationFailed(id: string, lease: string, now: number, maxAttempts: number): Promise<void>;
   abstract flagReview(id: string, reason: string, now: number): Promise<void>;
+  /**
+   * The provider says it already applied the confirmation of an order the worker holds (lease)
+   * or of one in review (no lease, actor given). Same effects as `confirmed`.
+   */
+  abstract confirmedByStatusCheck(id: string, reference: string, now: number, by: { lease: string } | { actorId: string }): Promise<boolean>;
 }
 
 /** The integration that charges in a parking, and the parking's id in the provider's system. */

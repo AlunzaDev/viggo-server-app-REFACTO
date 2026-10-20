@@ -43,4 +43,8 @@ export const standardProviderProtocol: ProviderProtocol = {
   }),
 
   readConfirmation: (body) => ({ confirmationReference: text(record(body).confirmationReference) }),
+
+  confirmationStatusRequest: ({ idempotencyKey }) => ({ method: "GET", path: `v1/confirmations/${encodeURIComponent(idempotencyKey)}` }),
+
+  readConfirmationStatus: (body) => ({ confirmationReference: text(record(body).confirmationReference) }),
 };

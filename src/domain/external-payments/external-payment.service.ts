@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { CustomError } from "../errors/custom.error";
-import { ExternalOrderRepository, ExternalProviderDirectory, type ExternalIntent, type ExternalOrder, type ExternalPaymentGateway, type ExternalQuote } from "./external-payment";
+import { ExternalOrderRepository, ExternalProviderDirectory, type ConfirmationStatus, type ExternalIntent, type ExternalOrder, type ExternalPaymentGateway, type ExternalQuote } from "./external-payment";
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 /**
@@ -72,6 +72,23 @@ export class ExternalPaymentService {
     await this.orders.retryConfirmation(id, actorId, reason.trim(), intent, this.now());
   }
 
+  /**
+   * Asks the provider whether it applied the confirmation of an order in review (its answer may
+   * have been lost). If it did, the order is confirmed; nothing is sent or charged again.
+   */
+  async checkProvider(id: string, actorId: string): Promise<ConfirmationStatus> {
+    const order = await this.orders.find(id);
+    if (!order) throw CustomError.notFound("Orden externa no encontrada");
+    if (order.status !== "confirmation_failed" || !order.stripePaymentIntentId) {
+      throw CustomError.conflict("Solo se consulta una orden en revision con cobro");
+    }
+    const status = await this.confirmationStatus(order, { includeInactive: true });
+    if (status.state === "applied" && !await this.orders.confirmedByStatusCheck(id, status.confirmationReference, this.now(), { actorId })) {
+      throw CustomError.conflict("La orden cambio mientras se consultaba; vuelve a cargarla");
+    }
+    return status;
+  }
+
   async createPaymentIntent(userId: string, id: string) {
     let order = await this.owned(userId, id);
     if (!["quoted", "payment_pending"].includes(order.status) || order.expiresAt <= this.now()) {
@@ -119,7 +136,7 @@ export class ExternalPaymentService {
         const claimed = await this.orders.claimConfirmation(order.id, lease, this.now());
         if (!claimed) continue;
         if (claimed.attempts > 8) {
-          await this.orders.confirmationFailed(claimed.id, lease, this.now(), 8);
+          if (!await this.appliedByProvider(claimed, lease)) await this.orders.confirmationFailed(claimed.id, lease, this.now(), 8);
           continue;
         }
         try {
@@ -132,6 +149,9 @@ export class ExternalPaymentService {
           if (!result || !validText(result.confirmationReference)) throw new Error("Invalid confirmation");
           await this.orders.confirmed(claimed.id, lease, result.confirmationReference, this.now());
         } catch (error) {
+          // An ambiguous failure (timeout, 5xx) may hide a confirmation the provider did apply:
+          // ask before retrying or sending the order to review.
+          if (await this.appliedByProvider(claimed, lease)) continue;
           // A final answer exhausts the attempts now; anything else is retried with backoff.
           const maxAttempts = isFinalConfirmationError(error) ? claimed.attempts : 8;
           await this.orders.confirmationFailed(claimed.id, lease, this.now(), maxAttempts);
@@ -141,6 +161,25 @@ export class ExternalPaymentService {
         const code = error instanceof CustomError ? error.code : "EXTERNAL_RECONCILIATION_ERROR";
         await this.orders.flagReview(candidate.id, code, this.now());
       }
+    }
+  }
+
+  private async confirmationStatus(order: ExternalOrder, options: { includeInactive?: boolean } = {}): Promise<ConfirmationStatus> {
+    const provider = await this.directory.forProvider(order.provider, options);
+    if (!provider.confirmationStatus) return { state: "unsupported" };
+    const status = await provider.confirmationStatus({ reference: order.reference, idempotencyKey: `external-confirm:${order.id}` });
+    if (status.state === "applied" && !validText(status.confirmationReference)) throw new CustomError(502, "Respuesta invalida del proveedor", "INVALID_EXTERNAL_RESPONSE");
+    return status;
+  }
+
+  /** True when the provider already applied it and the order was confirmed with the worker's lease. */
+  private async appliedByProvider(order: ExternalOrder, lease: string) {
+    try {
+      const status = await this.confirmationStatus(order);
+      return status.state === "applied" && await this.orders.confirmedByStatusCheck(order.id, status.confirmationReference, this.now(), { lease });
+    } catch {
+      // The query is best effort: without an answer the normal retry/review path applies.
+      return false;
     }
   }
 

@@ -189,17 +189,33 @@ export class ExternalOrderPostgresRepository extends ExternalOrderRepository {
   async confirmed(id: string, lease: string, reference: string, now: number) {
     await this.locked(id, async (tx, row) => {
       if (row.status !== "paid" || row.leaseOwner !== lease) return;
-      await tx.externalPaymentOrder.update({ where: { id }, data: {
-        status: "confirmed", confirmationReference: reference, leaseOwner: "", leaseUntil: null,
-        lastError: "", events: event("confirmed", reference),
-      } });
-      await tx.payment.updateMany({ where: { stripePaymentIntentId: row.stripePaymentIntentId! }, data: {
-        reconciliationStatus: "reconciled", reconciledAt: new Date(now), appliedAt: new Date(now),
-        appliedOperationKey: `external-confirm:${id}`, reconciliationError: "",
-      } });
-      await tx.operationalIncident.updateMany({ where: { incidentKey: `external-payment:${id}` },
-        data: { status: "resolved", resolvedAt: new Date(now), lastSeenAt: new Date(now) } });
+      await this.applyConfirmed(tx, row, reference, now, event("confirmed", reference));
     });
+  }
+
+  async confirmedByStatusCheck(id: string, reference: string, now: number, by: { lease: string } | { actorId: string }) {
+    return this.locked(id, async (tx, row) => {
+      const allowed = "lease" in by
+        ? row.status === "paid" && row.leaseOwner === by.lease
+        : row.status === "confirmation_failed" && !(row.leaseUntil && row.leaseUntil.getTime() > now);
+      if (!allowed) return false;
+      const detail = JSON.stringify({ confirmationReference: reference, ...("actorId" in by ? { actorId: by.actorId } : {}) });
+      await this.applyConfirmed(tx, row, reference, now, event("confirmed_by_status_check", detail));
+      return true;
+    });
+  }
+
+  private async applyConfirmed(tx: Prisma.TransactionClient, row: Row, reference: string, now: number, events: ReturnType<typeof event>) {
+    const id = row.id;
+    await tx.externalPaymentOrder.update({ where: { id }, data: {
+      status: "confirmed", confirmationReference: reference, leaseOwner: "", leaseUntil: null, lastError: "", events,
+    } });
+    await tx.payment.updateMany({ where: { stripePaymentIntentId: row.stripePaymentIntentId! }, data: {
+      reconciliationStatus: "reconciled", reconciledAt: new Date(now), appliedAt: new Date(now),
+      appliedOperationKey: `external-confirm:${id}`, reconciliationError: "",
+    } });
+    await tx.operationalIncident.updateMany({ where: { incidentKey: `external-payment:${id}` },
+      data: { status: "resolved", resolvedAt: new Date(now), lastSeenAt: new Date(now) } });
   }
 
   async confirmationFailed(id: string, lease: string, now: number, maxAttempts: number) {

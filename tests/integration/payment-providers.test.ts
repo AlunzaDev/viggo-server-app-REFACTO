@@ -248,6 +248,11 @@ const MAPPING = {
     idempotencyHeader: "X-Clave-Unica",
     response: { confirmationReference: "resultado.comprobante" },
   },
+  confirmStatus: {
+    method: "GET",
+    path: "pagos/{idempotencyKey}",
+    response: { confirmationReference: "resultado.comprobante" },
+  },
 };
 
 describe("external payments through a configurable adapter", () => {
@@ -267,9 +272,15 @@ describe("external payments through a configurable adapter", () => {
       res.json({ data: { folio, boleto: { numero: 456 }, plaza: "Plaza Sur", importe: "85.50", moneda: "mxn",
         vence: Math.floor(Date.now() / 1000) + 600, estatus: paid.has(folio) ? "PAGADO" : "PENDIENTE" } });
     });
+    const byKey = new Map<string, string>();
     app.put("/api/boletos/:folio/pago", (req, res) => {
       paid.add(req.params.folio);
+      byKey.set(String(req.header("x-clave-unica")), `C-${req.params.folio}`);
       res.json({ resultado: { comprobante: `C-${req.params.folio}` } });
+    });
+    app.get("/api/pagos/:key", (req, res) => {
+      const reference = byKey.get(req.params.key);
+      return reference ? res.json({ resultado: { comprobante: reference } }) : res.sendStatus(404);
     });
     server = app.listen(0, "127.0.0.1");
     await new Promise((resolve) => server.once("listening", resolve));
@@ -293,6 +304,7 @@ describe("external payments through a configurable adapter", () => {
     await expect(adapter({ apiMapping: quote({ response: { ...MAPPING.quote.response, amount: "data.__proto__" } }) })).rejects.toThrow("amount");
     await expect(adapter({ apiMapping: quote({ response: { ...MAPPING.quote.response, statusValues: { PAGADO: "paid" } } }) })).rejects.toThrow("payable");
     await expect(adapter({ apiMapping: { ...MAPPING, confirm: { ...MAPPING.confirm, idempotencyHeader: "X-API-Key" } } })).rejects.toThrow("idempotencyHeader");
+    await expect(adapter({ apiMapping: { ...MAPPING, confirmStatus: { ...MAPPING.confirmStatus, path: "pagos/{amount}" } } })).rejects.toThrow("confirmStatus.path");
 
     const created = await adapter();
     expect(created).toMatchObject({ integration: "adapter", adapter: "", apiMapping: MAPPING });
@@ -343,5 +355,79 @@ describe("external payments through a configurable adapter", () => {
     await db().paymentProvider.update({ where: { id: legacy.id }, data: { apiMapping: Prisma.DbNull } });
     const legacyParking = await project(legacy.id, "sur-01");
     await expect(service.resolve(userId, legacyParking, "QR-1")).rejects.toMatchObject({ statusCode: 503, code: "EXTERNAL_PROVIDER_NOT_CONFIGURED" });
+  });
+});
+
+describe("confirmation status: an answer the provider applied but Viggo lost", () => {
+  /** A standard provider whose confirmations can lose their answer and that answers the status query. */
+  const flakyProvider = async () => {
+    const state = { loseAnswer: false, rejectConfirmations: false, applied: new Map<string, string>(), statusCalls: 0 };
+    const app = express();
+    app.use(express.json());
+    app.post("/v1/quotes", (_req, res) => res.json({ reference: `REF-${randomUUID()}`, ticket: "900", parking: { id: "p", name: "Flaky" },
+      amountMinor: 5000, currency: "MXN", expiresAt: new Date(Date.now() + 600_000).toISOString(), status: "payable" }));
+    app.post("/v1/confirmations", (req, res) => {
+      if (state.rejectConfirmations) return res.sendStatus(409);
+      const key = String(req.header("Idempotency-Key"));
+      state.applied.set(key, `APLICADA-${state.applied.size + 1}`);
+      // Applied, but the answer never arrives.
+      return state.loseAnswer ? res.sendStatus(503) : res.json({ confirmationReference: state.applied.get(key) });
+    });
+    app.get("/v1/confirmations/:key", (req, res) => {
+      state.statusCalls++;
+      const reference = state.applied.get(req.params.key);
+      return reference ? res.json({ confirmationReference: reference }) : res.sendStatus(404);
+    });
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise((resolve) => server.once("listening", resolve));
+    return { state, server, baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+  };
+
+  const paidOrder = async (baseUrl: string) => {
+    const parking = await project((await provider({ baseUrl })).id, "p");
+    const order = await service.resolve(userId, parking, `QR-${randomUUID()}`);
+    await service.createPaymentIntent(userId, order.id);
+    await service.acceptSucceeded(stripe.succeed(order.id));
+    return order;
+  };
+
+  it("confirms from the status query instead of retrying blindly", async () => {
+    const fake = await flakyProvider();
+    try {
+      fake.state.loseAnswer = true;
+      const order = await paidOrder(fake.baseUrl);
+      await service.runOnce();
+      const row = await db().externalPaymentOrder.findUniqueOrThrow({ where: { id: order.id }, include: { events: true } });
+      expect(row).toMatchObject({ status: "confirmed", confirmationReference: "APLICADA-1", attempts: 1 });
+      expect(row.events.map((item) => item.kind)).toContain("confirmed_by_status_check");
+      expect(fake.state.applied.size).toBe(1);
+    } finally {
+      await new Promise((resolve) => fake.server.close(resolve));
+    }
+  });
+
+  it("lets an administrator check an order in review with the provider", async () => {
+    const fake = await flakyProvider();
+    try {
+      // A final answer and nothing applied: review.
+      fake.state.rejectConfirmations = true;
+      const order = await paidOrder(fake.baseUrl);
+      await service.runOnce();
+      expect(await db().externalPaymentOrder.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ status: "confirmation_failed", attempts: 1 });
+      expect(fake.state.statusCalls).toBe(1);
+
+      expect(await service.checkProvider(order.id, userId)).toEqual({ state: "not_applied" });
+      expect((await db().externalPaymentOrder.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("confirmation_failed");
+
+      // The provider applied it on its side (e.g. its operator did): the order is confirmed, nothing resent.
+      fake.state.applied.set(`external-confirm:${order.id}`, "APLICADA-EN-CASETA");
+      expect(await service.checkProvider(order.id, userId)).toEqual({ state: "applied", confirmationReference: "APLICADA-EN-CASETA" });
+      const row = await db().externalPaymentOrder.findUniqueOrThrow({ where: { id: order.id } });
+      expect(row).toMatchObject({ status: "confirmed", confirmationReference: "APLICADA-EN-CASETA" });
+      expect(await db().operationalIncident.count({ where: { incidentKey: `external-payment:${order.id}`, status: "open" } })).toBe(0);
+      await expect(service.checkProvider(order.id, userId)).rejects.toMatchObject({ statusCode: 409 });
+    } finally {
+      await new Promise((resolve) => fake.server.close(resolve));
+    }
   });
 });

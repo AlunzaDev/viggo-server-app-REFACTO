@@ -73,3 +73,29 @@ describe("API de proveedores Viggo v1: servidor de referencia", () => {
     expect(again).toMatchObject({ status: 409, body: { error: { code: "TICKET_ALREADY_PAID" } } });
   });
 });
+
+describe("API de proveedores Viggo v1: estado de una confirmación", () => {
+  it("answers 404 until the key was applied, then the same confirmation", async () => {
+    const status = async (key: string) => {
+      const response = await fetch(`${base}/v1/confirmations/${encodeURIComponent(key)}`, { headers: { Authorization: "Bearer referencia-viggo" } });
+      return { status: response.status, body: (await response.json()) as Record<string, any> };
+    };
+    const key = "external-confirm:estado";
+    expect(await status(key)).toMatchObject({ status: 404, body: { error: { code: "CONFIRMATION_NOT_FOUND" } } });
+
+    // Its own app: fresh tickets.
+    const fresh = createProviderReferenceApp().listen(0, "127.0.0.1");
+    await new Promise((resolve) => fresh.once("listening", resolve));
+    const previousBase = base;
+    base = `http://127.0.0.1:${(fresh.address() as AddressInfo).port}`;
+    try {
+      await call("/v1/quotes", { qr: "PRV|000123|plaza-centro", parkingId: "plaza-centro" });
+      const applied = await confirm(key, { reference: "TCK-000123", amountMinor: 12550 });
+      expect(applied.status).toBe(200);
+      expect(await status(key)).toMatchObject({ status: 200, body: applied.body });
+    } finally {
+      base = previousBase;
+      await new Promise((resolve) => fresh.close(resolve));
+    }
+  });
+});

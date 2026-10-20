@@ -91,6 +91,13 @@ export const createProviderReferenceApp = () => {
     return res.json(response);
   });
 
+  // Was the confirmation sent with this key applied? Lets Viggo recover an answer it lost.
+  app.get("/v1/confirmations/:key", (req, res) => {
+    const previous = confirmations.get(String(req.params.key));
+    if (!previous) return fail(res, 404, "CONFIRMATION_NOT_FOUND", "No hay una confirmacion con esa llave");
+    return res.json(previous.response);
+  });
+
   app.use((_req, res) => fail(res, 404, "INVALID_REQUEST", "Ruta no definida en la API de proveedores v1"));
   return app;
 };

@@ -19,8 +19,7 @@ export const buildModuloController = (): ModuloController => {
 };
 
 export const buildProyectoController = (): ProyectoController => {
-  const service = new ProyectoService(buildProyectoRepository());
-  return new ProyectoController(service, new ParkingRateCopyPostgresDatasource());
+  return new ProyectoController(new ProyectoService(buildProyectoRepository(), new ParkingRateCopyPostgresDatasource()));
 };
 
 export const buildPaymentProviderController = () =>

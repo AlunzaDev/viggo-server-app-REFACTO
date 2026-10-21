@@ -1,15 +1,11 @@
 import { Request, Response } from "express";
-import type { ParkingRateCopyDatasource } from "../../../domain/datasources/parking/parking-rate-copy.datasource";
 import { CreateProyectoDto } from "../../../domain/dtos/parking/create-proyecto.dto";
+import { ProyectoListQueryDto } from "../../../domain/dtos/parking/proyecto-list-query.dto";
 import { UpdateProyectoDto } from "../../../domain/dtos/parking/update-proyecto.dto";
 import { ErrorService } from "../../services/error.service";
 import { deleteManagedProjectImage } from "../../../config/plugins/project-image.plugin";
-import {
-  canAccessProjectFromRequest,
-  getAllowedProjectIdsFromRequest,
-  isSuperAdminRequest,
-} from "../../middlewares";
-import { ProyectoService } from "../../services/parking/proyecto.service";
+import { projectAccessFromRequest } from "../../middlewares";
+import type { ProyectoService } from "../../services/parking/proyecto.service";
 import { toMobileParkingArea } from "../../services/parking/mobile-parking-area.presenter";
 import {
   buildPaginatedResponse,
@@ -26,25 +22,6 @@ const parseBooleanField = (value: unknown): boolean | undefined => {
   if (["false", "0", "no", "off"].includes(normalized)) return false;
 
   return undefined;
-};
-
-const normalizeText = (value: string) =>
-  value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-
-const parseBooleanQuery = (value: unknown): boolean | undefined | null => {
-  if (value === undefined) return undefined;
-  if (typeof value === "boolean") return value;
-  if (typeof value !== "string") return null;
-
-  const normalized = value.trim().toLowerCase();
-  if (["true", "1", "yes", "on"].includes(normalized)) return true;
-  if (["false", "0", "no", "off"].includes(normalized)) return false;
-
-  return null;
 };
 
 const parseCoordinatesField = (value: unknown): unknown => {
@@ -90,20 +67,13 @@ const normalizeProyectoRequestBody = (body: Record<string, unknown>) => {
   return normalizedBody;
 };
 
+/** HTTP for the parkings: reads the (multipart) form; the rules and the user's scope live in ProyectoService. */
 export class ProyectoController {
-  constructor(
-    private readonly proyectoService: ProyectoService,
-    private readonly parkingRates?: ParkingRateCopyDatasource,
-  ) {}
+  constructor(private readonly proyectos: ProyectoService) {}
 
-  /** The rate the project's OPERATIVO charges with (read-only copy) and its earlier versions. */
   getParkingRate = async (req: Request, res: Response) => {
     try {
-      const id = String(req.params.id);
-      if (!canAccessProjectFromRequest(req, id)) return res.status(403).json({ error: "Forbidden" });
-      await this.proyectoService.getProyectoById(id);
-      const historial = this.parkingRates ? await this.parkingRates.listRates(id, 20) : [];
-      return res.status(200).json({ tarifa: historial[0] ?? null, historial });
+      return res.status(200).json(await this.proyectos.getParkingRate(String(req.params.id), projectAccessFromRequest(req)));
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -112,80 +82,26 @@ export class ProyectoController {
   createProyecto = async (req: Request, res: Response) => {
     try {
       const body = normalizeProyectoRequestBody(req.body as Record<string, unknown>);
-      if (req.file?.filename) {
-        body.img = `/uploads/projects/${req.file.filename}`;
-      }
-
-      const [error, createProyectoDto] = CreateProyectoDto.create(body);
-      if (error) return res.status(400).json({ error });
-
-      const result = await this.proyectoService.createProyecto(createProyectoDto!);
-      return res.status(201).json(result);
+      if (req.file?.filename) body.img = `/uploads/projects/${req.file.filename}`;
+      const [error, dto] = CreateProyectoDto.create(body);
+      if (error || !dto) return res.status(400).json({ error });
+      return res.status(201).json(await this.proyectos.createProyecto(dto));
     } catch (error) {
-      if (req.file?.filename) {
-        deleteManagedProjectImage(`/uploads/projects/${req.file.filename}`);
-      }
+      // The uploaded image is not kept when the parking was not created.
+      if (req.file?.filename) deleteManagedProjectImage(`/uploads/projects/${req.file.filename}`);
       return ErrorService.handleApiError(error, res);
     }
   };
 
+  /** Without `page`/`limit` the whole list; with them, a page. */
   getProyectos = async (req: Request, res: Response) => {
     try {
-      const estado = parseBooleanQuery(req.query.estado);
-      if (estado === null) {
-        return res.status(400).json({ error: "'estado' debe ser boolean" });
-      }
-
-      const ciudad =
-        typeof req.query.ciudad === "string" ? req.query.ciudad.trim() : "";
-      const search =
-        typeof req.query.search === "string" ? req.query.search.trim() : "";
-      const shouldPaginate =
-        req.query.page !== undefined || req.query.limit !== undefined;
+      const [error, query] = ProyectoListQueryDto.create(req.query as Record<string, unknown>);
+      if (error || !query) return res.status(400).json({ error });
       const { page, limit } = parsePaginationDateQuery(req.query);
-      const proyectos = await this.proyectoService.getProyectos();
-      const allowedProjectIds = getAllowedProjectIdsFromRequest(req);
-      let filteredProjects = isSuperAdminRequest(req)
-        ? proyectos
-        : proyectos.filter((proyecto) => allowedProjectIds.includes(proyecto.id));
-
-      if (estado !== undefined) {
-        filteredProjects = filteredProjects.filter((proyecto) => proyecto.estado === estado);
-      }
-
-      if (ciudad) {
-        const normalizedCity = normalizeText(ciudad);
-        filteredProjects = filteredProjects.filter(
-          (proyecto) => normalizeText(proyecto.ciudad).includes(normalizedCity),
-        );
-      }
-
-      if (search) {
-        const normalizedSearch = normalizeText(search);
-        filteredProjects = filteredProjects.filter((proyecto) =>
-          [
-            proyecto.nombre,
-            proyecto.identificador,
-            proyecto.ciudad,
-            proyecto.direccion ?? "",
-            proyecto.descripcion ?? "",
-          ].some((value) => normalizeText(String(value ?? "")).includes(normalizedSearch)),
-        );
-      }
-
-      if (!shouldPaginate) {
-        return res.status(200).json({ proyectos: filteredProjects });
-      }
-
-      return res.status(200).json(
-        buildPaginatedResponse(
-          "proyectos",
-          paginateArray(filteredProjects, page, limit),
-          filteredProjects.length,
-          page,
-          limit,
-        ),
-      );
+      const proyectos = await this.proyectos.listProyectos(query, projectAccessFromRequest(req));
+      if (req.query.page === undefined && req.query.limit === undefined) return res.status(200).json({ proyectos });
+      return res.status(200).json(buildPaginatedResponse("proyectos", paginateArray(proyectos, page, limit), proyectos.length, page, limit));
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -194,9 +110,7 @@ export class ProyectoController {
   /** Catálogo mínimo para geodetección; no expone red, instalación ni soporte remoto. */
   getMobileParkingAreas = async (_req: Request, res: Response) => {
     try {
-      const proyectos = (await this.proyectoService.getProyectos())
-        .filter((proyecto) => proyecto.estado)
-        .map(toMobileParkingArea);
+      const proyectos = (await this.proyectos.getProyectos()).filter((proyecto) => proyecto.estado).map(toMobileParkingArea);
       return res.status(200).json({ proyectos, total: proyectos.length });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
@@ -205,12 +119,7 @@ export class ProyectoController {
 
   getProyectoById = async (req: Request, res: Response) => {
     try {
-      const id = String(req.params.id);
-      if (!canAccessProjectFromRequest(req, id)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-      const proyecto = await this.proyectoService.getProyectoById(id);
-      return res.status(200).json({ proyecto });
+      return res.status(200).json({ proyecto: await this.proyectos.getProyectoById(String(req.params.id), projectAccessFromRequest(req)) });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -218,13 +127,7 @@ export class ProyectoController {
 
   getInstallationLinkToken = async (req: Request, res: Response) => {
     try {
-      const id = String(req.params.id);
-      if (!canAccessProjectFromRequest(req, id)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-
-      const result = await this.proyectoService.getInstallationLinkToken(id);
-      return res.status(200).json(result);
+      return res.status(200).json(await this.proyectos.getInstallationLinkToken(String(req.params.id), projectAccessFromRequest(req)));
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -232,13 +135,7 @@ export class ProyectoController {
 
   regenerateInstallationLinkToken = async (req: Request, res: Response) => {
     try {
-      const id = String(req.params.id);
-      if (!canAccessProjectFromRequest(req, id)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-
-      const result = await this.proyectoService.regenerateInstallationLinkToken(id);
-      return res.status(200).json(result);
+      return res.status(200).json(await this.proyectos.regenerateInstallationLinkToken(String(req.params.id), projectAccessFromRequest(req)));
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -246,50 +143,23 @@ export class ProyectoController {
 
   updateProyecto = async (req: Request, res: Response) => {
     try {
-      const id = String(req.params.id);
-      if (!canAccessProjectFromRequest(req, id)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-
       const body = normalizeProyectoRequestBody(req.body as Record<string, unknown>);
-      const clearImage = parseBooleanField(body.clearImage) === true;
-
-      if (req.file?.filename) {
-        body.img = `/uploads/projects/${req.file.filename}`;
-      } else if (clearImage) {
-        body.img = "";
-      }
-
-      const [error, updateProyectoDto] = UpdateProyectoDto.create(body);
-      if (error) return res.status(400).json({ error });
-
-      const proyecto = await this.proyectoService.updateProyecto(id, updateProyectoDto!);
-      return res.status(200).json({ proyecto });
+      if (req.file?.filename) body.img = `/uploads/projects/${req.file.filename}`;
+      else if (parseBooleanField(body.clearImage) === true) body.img = "";
+      const [error, dto] = UpdateProyectoDto.create(body);
+      if (error || !dto) return res.status(400).json({ error });
+      return res.status(200).json({ proyecto: await this.proyectos.updateProyecto(String(req.params.id), dto, projectAccessFromRequest(req)) });
     } catch (error) {
-      if (req.file?.filename) {
-        deleteManagedProjectImage(`/uploads/projects/${req.file.filename}`);
-      }
+      if (req.file?.filename) deleteManagedProjectImage(`/uploads/projects/${req.file.filename}`);
       return ErrorService.handleApiError(error, res);
     }
   };
 
   updateProyectoStatus = async (req: Request, res: Response) => {
     try {
-      const id = String(req.params.id);
-      if (!canAccessProjectFromRequest(req, id)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
       const { estado } = req.body as { estado?: unknown };
-
-      if (typeof estado !== "boolean") {
-        return res.status(400).json({ error: "'estado' debe ser boolean" });
-      }
-
-      const proyecto = await this.proyectoService.updateProyectoStatus(
-        id,
-        estado,
-      );
-      return res.status(200).json({ proyecto });
+      if (typeof estado !== "boolean") return res.status(400).json({ error: "'estado' debe ser boolean" });
+      return res.status(200).json({ proyecto: await this.proyectos.updateProyectoStatus(String(req.params.id), estado, projectAccessFromRequest(req)) });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }
@@ -297,12 +167,7 @@ export class ProyectoController {
 
   deleteProyecto = async (req: Request, res: Response) => {
     try {
-      const id = String(req.params.id);
-      if (!canAccessProjectFromRequest(req, id)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-      const proyecto = await this.proyectoService.deleteProyecto(id);
-      return res.status(200).json({ proyecto });
+      return res.status(200).json({ proyecto: await this.proyectos.deleteProyecto(String(req.params.id), projectAccessFromRequest(req)) });
     } catch (error) {
       return ErrorService.handleApiError(error, res);
     }

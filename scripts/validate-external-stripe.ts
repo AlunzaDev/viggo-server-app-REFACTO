@@ -22,7 +22,7 @@ async function main() {
   const { StripePlugin } = await import("../src/config/plugins/stripe.plugin.js");
   const { StripeExternalGateway, externalIntent } = await import("../src/infrastructure/external-payments/stripe-external.gateway.js");
   const { ExternalOrderPostgresRepository } = await import("../src/infrastructure/repositories/payments/external-order.repository.postgres.js");
-  const { ExternalPaymentService } = await import("../src/domain/external-payments/external-payment.service.js");
+  const { ExternalPaymentService } = await import("../src/presentation/services/payments/external-payment.service.js");
   const db = await PostgresDatabase.connect({ databaseUrl });
   const orders = new ExternalOrderPostgresRepository();
   const gateway = new StripeExternalGateway();

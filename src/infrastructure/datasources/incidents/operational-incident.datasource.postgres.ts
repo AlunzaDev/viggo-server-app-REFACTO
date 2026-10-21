@@ -83,7 +83,9 @@ export class OperationalIncidentPostgresDatasource extends OperationalIncidentDa
       (filters.type && !TYPES.includes(filters.type)) ||
       (filters.status && !STATUSES.includes(filters.status)) ||
       (filters.severity && !SEVERITIES.includes(filters.severity)) ||
-      (filters.projectId && !isUuid(filters.projectId));
+      (filters.projectId && !isUuid(filters.projectId)) ||
+      (filters.projectIds && !filters.projectIds.every(isUuid));
+    if (filters.projectIds && !filters.projectIds.length) return { total: 0, incidents: [] };
     if (invalid) return { total: 0, incidents: [] };
 
     const where: Prisma.OperationalIncidentWhereInput = {
@@ -91,6 +93,11 @@ export class OperationalIncidentPostgresDatasource extends OperationalIncidentDa
       ...(filters.severity ? { severity: filters.severity as "info" | "warning" | "critical" } : {}),
       ...(filters.type ? { type: filters.type as OperationalIncident["type"] } : {}),
       ...(filters.projectId ? { proyectoId: filters.projectId } : {}),
+      ...(filters.projectIds ? { proyectoId: { in: filters.projectIds } } : {}),
+      ...(filters.seenFrom !== undefined || filters.seenTo !== undefined ? { lastSeenAt: {
+        ...(filters.seenFrom !== undefined ? { gte: new Date(filters.seenFrom) } : {}),
+        ...(filters.seenTo !== undefined ? { lt: new Date(filters.seenTo) } : {}),
+      } } : {}),
       ...(filters.installationId ? { installationId: filters.installationId } : {}),
     };
     const [total, rows] = await Promise.all([

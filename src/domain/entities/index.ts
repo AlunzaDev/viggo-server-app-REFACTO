@@ -1,10 +1,3 @@
-export interface LogEntity {
-  level: "info" | "warn" | "error";
-  message: string;
-  createdAt: Date;
-  metadata?: Record<string, unknown>;
-}
-
 export * from "./auth/role.entity";
 export * from "./auth/permission-profile.entity";
 export * from "./auth/usuario.entity";

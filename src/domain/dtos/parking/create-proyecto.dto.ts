@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { parseCapacity } from "../../entities/parking/capacity";
 import { DEFAULT_TIME_ZONE, isValidTimeZone } from "../../entities/parking/time-zone";
 import { parseRemoteSupportProvider } from "../../entities/parking/remote-support.entity";
 
@@ -63,6 +64,7 @@ export class CreateProyectoDto {
         public readonly descripcion?: string,
         public readonly estado: boolean = true,
         public readonly zonaHoraria: string = DEFAULT_TIME_ZONE,
+        public readonly capacidad: number | null = null,
     ) {}
 
     static create(body: Record<string, unknown>): [string?, CreateProyectoDto?] {
@@ -107,6 +109,8 @@ export class CreateProyectoDto {
         if (!descripcion) return ["'descripcion' es requerido"];
         const zonaHoraria = typeof body.zonaHoraria === "string" && body.zonaHoraria.trim() ? body.zonaHoraria.trim() : DEFAULT_TIME_ZONE;
         if (!isValidTimeZone(zonaHoraria)) return ["'zonaHoraria' debe ser una zona horaria valida (por ejemplo America/Tijuana)"];
+        const [capacityError, capacidad] = parseCapacity(body.capacidad);
+        if (capacityError) return [capacityError];
 
         return [
             undefined,
@@ -127,6 +131,7 @@ export class CreateProyectoDto {
                 descripcion,
                 estado,
                 zonaHoraria,
+                capacidad ?? null,
             ),
         ];
     }

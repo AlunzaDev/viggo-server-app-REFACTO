@@ -1,5 +1,5 @@
 import { PostgresDatabase } from "../../../data/postgres";
-import { issueSyncToken, readAdminCallToken } from "../../../presentation/utils/installation-sync-token.util";
+import { issueSyncToken, readAdminCallToken } from "../../../config/plugins/installation-sync-token.plugin";
 import type { Prisma } from "../../../generated/prisma/client";
 import {
   InstallationsDatasource,

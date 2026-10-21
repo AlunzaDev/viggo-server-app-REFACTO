@@ -1,5 +1,5 @@
 import { OperationalInboxProcessor } from "./operational-inbox.processor";
-import { issueSyncToken } from "../../../presentation/utils/installation-sync-token.util";
+import { issueSyncToken } from "../../../config/plugins/installation-sync-token.plugin";
 import { randomBytes } from "node:crypto";
 import { PostgresDatabase } from "../../../data/postgres";
 import { Prisma } from "../../../generated/prisma/client";

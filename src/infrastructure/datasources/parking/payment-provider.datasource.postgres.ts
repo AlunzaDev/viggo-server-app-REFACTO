@@ -2,7 +2,7 @@ import { PostgresDatabase } from "../../../data/postgres";
 import { Prisma, type PaymentProvider as Row } from "../../../generated/prisma/client";
 import { PaymentProviderDatasource } from "../../../domain/datasources/parking/payment-provider.datasource";
 import { PaymentProviderEntity, type PaymentProviderInput } from "../../../domain/entities/parking/payment-provider.entity";
-import { encryptInstallationLinkToken } from "../../../presentation/utils/installation-link-token-crypto.util";
+import { encryptInstallationLinkToken } from "../../../config/plugins/installation-link-token-crypto.plugin";
 import { isUuid, translatePrismaError } from "../postgres/prisma-errors";
 
 const entity = (row: Row) =>

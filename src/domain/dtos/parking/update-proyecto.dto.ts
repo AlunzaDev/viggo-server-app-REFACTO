@@ -1,4 +1,5 @@
 import { parseRemoteSupportProvider } from "../../entities/parking/remote-support.entity";
+import { parseCapacity } from "../../entities/parking/capacity";
 import { DEFAULT_TIME_ZONE, isValidTimeZone } from "../../entities/parking/time-zone";
 
 export class UpdateProyectoDto {
@@ -63,6 +64,8 @@ export class UpdateProyectoDto {
         public readonly descripcion?: string,
         public readonly estado?: boolean,
         public readonly zonaHoraria?: string,
+        /** null clears it; undefined leaves it as it is. */
+        public readonly capacidad?: number | null,
     ) {}
 
     static create(body: Record<string, unknown>): [string?, UpdateProyectoDto?] {
@@ -70,6 +73,8 @@ export class UpdateProyectoDto {
         if (zonaHoraria !== undefined && !isValidTimeZone(zonaHoraria)) {
             return ["'zonaHoraria' debe ser una zona horaria valida (por ejemplo America/Tijuana)"];
         }
+        const [capacityError, capacidad] = parseCapacity(body.capacidad);
+        if (capacityError) return [capacityError];
         return [
             undefined,
             new UpdateProyectoDto(
@@ -101,6 +106,7 @@ export class UpdateProyectoDto {
                     : undefined,
                 typeof body.estado === "boolean" ? body.estado : undefined,
                 zonaHoraria,
+                capacidad,
             ),
         ];
     }

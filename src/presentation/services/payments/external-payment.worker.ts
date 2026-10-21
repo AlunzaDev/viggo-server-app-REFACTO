@@ -1,4 +1,4 @@
-import type { ExternalPaymentService } from "../../../domain/external-payments/external-payment.service";
+import type { ExternalPaymentService } from "./external-payment.service";
 
 export class ExternalPaymentWorker {
   private timer?: NodeJS.Timeout;

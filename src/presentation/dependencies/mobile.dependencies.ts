@@ -1,5 +1,6 @@
 import { MobileOperationAdminController } from "../routes/mobile/mobile-operation-admin.controller";
 import { MobileOperationController } from "../routes/mobile/mobile-operation.controller";
+import { MobileOperationService } from "../services/mobile/mobile-operation.service";
 import {
   buildInstallationsRepository,
   buildMobileOperationRepository,
@@ -10,8 +11,8 @@ import {
   buildUsuarioRepository,
 } from "./repositories.dependencies";
 
-export const buildMobileOperationController = (): MobileOperationController =>
-  new MobileOperationController(
+export const buildMobileOperationService = (): MobileOperationService =>
+  new MobileOperationService(
     buildMobileOperationRepository(),
     buildPaymentRepository(),
     buildModuloRepository(),
@@ -20,6 +21,9 @@ export const buildMobileOperationController = (): MobileOperationController =>
     buildPensionPassRepository(),
     buildPensionRepository(),
   );
+
+export const buildMobileOperationController = (): MobileOperationController =>
+  new MobileOperationController(buildMobileOperationService());
 
 export const buildMobileOperationAdminController = (): MobileOperationAdminController =>
   new MobileOperationAdminController(buildMobileOperationRepository());

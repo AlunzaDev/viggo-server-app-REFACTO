@@ -15,6 +15,7 @@ import {
 } from "../../domain/constants";
 import type { UsuarioEntity } from "../../domain/entities/auth/usuario.entity";
 import { CustomError } from "../../domain/errors/custom.error";
+import { canAccessProject, type ProjectAccess } from "../../domain/entities/auth/project-access";
 
 type AuthenticatedRequest = Request & {
   uid?: string;
@@ -95,17 +96,16 @@ export const getAllowedProjectIdsFromRequest = (req: Request): string[] =>
 export const isSuperAdminRequest = (req: Request): boolean =>
   getAuthenticatedRequestUser(req)?.rol === "SUPER_ROLE";
 
+/** The parkings the authenticated user may see, for services to apply (no `req` there). */
+export const projectAccessFromRequest = (req: Request): ProjectAccess => ({
+  all: isSuperAdminRequest(req),
+  allowed: getAllowedProjectIdsFromRequest(req),
+});
+
 export const canAccessProjectFromRequest = (
   req: Request,
   projectId: string,
-): boolean => {
-  if (isSuperAdminRequest(req)) return true;
-
-  const normalizedProjectId = String(projectId ?? "").trim();
-  if (!normalizedProjectId) return false;
-
-  return getAllowedProjectIdsFromRequest(req).includes(normalizedProjectId);
-};
+): boolean => canAccessProject(projectAccessFromRequest(req), projectId);
 
 export const ensureProjectAccessFromRequest = (
   req: Request,

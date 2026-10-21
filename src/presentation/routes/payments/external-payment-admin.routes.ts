@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { AUTH_ROLES } from "../../../domain/constants";
 import type { ExternalOrderRepository, ExternalOrderStatus } from "../../../domain/external-payments/external-payment";
-import type { ExternalPaymentService } from "../../../domain/external-payments/external-payment.service";
+import type { ExternalPaymentService } from "../../services/payments/external-payment.service";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { AuthMiddleware } from "../../middlewares";
 import { ErrorService } from "../../services/error.service";

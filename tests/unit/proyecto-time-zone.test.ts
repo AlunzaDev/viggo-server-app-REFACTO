@@ -18,3 +18,16 @@ describe("project time zone", () => {
     expect(UpdateProyectoDto.create({ zonaHoraria: "GMT-6 Mexico" })[0]).toContain("zonaHoraria");
   });
 });
+
+describe("Proyecto capacity", () => {
+  const base = { nombre: "Centro", descripcion: "Principal" };
+  it("is optional, a whole number of spaces, and can be cleared", () => {
+    expect(CreateProyectoDto.create(base)[1]?.capacidad).toBeNull();
+    expect(CreateProyectoDto.create({ ...base, capacidad: "120" })[1]?.capacidad).toBe(120);
+    expect(UpdateProyectoDto.create({ nombre: "Otra" })[1]?.capacidad).toBeUndefined();
+    expect(UpdateProyectoDto.create({ capacidad: "" })[1]?.capacidad).toBeNull();
+    for (const capacidad of ["0", "-5", "12.5", "muchos", 100_001]) {
+      expect(CreateProyectoDto.create({ ...base, capacidad })[0]).toContain("capacidad");
+    }
+  });
+});

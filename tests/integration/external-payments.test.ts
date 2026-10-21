@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PostgresDatabase } from "../../src/data/postgres";
 import { JwtPlugin } from "../../src/config/plugins/jwt.plugin";
 import { envs } from "../../src/config";
-import { ExternalPaymentService } from "../../src/domain/external-payments/external-payment.service";
+import { ExternalPaymentService } from "../../src/presentation/services/payments/external-payment.service";
 import type { ExternalIntent, ExternalOrder, ExternalPaymentGateway, ExternalProviderDirectory, ExternalQuote } from "../../src/domain/external-payments/external-payment";
 import { CustomError } from "../../src/domain/errors/custom.error";
 import { ExternalOrderPostgresRepository } from "../../src/infrastructure/repositories/payments/external-order.repository.postgres";

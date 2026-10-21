@@ -8,7 +8,7 @@ import {
   type ExternalPaymentProvider,
   type ProjectPaymentProvider,
 } from "../../domain/external-payments/external-payment";
-import { decryptInstallationLinkToken } from "../../presentation/utils/installation-link-token-crypto.util";
+import { decryptInstallationLinkToken } from "../../config/plugins/installation-link-token-crypto.plugin";
 import { isUuid } from "../datasources/postgres/prisma-errors";
 import { HttpProviderClient, type ProviderProtocol } from "./http-provider.client";
 import { mappedProviderProtocol } from "./mapped-provider.protocol";

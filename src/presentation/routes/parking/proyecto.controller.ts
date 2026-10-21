@@ -3,7 +3,7 @@ import type { ParkingRateCopyDatasource } from "../../../domain/datasources/park
 import { CreateProyectoDto } from "../../../domain/dtos/parking/create-proyecto.dto";
 import { UpdateProyectoDto } from "../../../domain/dtos/parking/update-proyecto.dto";
 import { ErrorService } from "../../services/error.service";
-import { deleteManagedProjectImage } from "../../utils/project-image.util";
+import { deleteManagedProjectImage } from "../../../config/plugins/project-image.plugin";
 import {
   canAccessProjectFromRequest,
   getAllowedProjectIdsFromRequest,

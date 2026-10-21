@@ -6,7 +6,7 @@ import {
 } from "../../../domain/entities/parking/payment-provider.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
 import type { ExternalProviderDirectory, ExternalQuote } from "../../../domain/external-payments/external-payment";
-import { invalidQuoteReason } from "../../../domain/external-payments/external-payment.service";
+import { invalidQuoteReason } from "../payments/external-payment.service";
 import { PaymentProviderRepository } from "../../../domain/repositories/parking/payment-provider.repository";
 
 /** Fields that define how Viggo talks to the provider: changing one requires a new test. */

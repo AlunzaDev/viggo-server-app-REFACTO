@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { CustomError } from "../errors/custom.error";
-import { ExternalOrderRepository, ExternalProviderDirectory, type ConfirmationStatus, type ExternalIntent, type ExternalOrder, type ExternalPaymentGateway, type ExternalQuote } from "./external-payment";
+import { CustomError } from "../../../domain/errors/custom.error";
+import { ExternalOrderRepository, ExternalProviderDirectory, type ConfirmationStatus, type ExternalIntent, type ExternalOrder, type ExternalPaymentGateway, type ExternalQuote } from "../../../domain/external-payments/external-payment";
+import { isUuid } from "../../../domain/helpers/uuid";
 
-const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 /**
  * Final provider answers to a confirmation (already paid, amount mismatch, unknown ticket,
  * rejected request): retrying cannot help, the order goes straight to review.

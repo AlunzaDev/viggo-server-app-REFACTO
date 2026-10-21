@@ -33,6 +33,9 @@ import { PensionPassRepositoryImpl } from "../../infrastructure/repositories/pen
 import { PensionRepositoryImpl } from "../../infrastructure/repositories/pension/pension.repository.impl";
 import { SyncRepositoryImpl } from "../../infrastructure/repositories/sync/sync.repository.impl";
 import { JobLockRepositoryImpl } from "../../infrastructure/repositories/system/job-lock.repository.impl";
+import { TicketLabPostgresDatasource } from "../../infrastructure/datasources/dev/ticket-lab.datasource.postgres";
+import { TicketLabRepositoryImpl } from "../../infrastructure/repositories/dev/ticket-lab.repository.impl";
+import { PostgresMetricsReader } from "../../infrastructure/statistics/metrics-reader.postgres";
 
 export const buildAuthRepository = () =>
   new AuthRepositoryImpl(new AuthPostgresDatasource());
@@ -81,3 +84,10 @@ export const buildOperationalIncidentRepository = () =>
 
 export const buildJobLockRepository = () =>
   new JobLockRepositoryImpl(new JobLockPostgresDatasource());
+
+/** Statistics read their metrics straight from PostgreSQL (docs/estadisticas.md §2). */
+export const buildMetricsReader = () => new PostgresMetricsReader();
+
+/** Development ticket laboratory (PROD=false). */
+export const buildTicketLabRepository = () =>
+  new TicketLabRepositoryImpl(new TicketLabPostgresDatasource());

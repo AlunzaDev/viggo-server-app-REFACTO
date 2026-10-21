@@ -1,9 +1,3 @@
-import type { LogEntity } from "../entities";
-
-export interface LogRepository {
-  saveLog(log: LogEntity): void | Promise<void>;
-}
-
 export * from "./parking/proyecto.repository";
 export * from "./parking/modulo.repository";
 export * from "./pension/pension.repository";

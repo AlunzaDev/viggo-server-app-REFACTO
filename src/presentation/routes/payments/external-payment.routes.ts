@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { buildExternalPaymentService } from "../../dependencies/external-payments.dependencies";
-import type { ExternalPaymentService } from "../../../domain/external-payments/external-payment.service";
+import type { ExternalPaymentService } from "../../services/payments/external-payment.service";
 import { ErrorService } from "../../services/error.service";
 
 /** Parent router must require authentication and OPERATIVE_MOBILE. */

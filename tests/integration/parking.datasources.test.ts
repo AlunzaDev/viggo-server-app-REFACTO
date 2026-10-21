@@ -200,7 +200,7 @@ describe("ModuloPostgresDatasource", () => {
   it("filters by project, type and status", async () => {
     await modulos.create(newModulo(proyectoId, "salida", { tipo: "SALIDA", estado: false }));
     expect((await modulos.getByProyecto(proyectoId)).map((item) => item.tipo)).toEqual(["ENTRADA", "SALIDA"]);
-    expect((await modulos.getFiltered({ proyecto: proyectoId, tipo: "SALIDA" })).map((item) => item.nombre)).toEqual(["salida"]);
+    expect((await modulos.getFiltered({ proyecto: proyectoId, tipos: ["SALIDA"] })).map((item) => item.nombre)).toEqual(["salida"]);
     expect(await modulos.getFiltered({ proyecto: proyectoId, estado: true })).toHaveLength(1);
     expect(await modulos.getByProyecto("not-a-uuid")).toEqual([]);
     expect((await modulos.findByIdentificador(tag("salida")))?.estado).toBe(false);

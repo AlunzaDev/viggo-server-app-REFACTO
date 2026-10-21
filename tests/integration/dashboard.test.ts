@@ -3,11 +3,11 @@ import { beforeAll,afterAll,describe,it,expect } from "vitest";
 import express from "express";
 import type { Server } from "node:http";
 import { PostgresDatabase } from "../../src/data/postgres";
-import { DashboardPostgresDatasource } from "../../src/infrastructure/datasources/dashboard/dashboard.datasource.postgres";
+import { buildDashboardService } from "../../src/presentation/dependencies";
 import { AppRoutes } from "../../src/presentation/routes/routes";
 import { JwtPlugin } from "../../src/config/plugins/jwt.plugin";
 
-const source = new DashboardPostgresDatasource();
+const source = buildDashboardService();
 const tag = `dashboard-${randomUUID()}`;
 const from = Date.parse("2026-10-15T06:00:00Z"), to = from+86_400_000, now=from+12*3_600_000;
 let a:string,b:string,userId:string,profileId:string;

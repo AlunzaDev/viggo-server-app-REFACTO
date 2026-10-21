@@ -3,7 +3,7 @@ import type { Prisma } from "../../../generated/prisma/client";
 import { UsuarioDatasource } from "../../../domain/datasources/auth/usuario.datasource";
 import { UsuarioEntity } from "../../../domain/entities/auth/usuario.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
-import { deleteManagedUserImage } from "../../../presentation/utils/user-image.util";
+import { deleteManagedUserImage } from "../../../config/plugins/user-image.plugin";
 import { isUuid, withPrismaErrors } from "../postgres/prisma-errors";
 import {
   toAppPermissionRows,

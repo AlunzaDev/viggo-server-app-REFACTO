@@ -7,3 +7,5 @@ export * from "./sync.dependencies";
 export * from "./local-projects.dependencies";
 export * from "./mobile.dependencies";
 export * from "./system.dependencies";
+export * from "./statistics.dependencies";
+export * from "./dev.dependencies";

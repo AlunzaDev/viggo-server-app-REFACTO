@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ExternalPaymentService } from "../../../domain/external-payments/external-payment.service";
+import type { ExternalPaymentService } from "../../services/payments/external-payment.service";
 import { externalIntent } from "../../../infrastructure/external-payments/stripe-external.gateway";
 import { Request, Response } from "express";
 import { envs } from "../../../config";

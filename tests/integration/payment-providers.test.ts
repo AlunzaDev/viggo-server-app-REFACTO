@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresDatabase } from "../../src/data/postgres";
 import { Prisma } from "../../src/generated/prisma/client";
-import { ExternalPaymentService } from "../../src/domain/external-payments/external-payment.service";
+import { ExternalPaymentService } from "../../src/presentation/services/payments/external-payment.service";
 import type { ExternalIntent, ExternalOrder, ExternalPaymentGateway } from "../../src/domain/external-payments/external-payment";
 import { PaymentProviderPostgresDatasource } from "../../src/infrastructure/datasources/parking/payment-provider.datasource.postgres";
 import { PostgresExternalProviderDirectory } from "../../src/infrastructure/external-payments/provider-directory.postgres";

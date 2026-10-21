@@ -3,7 +3,7 @@ import { Prisma } from "../../../generated/prisma/client";
 import type { LocalProjectSnapshotPayload } from "../../../domain/datasources/local-projects/local-projects.datasource";
 import { isUuid } from "../postgres/prisma-errors";
 import { toHeartbeatDocument } from "../sync/sync.documents.postgres";
-import { readAdminCallToken } from "../../../presentation/utils/installation-sync-token.util";
+import { readAdminCallToken } from "../../../config/plugins/installation-sync-token.plugin";
 import { LocalProjectsHttpDatasource, type LocalProjectsStore } from "./local-projects.http-datasource";
 
 const asJson = (value: unknown) => value as Prisma.InputJsonValue;

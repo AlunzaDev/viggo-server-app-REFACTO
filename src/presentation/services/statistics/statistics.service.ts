@@ -1,9 +1,12 @@
+import { CustomError } from "../../../domain/errors/custom.error";
 import { METRIC_CATALOG } from "../../../domain/statistics/catalog";
 import {
   MetricsReader,
   previousRange,
   type MetricResult,
+  type ProjectAccess,
   type ProjectCoverage,
+  type StatisticsProject,
   type StatisticsQuery,
 } from "../../../domain/statistics/statistics";
 
@@ -20,6 +23,17 @@ export interface StatisticsResponse {
 /** Runs the requested metrics; each one stands alone, so one failure does not hide the rest. */
 export class StatisticsService {
   constructor(private readonly reader: MetricsReader) {}
+
+  /**
+   * The parkings a request may see: the ones asked for, or all of them; only if the user can
+   * see each one, also in consolidated figures and exports.
+   */
+  async projectsInScope(access: ProjectAccess, requested: string[] | null): Promise<StatisticsProject[]> {
+    if (requested && !access.all && requested.some((id) => !access.allowed.includes(id))) {
+      throw CustomError.forbidden("No tienes acceso a alguno de los proyectos solicitados");
+    }
+    return this.reader.projects(requested ?? (access.all ? null : access.allowed));
+  }
 
   async run(query: StatisticsQuery, now = Date.now(), options: { coverage?: boolean } = {}): Promise<StatisticsResponse> {
     const metricas: MetricResult[] = [];

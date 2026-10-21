@@ -66,6 +66,7 @@ describe("GET /api/estadisticas", () => {
     if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
     await db().inboxEvent.deleteMany({ where: { installationId: tag } });
     await db().operationalTicket.deleteMany({ where: { installationId: tag } });
+    await db().operationalPensionMove.deleteMany({ where: { installationId: tag } });
     await db().payment.deleteMany({ where: { concept: tag } });
     await db().usuario.deleteMany({ where: { id: { in: users } } });
     await db().permissionProfile.deleteMany({ where: { id: profileId } });
@@ -114,6 +115,58 @@ describe("GET /api/estadisticas", () => {
     expect(metric(own.body, "ingresos.cobrados").valor).toBe("150.00");
     expect((await get("metricas=ingresos.netos;DROP&desde=2026-10-15&hasta=2026-10-15")).status).toBe(400);
     expect((await get("metricas=tickets.salidas&desde=2026-01-01&hasta=2026-10-15&agrupar=hora")).status).toBe(400);
+  });
+
+  it("counts the cars inside now and the occupancy only where the capacity is known", async () => {
+    const ago = (ms: number) => new Date(Date.now() - ms);
+    const hour = 3_600_000, day = 24 * hour;
+    const ticket = (horaInicio: Date, horaSalida: Date | null, status = "ACTIVE") => db().operationalTicket.create({ data: {
+      proyectoId: projects.cdmx, installationId: tag, aggregateId: randomUUID(), occurredAt: new Date(), eventId: randomUUID(), payload: {},
+      horaInicio, horaSalida, monto: "0.00", pagado: false, status } });
+    const move = (pass: string, tipo: string, fecha: Date) => db().operationalPensionMove.create({ data: {
+      proyectoId: projects.cdmx, installationId: tag, aggregateId: randomUUID(), occurredAt: new Date(), eventId: randomUUID(),
+      payload: { tipo }, pensionPassId: pass, fecha } });
+    await ticket(ago(hour), null); // inside
+    await ticket(ago(2 * hour), ago(hour)); // already left
+    await ticket(ago(8 * day), null); // forgotten: more than 7 days without exit
+    await ticket(ago(30 * 60_000), null, "FRAUD"); // fraud without exit
+    const [inside, left, forgotten] = [randomUUID(), randomUUID(), randomUUID()];
+    await move(inside, "ENTRADA", ago(3 * hour)); // inside
+    await move(left, "ENTRADA", ago(5 * hour)); await move(left, "SALIDA", ago(4 * hour));
+    await move(forgotten, "ENTRADA-PENSION", ago(40 * day)); // no move in more than 30 days
+
+    const both = `proyectos=${projects.cdmx},${projects.tijuana}`;
+    const cars = await get(`metricas=operacion.autos_dentro&desde=2026-10-15&hasta=2026-10-15&agrupar=tipo&${both}`);
+    expect(metric(cars.body, "operacion.autos_dentro")).toMatchObject({ estado: "ok", valor: 2,
+      serie: [{ clave: "pension", valor: 1 }, { clave: "ticket", valor: 1 }] });
+    // No capacity captured yet: never a percentage.
+    expect(metric((await get(`metricas=operacion.ocupacion,operacion.ocupacion_horaria&desde=2026-10-15&hasta=2026-10-15&${both}`)).body, "operacion.ocupacion"))
+      .toMatchObject({ estado: "no_disponible", valor: null });
+
+    await db().proyecto.update({ where: { id: projects.cdmx }, data: { capacidad: 4 } });
+    const now = await get(`metricas=operacion.ocupacion&desde=2026-10-15&hasta=2026-10-15&agrupar=proyecto&${both}`);
+    // Only Mexico City has a capacity: 2 cars over 4 spaces; Tijuana has no occupancy.
+    expect(metric(now.body, "operacion.ocupacion")).toMatchObject({ estado: "ok", valor: 50,
+      serie: [{ clave: projects.cdmx, valor: 50 }, { clave: projects.tijuana, valor: null }].sort((a, b) => a.clave.localeCompare(b.clave)) });
+    await db().proyecto.update({ where: { id: projects.tijuana }, data: { capacidad: 10 } });
+    expect(metric((await get(`metricas=operacion.ocupacion&desde=2026-10-15&hasta=2026-10-15&${both}`)).body, "operacion.ocupacion").valor).toBe(14.3);
+
+    // Tijuana's ticket of the 15th: in from 10:00 to 11:30 local, so inside at 10:00 and 11:00.
+    const hourly = await get(`metricas=operacion.ocupacion_horaria&desde=2026-10-15&hasta=2026-10-15&agrupar=hora&proyectos=${projects.tijuana}`);
+    const series = metric(hourly.body, "operacion.ocupacion_horaria");
+    expect(series.valor).toBe(0.8);
+    expect(series.serie?.filter((point) => point.valor !== 0)).toEqual([{ clave: "10:00", valor: 10 }, { clave: "11:00", valor: 10 }]);
+    expect(series.serie).toHaveLength(24);
+  });
+
+  it("serves the dashboard through the same scope rules", async () => {
+    const dashboard = (query: string, token: string) => fetch(`${base}/api/dashboard?${query}`, { headers: { Authorization: `Bearer ${token}` } });
+    const period = `from=${Date.parse("2026-10-15T00:00:00Z")}&to=${Date.parse("2026-10-17T00:00:00Z")}`;
+    const own = await dashboard(period, tokens.scoped);
+    expect(own.status).toBe(200);
+    expect(((await own.json()) as { coverage: Array<{ projectId: string }> }).coverage.map((item) => item.projectId)).toEqual([projects.cdmx]);
+    expect((await dashboard(`${period}&projectId=${projects.tijuana}`, tokens.scoped)).status).toBe(403);
+    expect((await dashboard("from=10&to=5", tokens.super)).status).toBe(400);
   });
 
   it("exports the same metrics as a CSV that says what is missing", async () => {

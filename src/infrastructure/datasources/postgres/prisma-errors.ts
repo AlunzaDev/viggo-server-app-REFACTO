@@ -2,11 +2,7 @@ import { Prisma } from "../../../generated/prisma/client";
 import { CustomError } from "../../../domain/errors/custom.error";
 import { UniqueConstraintError } from "../../../domain/errors/unique-constraint.error";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Ids that are not UUIDs can never exist; datasources treat them as "not found". */
-export const isUuid = (value: unknown): value is string =>
-  typeof value === "string" && UUID_PATTERN.test(value);
+export { isUuid } from "../../../domain/helpers/uuid";
 
 const uniqueFields = (error: Prisma.PrismaClientKnownRequestError): string[] => {
   const meta = (error.meta ?? {}) as Record<string, any>;

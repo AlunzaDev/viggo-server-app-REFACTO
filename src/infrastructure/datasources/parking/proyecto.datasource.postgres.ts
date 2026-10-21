@@ -8,11 +8,11 @@ import {
 } from "../../../domain/datasources/parking/proyecto.datasource";
 import { ProyectoEntity } from "../../../domain/entities/parking/proyecto.entity";
 import { CustomError } from "../../../domain/errors/custom.error";
-import { deleteManagedProjectImage } from "../../../presentation/utils/project-image.util";
+import { deleteManagedProjectImage } from "../../../config/plugins/project-image.plugin";
 import {
   decryptInstallationLinkToken,
   encryptInstallationLinkToken,
-} from "../../../presentation/utils/installation-link-token-crypto.util";
+} from "../../../config/plugins/installation-link-token-crypto.plugin";
 import { isUuid, translatePrismaError, withPrismaErrors } from "../postgres/prisma-errors";
 
 const proyectoInclude = { remoteSupport: true } satisfies Prisma.ProyectoInclude;
@@ -49,6 +49,7 @@ const toProyectoEntity = (row: ProyectoRow) =>
     img: row.img,
     descripcion: row.descripcion,
     zonaHoraria: row.zonaHoraria,
+    capacidad: row.capacidad,
     estado: row.estado,
   });
 
@@ -67,6 +68,7 @@ const toProyectoScalars = (proyecto: ProyectoInput) => ({
   img: proyecto.img,
   descripcion: proyecto.descripcion,
   zonaHoraria: proyecto.zonaHoraria,
+  capacidad: proyecto.capacidad,
   estado: proyecto.estado,
 });
 

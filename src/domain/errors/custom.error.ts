@@ -31,6 +31,11 @@ export class CustomError extends Error {
         return new CustomError(409, message, code, details);
     }
 
+    /** A dependency (a parking's OPERATIVO, a provider) cannot answer now; retrying later may work. */
+    static serviceUnavailable(message: string, details?: unknown, code = "SERVICE_UNAVAILABLE") {
+        return new CustomError(503, message, code, details);
+    }
+
     static internalServer(message: string, details?: unknown, code = "INTERNAL_ERROR") {
         return new CustomError(500, message, code, details);
     }

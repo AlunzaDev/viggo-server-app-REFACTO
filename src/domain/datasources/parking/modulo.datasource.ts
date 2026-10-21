@@ -3,7 +3,10 @@ import { ModuloEntity, ModuloSubmodulo } from "../../entities/parking/modulo.ent
 
 export interface ModuloFilters {
   proyecto?: string;
-  tipo?: ModuloEntity["tipo"];
+  /** Only these parkings (the user's scope). */
+  proyectos?: string[];
+  /** Any of these types. */
+  tipos?: ModuloEntity["tipo"][];
   estado?: boolean;
 }
 

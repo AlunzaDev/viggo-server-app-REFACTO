@@ -312,6 +312,8 @@ model Proyecto {
   descripcion                    String    @default("")
   /// IANA time zone of the parking: its days, hours and pension schedules use it.
   zonaHoraria                    String    @default("America/Mexico_City") @map("zona_horaria")
+  /// Parking spaces; null while not captured (occupancy is then "no disponible").
+  capacidad                      Int?
   estado                         Boolean   @default(true)
   createdAt                      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -1009,5 +1011,7 @@ model OperationalPensionMove {
   @@id([proyectoId, installationId, aggregateId])
   @@index([proyectoId, occurredAt])
   @@index([proyectoId, pensionPassId, fecha(sort: Desc)])
+  /// Moves of a period (pensiones.movimientos, occupancy).
+  @@index([proyectoId, fecha])
   @@map("operational_pension_moves")
 }

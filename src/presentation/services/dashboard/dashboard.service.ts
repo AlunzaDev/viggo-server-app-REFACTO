@@ -1,8 +1,7 @@
-import { PostgresDatabase } from "../../../data/postgres";
+import { OperationalIncidentRepository } from "../../../domain/repositories/incidents/operational-incident.repository";
 import type { MetricId } from "../../../domain/statistics/catalog";
 import type { MetricResult, StatisticsQuery } from "../../../domain/statistics/statistics";
-import { StatisticsService } from "../../../presentation/services/statistics/statistics.service";
-import { PostgresMetricsReader } from "../../statistics/metrics-reader.postgres";
+import { StatisticsService } from "../statistics/statistics.service";
 
 type Range = { rango: string; tickets: number; ingresos: string };
 type Stay = { tickets: number; promedioMinutos: number; medianaMinutos: number; rangos: Range[] };
@@ -18,8 +17,11 @@ const change = (current: number, previous: number) => (previous > 0 ? Math.round
  * The dashboard's response, built from the statistics catalog (docs/estadisticas.md): every
  * figure is aggregated in PostgreSQL, none is summed in Node from raw rows.
  */
-export class DashboardPostgresDatasource {
-  private readonly statistics = new StatisticsService(new PostgresMetricsReader());
+export class DashboardService {
+  constructor(
+    private readonly statistics: StatisticsService,
+    private readonly incidents: OperationalIncidentRepository,
+  ) {}
 
   async getMetrics(projectIds: string[], from: number, to: number, now = Date.now()) {
     const base: Omit<StatisticsQuery, "metricas" | "agrupar"> = { proyectos: projectIds, rango: { kind: "instants", from, to }, comparar: false };
@@ -40,6 +42,8 @@ export class DashboardPostgresDatasource {
     const active = await metric("pensiones.vigentes");
     const expiring = await metric("pensiones.por_vencer");
     const health = await metric("operacion.conectividad");
+    const inside = await metric("operacion.autos_dentro");
+    const occupancy = await metric("operacion.ocupacion");
 
     const total = money(net.valor);
     const stays = stay.estado === "ok" ? (stay.valor as Stay) : null;
@@ -52,9 +56,7 @@ export class DashboardPostgresDatasource {
         hourly.set(point.clave, row);
       }
     }
-    const incidents = projectIds.length ? await PostgresDatabase.client.operationalIncident.findMany({
-      where: { proyectoId: { in: projectIds }, lastSeenAt: { gte: new Date(from), lt: new Date(to) } }, orderBy: { lastSeenAt: "desc" }, take: 20,
-    }) : [];
+    const { incidents } = await this.incidents.list({ projectIds, seenFrom: from, seenTo: to }, { page: 1, limit: 20 });
     const projects = (health.valor as Connectivity[] | null) ?? [];
     const coverage = (await this.statistics.run({ ...base, metricas: [], agrupar: null }, now)).cobertura;
     const methods = (byMethod.serie ?? []).filter((point) => money(point.valor) !== 0);
@@ -67,8 +69,9 @@ export class DashboardPostgresDatasource {
       avgStayDurationLabel: stays ? `${Math.floor(stays.promedioMinutos / 60)}h ${stays.promedioMinutos % 60}m` : "Sin datos",
       avgTicketRevenue: average.estado === "ok" ? money(average.valor) : null,
       avgTicketChangePercent: null,
-      // Capacity is not captured yet (#54): never a made-up percentage.
-      occupancyPercent: null,
+      // Only parkings with a captured capacity (#54): never a made-up percentage.
+      occupancyPercent: occupancy.estado === "ok" ? Number(occupancy.valor) : null,
+      carsInside: inside.estado === "ok" ? Number(inside.valor) : null,
       stayRangesBreakdown: stays ? stays.rangos.map((range) => ({
         rangeLabel: range.rango, count: range.tickets, revenue: money(range.ingresos),
         percentage: stayRevenue > 0 ? Math.round((money(range.ingresos) / stayRevenue) * 1000) / 10 : 0, color: RANGE_COLORS[range.rango],
@@ -87,7 +90,7 @@ export class DashboardPostgresDatasource {
         id: incident.incidentKey, title: incident.status === "resolved" ? "Incidencia resuelta" : "Incidencia operativa", description: incident.message,
         timestamp: new Date(incident.lastSeenAt).toISOString(),
         severity: incident.status === "resolved" ? "success" : incident.severity === "critical" ? "error" : incident.severity,
-        category: "system", location: projects.find((project) => project.proyectoId === incident.proyectoId)?.nombre,
+        category: "system", location: projects.find((project) => project.proyectoId === incident.projectId)?.nombre,
       })),
       // A figure never passes for complete: which metrics failed and which parkings are behind.
       partial: results.some((result) => result.estado === "error"),

@@ -1,4 +1,4 @@
-import { ExternalPaymentService } from "../../domain/external-payments/external-payment.service";
+import { ExternalPaymentService } from "../services/payments/external-payment.service";
 import { PostgresExternalProviderDirectory } from "../../infrastructure/external-payments/provider-directory.postgres";
 import { StripeExternalGateway } from "../../infrastructure/external-payments/stripe-external.gateway";
 import { ExternalOrderPostgresRepository } from "../../infrastructure/repositories/payments/external-order.repository.postgres";

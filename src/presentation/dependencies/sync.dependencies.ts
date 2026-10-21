@@ -1,4 +1,5 @@
 import { SyncController } from "../routes/sync/sync.controller";
+import { MobileCommandService } from "../services/sync/mobile-command.service";
 import { SyncService } from "../services/sync/sync.service";
 import {
   buildInstallationsRepository,
@@ -9,6 +10,6 @@ import {
 export const buildSyncController = (): SyncController =>
   new SyncController(
     new SyncService(buildSyncRepository()),
-    buildMobileOperationRepository(),
+    new MobileCommandService(buildMobileOperationRepository(), buildInstallationsRepository()),
     buildInstallationsRepository(),
   );

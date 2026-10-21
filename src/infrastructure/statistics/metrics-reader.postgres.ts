@@ -1,7 +1,8 @@
 import { PostgresDatabase } from "../../data/postgres";
 import { Prisma } from "../../generated/prisma/client";
 import { METRIC_IDS, type MetricId } from "../../domain/statistics/catalog";
-import { MetricsReader, STALE_AFTER_MS, type ProjectCoverage, type StatisticsQuery } from "../../domain/statistics/statistics";
+import { MetricsReader, STALE_AFTER_MS, type ProjectCoverage, type StatisticsProject, type StatisticsQuery } from "../../domain/statistics/statistics";
+import { occupancyMetrics } from "./metrics/occupancy.metrics";
 import { paymentMetrics } from "./metrics/payments.metrics";
 import { pensionAndOperationMetrics } from "./metrics/pensions-operations.metrics";
 import { ticketMetrics } from "./metrics/tickets.metrics";
@@ -12,6 +13,7 @@ export const METRIC_QUERIES: Record<MetricId, MetricQuery> = {
   ...paymentMetrics,
   ...ticketMetrics,
   ...pensionAndOperationMetrics,
+  ...occupancyMetrics,
 } as Record<MetricId, MetricQuery>;
 const missing = METRIC_IDS.filter((id) => typeof METRIC_QUERIES[id] !== "function");
 if (missing.length) throw new Error(`Metrics without a query: ${missing.join(", ")}`);
@@ -33,9 +35,14 @@ export class PostgresMetricsReader extends MetricsReader {
   /** No parkings in scope: zero or no data, never an error. */
   private empty(metric: MetricId): MetricOutput {
     if (metric === "operacion.conectividad") return { estado: "ok", valor: [] };
+    if (metric === "operacion.ocupacion" || metric === "operacion.ocupacion_horaria") return { estado: "no_disponible", valor: null };
     if (metric === "tickets.ticket_promedio" || metric === "tickets.estancia") return { estado: "sin_datos", valor: null };
     if (metric.startsWith("ingresos.") || metric === "externos.cobros") return { estado: "ok", valor: "0.00", moneda: "MXN" };
     return { estado: "ok", valor: 0 };
+  }
+
+  async projects(ids: string[] | null): Promise<StatisticsProject[]> {
+    return PostgresDatabase.client.proyecto.findMany({ where: ids ? { id: { in: ids } } : {}, select: { id: true, nombre: true }, orderBy: { nombre: "asc" } });
   }
 
   async coverage(proyectos: string[], now: number): Promise<ProjectCoverage[]> {

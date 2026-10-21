@@ -54,7 +54,16 @@ export interface ProjectCoverage {
 export abstract class MetricsReader {
   abstract read(metric: MetricId, query: StatisticsQuery, now: number): Promise<Pick<MetricResult, "estado" | "valor" | "moneda" | "serie">>;
   abstract coverage(proyectos: string[], now: number): Promise<ProjectCoverage[]>;
+  /** The existing parkings among `ids` (all of them when null), by name. */
+  abstract projects(ids: string[] | null): Promise<StatisticsProject[]>;
 }
+
+export interface StatisticsProject {
+  id: string;
+  nombre: string;
+}
+
+export type { ProjectAccess } from "../entities/auth/project-access";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86_400_000;

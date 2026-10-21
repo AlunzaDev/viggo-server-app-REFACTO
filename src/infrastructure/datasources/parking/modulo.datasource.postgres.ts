@@ -95,10 +95,15 @@ export class ModuloPostgresDatasource extends ModuloDatasource {
 
   async getFiltered(filters: ModuloFilters): Promise<ModuloEntity[]> {
     if (filters.proyecto !== undefined && filters.proyecto !== "" && !isUuid(filters.proyecto)) return [];
+    const proyectos = filters.proyectos?.filter(isUuid);
+    if (proyectos && !proyectos.length) return [];
     const rows = await this.modulos.findMany({
       where: {
-        ...(filters.proyecto ? { proyectoId: filters.proyecto } : {}),
-        ...(filters.tipo ? { tipo: filters.tipo } : {}),
+        AND: [
+          filters.proyecto ? { proyectoId: filters.proyecto } : {},
+          proyectos ? { proyectoId: { in: proyectos } } : {},
+        ],
+        ...(filters.tipos?.length ? { tipo: { in: filters.tipos } } : {}),
         ...(typeof filters.estado === "boolean" ? { estado: filters.estado } : {}),
       },
       include: moduloInclude,

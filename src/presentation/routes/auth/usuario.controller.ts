@@ -3,7 +3,7 @@ import { CreateUsuarioDto } from "../../../domain/dtos/auth/create-usuario.dto";
 import { UpdateUsuarioDto } from "../../../domain/dtos/auth/update-usuario.dto";
 import { UsuarioService } from "../../services/auth/usuario.service";
 import { ErrorService } from "../../services/error.service";
-import { deleteManagedUserImage } from "../../utils/user-image.util";
+import { deleteManagedUserImage } from "../../../config/plugins/user-image.plugin";
 
 const parseArrayField = (value: unknown): unknown => {
   if (Array.isArray(value)) return value;

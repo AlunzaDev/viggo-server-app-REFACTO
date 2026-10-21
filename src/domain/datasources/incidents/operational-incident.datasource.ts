@@ -41,7 +41,12 @@ export interface OperationalIncidentFilters {
   severity?: string;
   type?: string;
   projectId?: string;
+  /** Any of these parkings (the dashboard's scope). */
+  projectIds?: string[];
   installationId?: string;
+  /** Last seen within [seenFrom, seenTo). */
+  seenFrom?: number;
+  seenTo?: number;
 }
 
 export abstract class OperationalIncidentDatasource {

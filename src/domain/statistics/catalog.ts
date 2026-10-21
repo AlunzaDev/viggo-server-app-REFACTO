@@ -6,7 +6,7 @@
 export const DIMENSIONS = ["proyecto", "dia", "hora", "metodo", "tipo"] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 
-export type MetricUnit = "dinero" | "conteo" | "minutos" | "estado";
+export type MetricUnit = "dinero" | "conteo" | "minutos" | "porcentaje" | "estado";
 
 export interface MetricDefinition {
   descripcion: string;
@@ -62,6 +62,18 @@ export const METRIC_CATALOG = {
   "externos.cobros": {
     descripcion: "Cobrado por cuenta de proveedores externos (ya incluido en ingresos como tipo externo)",
     alcance: "periodo", unidad: "dinero", agrupaciones: ["proyecto", "dia"], comparable: true,
+  },
+  "operacion.autos_dentro": {
+    descripcion: "Autos dentro ahora: tickets sin salida (hasta 7 días) más pensionados cuyo último movimiento fue una entrada (hasta 30 días)",
+    alcance: "actual", unidad: "conteo", agrupaciones: ["proyecto", "tipo"], comparable: false,
+  },
+  "operacion.ocupacion": {
+    descripcion: "Autos dentro ahora entre los lugares, solo de las sedes con capacidad capturada; sin capacidad no está disponible",
+    alcance: "actual", unidad: "porcentaje", agrupaciones: ["proyecto"], comparable: false,
+  },
+  "operacion.ocupacion_horaria": {
+    descripcion: "Promedio de autos dentro al inicio de cada hora del periodo entre los lugares, solo de las sedes con capacidad capturada",
+    alcance: "periodo", unidad: "porcentaje", agrupaciones: ["proyecto", "dia", "hora"], comparable: true,
   },
   "operacion.conectividad": {
     descripcion: "Último contacto de cada instalación y su estado: en línea (≤ 15 s), intermitente (≤ 60 s) o desconectada",

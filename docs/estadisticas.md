@@ -63,8 +63,9 @@ Cada métrica lleva un identificador estable. Dimensiones permitidas: `proyecto`
 | `pensiones.por_vencer` | Vigentes que vencen en los próximos 7 días | `pension_passes` | conteo |
 | `pensiones.movimientos` | Entradas y salidas de pensionados en el periodo | `operational_pension_moves` | conteo |
 | `externos.cobros` | Detalle de lo cobrado por cuenta de proveedores externos, por proveedor (ya incluido en `ingresos.*` como tipo `externo`) | `external_payment_orders` | dinero |
-| `operacion.autos_dentro` | Tickets sin salida + pensionados dentro (estado actual) (#54) | espejos | conteo |
-| `operacion.ocupacion` | `autos_dentro / capacidad`; `no_disponible` sin capacidad (#54) | espejos + `proyectos` | % |
+| `operacion.autos_dentro` | Tickets sin salida + pensionados dentro, ahora (§4.4); por sede o por tipo | espejos | conteo |
+| `operacion.ocupacion` | `autos_dentro / capacidad` ahora, de las sedes con capacidad; `no_disponible` si ninguna la tiene | espejos + `proyectos` | % |
+| `operacion.ocupacion_horaria` | Promedio de autos dentro al inicio de cada hora del periodo entre la capacidad; por sede, día u hora local | espejos + `proyectos` | % |
 | `operacion.conectividad` | Último contacto de la instalación y estado (en línea ≤ 15 s, intermitente ≤ 60 s, desconectada) | `local_installations`, heartbeats | estado |
 
 Las métricas de **estado actual** (`pensiones.vigentes`, `operacion.*`) no dependen del rango y se muestran como "ahora", nunca como si fueran del periodo.
@@ -83,6 +84,16 @@ Un mismo cobro puede existir dos veces: el pago de la app se registra en `paymen
 ### 4.3 Reembolsos
 
 Un reembolso se cuenta **en la fecha en que se hizo**, no en la del cobro original, para que un periodo ya consultado no cambie después. Un cobro del 30 de septiembre reembolsado el 3 de octubre suma en septiembre como cobrado y resta en octubre como reembolso. Por eso cada reembolso guarda su propia fecha (`refunded_at`) además de la del cobro.
+
+### 4.4 Autos dentro y ocupación
+
+- **Capacidad** (`proyectos.capacidad`): lugares de la sede, capturados en el formulario del proyecto. Vacía mientras no se conozca; nunca 0. Una sede sin capacidad no tiene ocupación (`no_disponible`) y queda fuera de los consolidados de ocupación (sí cuenta en `autos_dentro`).
+- **Un auto está dentro** en el instante *t* si:
+  - es un **ticket** con entrada ≤ *t* y sin salida, o con salida después de *t*;
+  - es un **pensionado** cuyo último movimiento antes de *t* fue una entrada.
+- **Estancias olvidadas:** un ticket sin salida deja de contarse a los **7 días** de su entrada, y un pensionado sin movimientos a los **30 días**. Así un registro que nunca se cerró (falla de red, salida sin lectura) no llena la sede para siempre. Un ticket marcado como fraude sin salida no cuenta.
+- **Ocupación por hora:** se mide al inicio de cada hora del periodo (horas locales cuando el rango es por fechas) y se promedia por grupo. Se calcula como entradas menos salidas acumuladas por hora, sin recorrer todas las estancias en cada hora.
+- Puede pasar de 100 % si entran más autos que los lugares capturados; no se recorta, porque indica una capacidad mal capturada o autos en pasillos.
 
 ### 4.2 Cobertura de datos
 
@@ -140,4 +151,3 @@ Además: la memoria de Node no crece con el tamaño del histórico, cada consult
 
 - Editar operación desde la nube: las estadísticas solo leen.
 - Reportes concretos para negocio: se agregarán como métricas cuando se pidan.
-- Ocupación sin capacidad capturada (#54).

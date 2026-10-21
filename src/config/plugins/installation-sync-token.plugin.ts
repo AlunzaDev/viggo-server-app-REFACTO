@@ -2,7 +2,7 @@ import { createHash, createHmac, randomBytes } from "node:crypto";
 import {
   decryptInstallationLinkToken,
   encryptInstallationLinkToken,
-} from "./installation-link-token-crypto.util";
+} from "./installation-link-token-crypto.plugin";
 
 /**
  * Label of the token ADMINISTRATIVO uses to call an installation's local API. OPERATIVO

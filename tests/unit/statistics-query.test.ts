@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseStatisticsQuery, previousRange } from "../../src/domain/statistics/statistics";
-import { csvRow } from "../../src/presentation/routes/statistics/csv";
+import { csvRow } from "../../src/presentation/services/statistics/statistics-csv";
 
 const parse = (raw: Record<string, unknown>) => parseStatisticsQuery({ metricas: "ingresos.netos", desde: "2026-10-01", hasta: "2026-10-15", ...raw });
 

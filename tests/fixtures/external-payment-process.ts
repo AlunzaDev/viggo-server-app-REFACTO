@@ -1,6 +1,6 @@
 /** Child-process harness: real repository/service, fake remote provider and Stripe HTTP ports. */
 import { PostgresDatabase } from "../../src/data/postgres";
-import { ExternalPaymentService } from "../../src/domain/external-payments/external-payment.service";
+import { ExternalPaymentService } from "../../src/presentation/services/payments/external-payment.service";
 import type { ExternalIntent, ExternalPaymentGateway, ExternalPaymentProvider, ExternalProviderDirectory } from "../../src/domain/external-payments/external-payment";
 import { ExternalOrderPostgresRepository } from "../../src/infrastructure/repositories/payments/external-order.repository.postgres";
 

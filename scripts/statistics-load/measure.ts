@@ -32,39 +32,54 @@ const ms = (value: number) => `${Math.round(value)} ms`;
 const mb = (value: number) => `${Math.round(value / 1024 / 1024)} MB`;
 
 /** `RUNS` executions of `task`, `CONCURRENCY` at a time; latencies in ms. */
+/** A result that came back partial: some metric failed (for instance, its 15 s timeout). */
+const isPartial = (result: unknown) => Boolean((result as { partial?: boolean; parcial?: boolean } | null)?.partial ?? (result as { parcial?: boolean } | null)?.parcial);
+
 const load = async (task: (run: number) => Promise<unknown>) => {
   const latencies: number[] = [];
+  let partial = 0, errors = 0;
   let next = 0;
   await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
     while (next < RUNS) {
       const run = next++;
       const start = performance.now();
-      await task(run);
+      try {
+        if (isPartial(await task(run))) partial += 1;
+      } catch {
+        // The request itself failed (for instance, no free connection in the pool).
+        errors += 1;
+      }
       latencies.push(performance.now() - start);
     }
   }));
-  return latencies;
+  return { latencies, partial, errors };
 };
 
 /** Meanwhile, the inbox keeps receiving a ticket every 50 ms (the cloud's normal work). */
 const ingestion = (projectIds: string[]) => {
   const latencies: number[] = [];
+  let failed = 0;
   let running = true;
   const processor = new OperationalInboxProcessor();
   const loop = (async () => {
     while (running) {
       const id = randomUUID(), now = new Date();
       const start = performance.now();
-      await PostgresDatabase.client.inboxEvent.create({ data: {
-        eventId: randomUUID(), installationId: "load-ingest", proyectoId: projectIds[latencies.length % projectIds.length], eventType: "ticket.created",
-        aggregateId: id, occurredAt: now,
-        payload: { id, hora_inicio: now.toISOString(), hora_salida: null, monto: "0.00", pagado: false, status: "ACTIVE" },
-      } }).then((event) => processor.processEvent(event.eventId));
-      latencies.push(performance.now() - start);
+      // A failure (no free connection, timeout) is what is measured, not a reason to stop.
+      try {
+        await PostgresDatabase.client.inboxEvent.create({ data: {
+          eventId: randomUUID(), installationId: "load-ingest", proyectoId: projectIds[latencies.length % projectIds.length], eventType: "ticket.created",
+          aggregateId: id, occurredAt: now,
+          payload: { id, hora_inicio: now.toISOString(), hora_salida: null, monto: "0.00", pagado: false, status: "ACTIVE" },
+        } }).then((event) => processor.processEvent(event.eventId));
+        latencies.push(performance.now() - start);
+      } catch {
+        failed += 1;
+      }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   })();
-  return { stop: async () => { running = false; await loop; return latencies; } };
+  return { stop: async () => { running = false; await loop; return { latencies, failed }; } };
 };
 
 /** Node memory and connections to the database, sampled while a scenario runs. */
@@ -127,14 +142,14 @@ const main = async () => {
       rango: { kind: "dates", desde: yearAgo, hasta: today }, agrupar: "dia", comparar: false }, now)],
   ];
   console.log(`${projects.length} sedes · ${RUNS} ejecuciones por escenario · ${CONCURRENCY} simultáneas · pool ${POOL}\n`);
-  console.log("| Escenario | p50 | p95 | p99 | máx | RSS máx | heap máx | conexiones máx | ingestión p95 |");
-  console.log("|---|---|---|---|---|---|---|---|---|");
+  console.log("| Escenario | p50 | p95 | p99 | máx | RSS máx | heap máx | conexiones máx | ingestión p95 | parciales | fallidas |");
+  console.log("|---|---|---|---|---|---|---|---|---|---|---|");
   for (const [name, task] of scenarios) {
-    await task(0); // warm-up: the first run reads from disk
+    await task(0).catch(() => undefined); // warm-up: the first run reads from disk
     const ingest = ingestion(projects), sample = sampler();
-    const latencies = await load(task);
+    const { latencies, partial, errors } = await load(task);
     const usage = sample.stop(), inbox = await ingest.stop();
-    console.log(`| ${name} | ${ms(percentile(latencies, 50))} | ${ms(percentile(latencies, 95))} | ${ms(percentile(latencies, 99))} | ${ms(Math.max(...latencies))} | ${mb(usage.rss)} | ${mb(usage.heap)} | ${usage.connections} | ${ms(percentile(inbox, 95))} (${inbox.length} eventos) |`);
+    console.log(`| ${name} | ${ms(percentile(latencies, 50))} | ${ms(percentile(latencies, 95))} | ${ms(percentile(latencies, 99))} | ${ms(Math.max(...latencies))} | ${mb(usage.rss)} | ${mb(usage.heap)} | ${usage.connections} | ${ms(percentile(inbox.latencies, 95))} (${inbox.latencies.length} eventos, ${inbox.failed} fallidos) | ${partial} de ${RUNS} | ${errors} de ${RUNS} |`);
   }
   await PostgresDatabase.client.$executeRaw`DELETE FROM operational_tickets WHERE installation_id = 'load-ingest'`;
   await PostgresDatabase.client.$executeRaw`DELETE FROM inbox_events WHERE installation_id = 'load-ingest'`;

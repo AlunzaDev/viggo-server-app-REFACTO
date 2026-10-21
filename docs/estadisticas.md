@@ -14,7 +14,7 @@ El `/api/dashboard` actual trae a Node todos los pagos y tickets del rango (y de
 2. **Columnas tipadas en los espejos (#48).** El procesador del inbox copia a columnas reales los datos que se filtran o suman (fechas, montos, estado, método). Las consultas no castean el JSON en cada fila y pueden usar índices. Una fecha imposible (antes de 2020 o más de un día en el futuro) deja el evento pendiente con su error en vez de ensuciar las estadísticas: en cobrocaja aparecieron 1,151 tickets fechados en el año 2200.
 3. **Una sola fuente canónica de pagos (#49).** Una vista une los pagos de la nube y los del espejo operativo sin contar dos veces el mismo cobro (§4.1).
 4. **Métricas como piezas independientes (#50).** Cada una declara su definición, su consulta y sus pruebas, y se registra en un catálogo. Agregar una no modifica las demás ni la infraestructura común.
-5. **Sin agregados precalculados por ahora.** Primero se mide con datos de carga (#52). Solo si las consultas directas no cumplen los objetivos (§7) se agregan tablas por hora/día o vistas materializadas, con su recomputación documentada.
+5. **Totales precalculados por sede y hora (#55).** Medido con datos de carga en #52 (`docs/estadisticas-carga.md`): las consultas directas no cumplen los objetivos de §7 (ingresos de 1 sede en minutos, consolidados de 5 a 24 s, el pool se agota con 10 consultas). Las métricas leerán una tabla por sede y hora local que se recalcula al llegar los datos; la hora en curso se calcula en vivo.
 
 Capas, siguiendo las convenciones del proyecto:
 
@@ -135,7 +135,7 @@ La exportación CSV (#51) usa las mismas métricas y filtros y se envía por str
 
 Cada ticket trae además su pago y sus eventos en las tablas espejo. El dataset de #52 debe reproducir esa distribución: la mayoría de sedes alrededor de 600–800 tickets diarios, un 10 % con 2,000–2,700 y picos horarios de ~450.
 
-Con este volumen, leer el JSON fila por fila es inviable (por eso #48), y el consolidado de 12 meses por día probablemente requiera totales precalculados por día y sede; se decide midiendo en #52.
+Con este volumen, leer el JSON fila por fila es inviable (por eso #48), y las consultas directas no alcanzan: #52 lo midió (`docs/estadisticas-carga.md`) y se decidió precalcular por sede y hora (#55).
 
 Objetivos para el hardware de referencia que se documente en #52, con 120 sedes, 18 meses de historia y 10 consultas simultáneas:
 
@@ -145,7 +145,7 @@ Objetivos para el hardware de referencia que se documente en #52, con 120 sedes,
 | Consolidado de todas las sedes, 30 días | ≤ 1.5 s | ≤ 3 s |
 | Consolidado por día, 12 meses | ≤ 3 s | ≤ 6 s |
 
-Además: la memoria de Node no crece con el tamaño del histórico, cada consulta tiene `statement_timeout` y las consultas de estadísticas no bloquean la ingestión del inbox (sin transacciones largas). Si #52 muestra que no se cumplen, se decide ahí entre índices adicionales, agregados por hora/día o particionamiento, con números.
+Además: la memoria de Node no crece con el tamaño del histórico, cada consulta tiene `statement_timeout` y las consultas de estadísticas no bloquean la ingestión del inbox (sin transacciones largas). #52 mostró que no se cumplen con consultas directas; la decisión y los números están en `docs/estadisticas-carga.md`.
 
 ## 8. Fuera de alcance
 

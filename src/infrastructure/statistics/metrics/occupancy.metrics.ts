@@ -39,12 +39,39 @@ const capacities = async (ctx: MetricContext) => {
 const percent = (inside: number, capacity: number) => Math.round((inside / capacity) * 1000) / 10;
 const NOT_AVAILABLE: MetricOutput = { estado: "no_disponible", valor: null };
 
+/**
+ * Who is inside at `now` (the instant `start_at` of `scope`): the same rule as `stays`, read
+ * only where it can hold. Open tickets of the last 7 days (an index of tickets without exit),
+ * tickets whose exit is still ahead, and each pensioner whose last move of the last 30 days
+ * was an entry. Reading every stay of 7 and 30 days took seconds for many parkings (#55).
+ */
+const insideNowStays = Prisma.sql`stays AS (
+  SELECT s.proyecto_id, x.tipo FROM scope s
+  CROSS JOIN LATERAL (
+    SELECT 'ticket' AS tipo FROM operational_tickets t
+    WHERE t.proyecto_id = s.proyecto_id AND t.hora_salida IS NULL AND t.status IS DISTINCT FROM 'FRAUD'
+      AND t.hora_inicio <= s.start_at AND t.hora_inicio > s.start_at - ${TICKET_MAX_STAY}
+    UNION ALL
+    SELECT 'ticket' FROM operational_tickets t
+    WHERE t.proyecto_id = s.proyecto_id AND t.hora_salida > s.start_at
+      AND t.hora_inicio <= s.start_at AND t.hora_inicio > s.start_at - ${TICKET_MAX_STAY}
+    UNION ALL
+    SELECT 'pension' FROM (
+      SELECT DISTINCT ON (m.pension_pass_id) m.payload->>'tipo' AS tipo
+      FROM operational_pension_moves m
+      WHERE m.proyecto_id = s.proyecto_id AND m.fecha <= s.start_at AND m.fecha > s.start_at - ${PENSION_MAX_STAY}
+      ORDER BY m.pension_pass_id, m.fecha DESC
+    ) last WHERE last.tipo LIKE 'ENTRADA%'
+    -- Read per parking with its indexes, not flattened into a join over the whole table.
+    OFFSET 0
+  ) x
+)`;
+
 /** Cars inside each parking at `now`. */
 const insideNow = (ctx: MetricContext, key: Prisma.Sql) => ctx.db.$queryRaw<Array<{ clave: string; valor: number }>>(Prisma.sql`
-  WITH ${scope(ctx.query.proyectos, { kind: "instants", from: ctx.now, to: ctx.now })}, ${stays}
+  WITH ${scope(ctx.query.proyectos, { kind: "instants", from: ctx.now, to: ctx.now })}, ${insideNowStays}
   SELECT ${key} AS clave, count(*)::int AS valor
   FROM stays st JOIN scope s ON s.proyecto_id = st.proyecto_id
-  WHERE st.desde <= s.start_at AND st.hasta > s.start_at
   GROUP BY 1 ORDER BY 1`);
 
 export const occupancyMetrics: Record<string, MetricQuery> = {

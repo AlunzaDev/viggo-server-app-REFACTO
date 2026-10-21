@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { JwtPlugin } from "../../src/config/plugins/jwt.plugin";
 import { PostgresDatabase } from "../../src/data/postgres";
 import { AppRoutes } from "../../src/presentation/routes/routes";
+import { buildHourlyTotalsStore } from "../../src/presentation/dependencies/repositories.dependencies";
 
 // GET /api/estadisticas: metrics aggregated in PostgreSQL, per parking time zone and user scope.
 const db = () => PostgresDatabase.client;
@@ -57,6 +58,8 @@ describe("GET /api/estadisticas", () => {
     await db().inboxEvent.create({ data: { eventId: randomUUID(), installationId: tag, proyectoId: projects.tijuana, eventType: "ticket.updated",
       aggregateId: randomUUID(), occurredAt: new Date(Date.now() - 60_000), payload: {} } });
 
+    // Rows inserted here skip the inbox: their hourly totals are computed as the rebuild would.
+    await buildHourlyTotalsStore().rebuild(Object.values(projects), Date.parse("2026-10-01T00:00:00Z"), Date.now() + 86_400_000);
     const app = express(); app.use(express.json()); app.use(AppRoutes.routes);
     server = app.listen(0, "127.0.0.1"); await new Promise<void>((resolve) => server.once("listening", resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;

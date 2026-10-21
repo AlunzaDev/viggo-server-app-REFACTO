@@ -35,6 +35,7 @@ import { SyncRepositoryImpl } from "../../infrastructure/repositories/sync/sync.
 import { JobLockRepositoryImpl } from "../../infrastructure/repositories/system/job-lock.repository.impl";
 import { TicketLabPostgresDatasource } from "../../infrastructure/datasources/dev/ticket-lab.datasource.postgres";
 import { TicketLabRepositoryImpl } from "../../infrastructure/repositories/dev/ticket-lab.repository.impl";
+import { HourlyTotalsPostgres } from "../../infrastructure/statistics/hourly-totals.postgres";
 import { PostgresMetricsReader } from "../../infrastructure/statistics/metrics-reader.postgres";
 
 export const buildAuthRepository = () =>
@@ -87,6 +88,9 @@ export const buildJobLockRepository = () =>
 
 /** Statistics read their metrics straight from PostgreSQL (docs/estadisticas.md §2). */
 export const buildMetricsReader = () => new PostgresMetricsReader();
+
+/** Totals per parking and hour the metrics read (docs/estadisticas-carga.md §5). */
+export const buildHourlyTotalsStore = () => new HourlyTotalsPostgres();
 
 /** Development ticket laboratory (PROD=false). */
 export const buildTicketLabRepository = () =>

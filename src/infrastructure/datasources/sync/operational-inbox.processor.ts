@@ -1,5 +1,6 @@
 import { PostgresDatabase } from "../../../data/postgres";
 import { Prisma } from "../../../generated/prisma/client";
+import { markHourlyPending } from "../../statistics/hourly-totals.postgres";
 
 // Only these fixed identifiers may enter SQL; payloads always use parameters.
 export const operationalTables: Record<string, string> = {
@@ -31,6 +32,12 @@ const validateParkingRate = (payload: Record<string, unknown>) => {
 };
 
 type Payload = Record<string, unknown>;
+
+/** Columns whose hour the statistics totals depend on (docs/estadisticas-carga.md §5). */
+const statisticsHours: Record<string, string[]> = {
+  ticket: ["hora_inicio", "hora_salida"],
+  payment: ["paid_at"],
+};
 type TypedColumn = { name: string; value: Prisma.Sql };
 
 const EARLIEST = Date.UTC(2020, 0, 1);
@@ -130,6 +137,13 @@ export class OperationalInboxProcessor {
         const typed = Object.hasOwn(typedColumns, kind) ? typedColumns[kind](payload) : [];
         if (kind === "parking_rate") validateParkingRate(payload);
         const typedNames = typed.map((column) => Prisma.raw(column.name));
+        const hourColumns = Object.hasOwn(statisticsHours, kind) ? statisticsHours[kind] : [];
+        const rowKey = Prisma.sql`proyecto_id = ${event.proyectoId}::uuid AND installation_id = ${event.installationId} AND aggregate_id = ${event.aggregateId}`;
+        const readHours = async () => hourColumns.length
+          ? tx.$queryRaw<Array<Record<string, Date | null>>>(Prisma.sql`
+              SELECT ${Prisma.join(hourColumns.map((column) => Prisma.raw(column)))} FROM ${Prisma.raw(table)} WHERE ${rowKey}`)
+          : [];
+        const before = await readHours();
         // Full snapshots allow updates to arrive before inserts. The upsert's predicate
         // is atomic even when different workers process the same aggregate concurrently.
         await tx.$executeRaw(Prisma.sql`
@@ -143,6 +157,18 @@ export class OperationalInboxProcessor {
             THEN EXCLUDED.source_position > current.source_position
             ELSE (EXCLUDED.occurred_at, EXCLUDED.event_id) > (current.occurred_at, current.event_id) END
         `);
+        if (hourColumns.length) {
+          // The hours before and after the change get their totals recomputed; for a payment,
+          // also those of the other rows of the same charge (only the latest one counts).
+          const rows = [...before, ...(await readHours())];
+          if (kind === "payment") {
+            rows.push(...await tx.$queryRaw<Array<Record<string, Date | null>>>(Prisma.sql`
+              SELECT o.paid_at FROM operational_payments o
+              WHERE o.proyecto_id = ${event.proyectoId}::uuid AND o.provider_reference IS NOT NULL
+                AND o.provider_reference = (SELECT provider_reference FROM operational_payments WHERE ${rowKey})`));
+          }
+          await markHourlyPending(tx, event.proyectoId, rows.flatMap((row) => hourColumns.map((column) => row[column])));
+        }
         await tx.inboxEvent.update({ where: { eventId }, data: { processedAt: new Date(), processingError: "" } });
       });
     } catch (error) {

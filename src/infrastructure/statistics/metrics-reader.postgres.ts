@@ -26,8 +26,11 @@ export class PostgresMetricsReader extends MetricsReader {
     const run = METRIC_QUERIES[metric];
     if (!query.proyectos.length) return this.empty(metric);
     return PostgresDatabase.client.$transaction(async (db) => {
-      await db.$executeRawUnsafe("SET TRANSACTION READ ONLY");
-      await db.$executeRawUnsafe(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}'`);
+      // Read only, bounded, and without JIT: the per-parking reads (LATERAL) are estimated far
+      // above their cost, and compiling them took seconds for queries that run in milliseconds
+      // (docs/estadisticas-carga.md). One statement: a dashboard runs a dozen of these.
+      await db.$queryRawUnsafe(`SELECT set_config('transaction_read_only', 'on', true),
+        set_config('statement_timeout', '${STATEMENT_TIMEOUT}', true), set_config('jit', 'off', true)`);
       return run({ db, query, now });
     }, { timeout: 30_000 });
   }

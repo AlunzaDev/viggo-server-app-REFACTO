@@ -102,7 +102,11 @@ const explain = async (metric: MetricId, query: StatisticsQuery, now: number) =>
   const capture = { $queryRaw: async (sql: Prisma.Sql) => { sent.push(sql); return []; } } as unknown as Prisma.TransactionClient;
   await METRIC_QUERIES[metric]({ db: capture, query, now }).catch(() => undefined);
   for (const sql of sent) {
-    const plan = await PostgresDatabase.client.$queryRawUnsafe<Array<{ "QUERY PLAN": string }>>(`EXPLAIN (ANALYZE, BUFFERS) ${sql.text}`, ...sql.values);
+    // As the metrics run (PostgresMetricsReader): without JIT.
+    const plan = await PostgresDatabase.client.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL jit = off");
+      return tx.$queryRawUnsafe<Array<{ "QUERY PLAN": string }>>(`EXPLAIN (ANALYZE, BUFFERS) ${sql.text}`, ...sql.values);
+    }, { timeout: 30 * 60_000 });
     const lines = plan.map((row) => row["QUERY PLAN"]);
     console.log(`\n### ${metric}\n${lines.filter((line) => /Execution Time|Planning Time|Seq Scan|Index|Sort Method|Buffers: shared hit=\d+ read=\d+$/.test(line)).slice(0, 14).join("\n")}\n  ${lines.at(-1)}`);
   }

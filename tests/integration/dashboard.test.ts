@@ -4,6 +4,7 @@ import express from "express";
 import type { Server } from "node:http";
 import { PostgresDatabase } from "../../src/data/postgres";
 import { buildDashboardService } from "../../src/presentation/dependencies";
+import { buildHourlyTotalsStore } from "../../src/presentation/dependencies/repositories.dependencies";
 import { AppRoutes } from "../../src/presentation/routes/routes";
 import { JwtPlugin } from "../../src/config/plugins/jwt.plugin";
 
@@ -41,6 +42,8 @@ beforeAll(async()=>{
   const module=await db.modulo.create({data:{proyectoId:a,nombre:tag,tipo:"ENTRADA",identificador:tag,deviceState:{create:{syncedAt:new Date(now),isConnected:true,isAuthorized:true,lastHeartbeatAt:new Date(now-1000)}}}});
   expect(module.id).toBeTruthy();
   await db.operationalIncident.create({data:{incidentKey:tag,type:"INSTALLATION_OFFLINE",status:"open",severity:"warning",source:"test",proyectoId:a,message:"Real incident",openedAt:new Date(from+1000),lastSeenAt:new Date(from+1000)}});
+  // Rows inserted here skip the inbox: their hourly totals are computed as the rebuild would.
+  await buildHourlyTotalsStore().rebuild([a,b],from-2*86_400_000,to+86_400_000);
   token=String(await JwtPlugin.generateToken({id:userId,app:"ADMIN_WEB"}));
   const app=express(); app.use(express.json());app.use(AppRoutes.routes);
   server=app.listen(0,"127.0.0.1");await new Promise<void>(resolve=>server.once("listening",resolve));

@@ -74,6 +74,8 @@ Las métricas de **estado actual** (`pensiones.vigentes`, `operacion.*`) no depe
 
 Implementada como la vista **`statistics_payments`** (una fila por cobro real, con `source`, `proyecto_id`, `paid_at`, `amount`, `currency`, `status`, `payment_type`, `method`, `refunded_at` y `provider_reference`).
 
+Las métricas no leen la vista: con el volumen real no lleva el periodo a los índices (`docs/estadisticas-carga.md` §4). Leen los totales por hora (#55), calculados con las mismas reglas en `src/infrastructure/statistics/hourly-sql.ts`. La vista se conserva como la definición legible de esas reglas.
+
 Un mismo cobro puede existir dos veces: el pago de la app se registra en `payments` (nube, Stripe) y OPERATIVO lo aplica y lo devuelve en su espejo `operational_payments` con `provider_reference = pi_…`.
 
 - **Llave de identidad:** `stripe_payment_intent_id` / `provider_reference` cuando existe; si no, `(installation_id, aggregate_id)` del espejo (efectivo) o el `id` del pago en la nube.

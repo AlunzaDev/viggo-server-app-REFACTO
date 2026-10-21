@@ -29,11 +29,30 @@ export const scope = (proyectos: string[], range: StatisticsRange) => {
   )`;
 };
 
+/**
+ * `scope` split for the hourly totals (docs/estadisticas-carga.md §5):
+ * - `parts`: per parking, the whole past hours [a, b) of its range, read from statistics_hourly_*;
+ * - `windows`: what is left (the range's first and last partial hours, and the hour in
+ *   course), at most about two hours per parking, computed live from the source tables.
+ */
+export const hourlyScope = (query: StatisticsQuery, now: number) => Prisma.sql`
+  ${scope(query.proyectos, query.rango)},
+  parts AS (
+    SELECT s.proyecto_id, s.start_at, s.end_at, x.a,
+      GREATEST(x.a, LEAST(date_trunc('hour', s.end_at, 'UTC'), date_trunc('hour', ${new Date(now)}::timestamptz, 'UTC'))) AS b
+    FROM scope s CROSS JOIN LATERAL (SELECT date_trunc('hour', s.start_at - interval '1 millisecond', 'UTC') + interval '1 hour' AS a) x
+  ),
+  windows AS (
+    SELECT proyecto_id, start_at AS w_start, LEAST(a, end_at) AS w_end FROM parts WHERE start_at < LEAST(a, end_at)
+    UNION ALL
+    SELECT proyecto_id, GREATEST(b, start_at), end_at FROM parts WHERE end_at > GREATEST(b, start_at)
+  )`;
+
 /** The grouping key of a row: its local day or hour, its parking, or a metric's own column. */
 export const groupKey = (dimension: Dimension | null, time: Prisma.Sql, own: Partial<Record<Dimension, Prisma.Sql>> = {}) => {
   switch (dimension) {
     case null: return Prisma.sql`'total'`;
-    case "dia": return Prisma.sql`to_char(${time} AT TIME ZONE s.zone, 'YYYY-MM-DD')`;
+    case "dia": return Prisma.sql`((${time} AT TIME ZONE s.zone)::date)::text`;
     case "hora": return Prisma.sql`to_char(${time} AT TIME ZONE s.zone, 'HH24') || ':00'`;
     case "proyecto": return Prisma.sql`s.proyecto_id::text`;
     default: return own[dimension] ?? Prisma.sql`'total'`;

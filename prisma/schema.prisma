@@ -331,6 +331,8 @@ model Proyecto {
   inboxEvents              InboxEvent[]
   operationalTickets       OperationalTicket[]
   operationalPayments      OperationalPayment[]
+  statisticsHourlyPayments StatisticsHourlyPayment[]
+  statisticsHourlyTickets  StatisticsHourlyTicket[]
   operationalCashSessions  OperationalCashSession[]
   operationalCashShifts    OperationalCashShift[]
   operationalCashMovements OperationalCashMovement[]
@@ -691,6 +693,12 @@ model Payment {
 
   @@index([usuarioId, paidAt(sort: Desc)])
   @@index([referenceType, referenceId])
+  /// Statistics (statistics_hourly_*): charges and refunds of a parking and period, and what changed.
+  @@index([proyectoId, paidAt])
+  @@index([paidAt], map: "payments_unassigned_paid_at_idx", where: raw("proyecto_id IS NULL"))
+  @@index([proyectoId, refundedAt], map: "payments_refunded_at_idx", where: raw("refunded_at IS NOT NULL"))
+  @@index([refundedAt], map: "payments_unassigned_refunded_at_idx", where: raw("proyecto_id IS NULL AND refunded_at IS NOT NULL"))
+  @@index([updatedAt])
   /// Reconciliation worker scan.
   @@index([paidAt], map: "payments_unreconciled_idx", where: raw("stripe_payment_intent_id IS NOT NULL AND (status = 'pending' OR (status = 'succeeded' AND (reconciliation_status <> 'reconciled' OR applied_operation_key = '')))"))
   @@map("payments")
@@ -880,6 +888,8 @@ model OperationalTicket {
   @@index([proyectoId, occurredAt])
   @@index([proyectoId, horaInicio])
   @@index([proyectoId, horaSalida])
+  /// Tickets still inside (operacion.autos_dentro).
+  @@index([proyectoId, horaInicio], map: "operational_tickets_open_idx", where: raw("hora_salida IS NULL"))
   @@map("operational_tickets")
 }
 
@@ -1014,4 +1024,62 @@ model OperationalPensionMove {
   /// Moves of a period (pensiones.movimientos, occupancy).
   @@index([proyectoId, fecha])
   @@map("operational_pension_moves")
+}
+
+/// Statistics totals per parking and UTC hour (docs/estadisticas-carga.md, #55): what the
+/// metrics add up, recomputed from the source tables when they change. In Mexico every zone
+/// has a whole-hour offset, so each row is also a whole local hour.
+model StatisticsHourlyPayment {
+  proyectoId String   @map("proyecto_id") @db.Uuid
+  hora       DateTime @db.Timestamptz(3)
+  /// cobro (by paid_at) or reembolso (by refunded_at).
+  movimiento String
+  metodo     String
+  tipo       String
+  monto      Decimal  @db.Decimal(14, 2)
+  pagos      Int
+  proyecto   Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([proyectoId, hora, movimiento, metodo, tipo])
+  @@map("statistics_hourly_payments")
+}
+
+model StatisticsHourlyTicket {
+  proyectoId            String    @map("proyecto_id") @db.Uuid
+  hora                  DateTime  @db.Timestamptz(3)
+  /// Tickets with entry in the hour.
+  entradas              Int
+  /// Tickets with exit in the hour, and of them the paid ones with an amount.
+  salidas               Int
+  pagados               Int
+  montoPagado           Decimal   @map("monto_pagado") @db.Decimal(14, 2)
+  /// Stays that ended in the hour: count, minutes, histogram (STAY_BUCKETS) and income per range.
+  estancias             Int
+  estanciaMinutos       Float     @map("estancia_minutos")
+  estanciaBuckets       Int[]     @map("estancia_buckets")
+  /// Minutes of the stays of each histogram bucket (the median is its bucket's average).
+  estanciaBucketMinutos Float[]   @map("estancia_bucket_minutos")
+  estanciaIngresos      Decimal[] @map("estancia_ingresos") @db.Decimal(14, 2)
+  proyecto              Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([proyectoId, hora])
+  @@map("statistics_hourly_tickets")
+}
+
+/// Hours whose totals must be recomputed (their source rows changed).
+model StatisticsHourlyPending {
+  proyectoId String   @map("proyecto_id") @db.Uuid
+  hora       DateTime @db.Timestamptz(3)
+  markedAt   DateTime @default(now()) @map("marked_at") @db.Timestamptz(3)
+
+  @@id([proyectoId, hora])
+  @@map("statistics_hourly_pending")
+}
+
+/// Up to when cloud payment changes were already marked.
+model StatisticsHourlyState {
+  id             Int      @id @default(1)
+  paymentsSeenAt DateTime @default(now()) @map("payments_seen_at") @db.Timestamptz(3)
+
+  @@map("statistics_hourly_state")
 }

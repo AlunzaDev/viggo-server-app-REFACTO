@@ -1,7 +1,7 @@
 import { PostgresDatabase } from "../../data/postgres";
 import { Prisma } from "../../generated/prisma/client";
 import { HourlyTotalsStore } from "../../domain/statistics/hourly-totals";
-import { BUCKET_COUNT, paymentRows, rangeIncome, stayBucket, ticketEntryRows, ticketExitRows } from "./hourly-sql";
+import { BUCKET_COUNT, STAY_RANGES, paymentRows, rangeIncome, stayBucket, ticketEntryRows, ticketExitRows } from "./hourly-sql";
 
 type Db = Prisma.TransactionClient | typeof PostgresDatabase.client;
 
@@ -54,6 +54,44 @@ const recompute = async (db: Db, windows: Prisma.Sql) => {
       COALESCE(x.pagados, 0), COALESCE(x.monto_pagado, 0), COALESCE(x.estancias, 0), COALESCE(x.estancia_minutos, 0),
       COALESCE(x.estancia_buckets, ${zeros}), COALESCE(x.estancia_bucket_minutos, ${zeros}::float8[]), COALESCE(x.estancia_ingresos, ARRAY[0, 0, 0, 0]::numeric(14, 2)[])
     FROM entries e FULL JOIN exits x ON x.proyecto_id = e.proyecto_id AND x.hora = e.hora`);
+  await recomputeDays(db, windows);
+};
+
+/**
+ * The local days that contain the hours of `windows`, summed again from their hours (#56).
+ * A local day is its own hours: 24, or 23 and 25 when the clocks change.
+ */
+const recomputeDays = async (db: Db, windows: Prisma.Sql) => {
+  const days = Prisma.sql`${windows},
+    days AS (
+      SELECT DISTINCT w.proyecto_id, d.dia::date AS dia, p.zona_horaria AS zone,
+        (d.dia::date)::timestamp AT TIME ZONE p.zona_horaria AS day_start,
+        (d.dia::date + 1)::timestamp AT TIME ZONE p.zona_horaria AS day_end
+      FROM windows w JOIN proyectos p ON p.id = w.proyecto_id
+      CROSS JOIN LATERAL generate_series((w.w_start AT TIME ZONE p.zona_horaria)::date,
+        ((w.w_end - interval '1 millisecond') AT TIME ZONE p.zona_horaria)::date, interval '1 day') AS d(dia)
+    )`;
+  await db.$executeRaw(Prisma.sql`WITH ${days}
+    DELETE FROM statistics_daily_payments x USING days d WHERE x.proyecto_id = d.proyecto_id AND x.dia = d.dia`);
+  await db.$executeRaw(Prisma.sql`WITH ${days}
+    DELETE FROM statistics_daily_tickets x USING days d WHERE x.proyecto_id = d.proyecto_id AND x.dia = d.dia`);
+  await db.$executeRaw(Prisma.sql`WITH ${days}
+    INSERT INTO statistics_daily_payments (proyecto_id, dia, movimiento, metodo, tipo, monto, pagos)
+    SELECT d.proyecto_id, d.dia, h.movimiento, h.metodo, h.tipo, sum(h.monto), sum(h.pagos)::int
+    FROM days d JOIN statistics_hourly_payments h ON h.proyecto_id = d.proyecto_id AND h.hora >= d.day_start AND h.hora < d.day_end
+    GROUP BY 1, 2, 3, 4, 5`);
+  const byHour = (column: string) => Prisma.raw(`ARRAY[${Array.from({ length: 24 }, (_, hour) =>
+    `COALESCE(sum(h.${column}) FILTER (WHERE extract(hour FROM h.hora AT TIME ZONE d.zone) = ${hour}), 0)::int`).join(", ")}]::int[]`);
+  const element = (column: string, type: string, count: number) =>
+    Prisma.raw(`ARRAY[${Array.from({ length: count }, (_, index) => `sum(h.${column}[${index + 1}])`).join(", ")}]::${type}[]`);
+  await db.$executeRaw(Prisma.sql`WITH ${days}
+    INSERT INTO statistics_daily_tickets (proyecto_id, dia, entradas, salidas, entradas_hora, salidas_hora, pagados, monto_pagado, estancias, estancia_minutos, estancia_buckets, estancia_bucket_minutos, estancia_ingresos)
+    SELECT d.proyecto_id, d.dia, sum(h.entradas)::int, sum(h.salidas)::int, ${byHour("entradas")}, ${byHour("salidas")}, sum(h.pagados)::int, sum(h.monto_pagado),
+      sum(h.estancias)::int, sum(h.estancia_minutos)::float8,
+      ${element("estancia_buckets", "int", BUCKET_COUNT)}, ${element("estancia_bucket_minutos", "float8", BUCKET_COUNT)},
+      ${element("estancia_ingresos", "numeric(14, 2)", STAY_RANGES.length)}
+    FROM days d JOIN statistics_hourly_tickets h ON h.proyecto_id = d.proyecto_id AND h.hora >= d.day_start AND h.hora < d.day_end
+    GROUP BY 1, 2`);
 };
 
 export class HourlyTotalsPostgres extends HourlyTotalsStore {

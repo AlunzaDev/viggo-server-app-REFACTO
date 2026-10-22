@@ -2,7 +2,7 @@
 
 Medición de las consultas de estadísticas (`docs/estadisticas.md`) con el volumen esperado, para decidir si bastan las consultas directas o hacen falta totales precalculados (§2 punto 5 y §7 del ADR).
 
-**Resultado:** las consultas directas **no** cumplen los objetivos. Se implementan totales precalculados por sede y hora (#55).
+**Resultado:** las consultas directas **no** cumplen los objetivos. Se implementaron totales precalculados por sede y hora (#55) y por día (#56); con ellos una petición sola cumple o casi cumple las metas, y con 10 simultáneas falta confirmar en el servidor real (§5).
 
 ## 1. Datos de carga
 
@@ -138,6 +138,31 @@ Ajustes que salieron de esta medición, ya aplicados:
 - `jit = off` en las transacciones de estadísticas: el JIT tardaba 4 s en compilar consultas que corren en 0.6 s.
 - Suma por sede y hora antes de calcular el día local.
 - Leer la tabla horaria sede por sede resultó más lento que leerla completa una vez con esta caché, así que se dejó el join.
+
+### Totales por día (#56)
+
+**Tablas:** `statistics_daily_payments` y `statistics_daily_tickets`, por sede y **día local**. Guardan lo mismo que las horarias y, en tickets, además las entradas y salidas por hora local (dos arreglos de 24) para las horas pico.
+
+**Cómo se mantienen:** un día es la suma de sus horas: 24, o 23 y 25 cuando cambia el horario en Tijuana. Se vuelve a sumar en la misma transacción en que se recalculan sus horas, así que no necesita su propia lista de pendientes. La migración lo llenó desde los totales por hora en 30 s en la base de carga.
+
+**Cómo se leen:** en cada rango, los días locales completos salen de la tabla diaria, las horas sueltas de ambos extremos de la horaria, y los bordes y la hora en curso en vivo (`hourlyScope` y `fromTotals` en `statistics-sql.ts`). Por hora del día, las entradas y salidas usan los arreglos por hora del día. Los ingresos por hora siguen saliendo de la tabla horaria, porque el rango por hora es de 31 días como máximo.
+
+**Autos dentro** se calcula una vez por instante. El dashboard pide el número y la ocupación con el mismo `now`, y la segunda reutiliza la primera.
+
+**Si cambia la zona horaria de una sede**, sus días ya calculados quedan con los límites de la zona anterior. Hay que reconstruirlos: `npm run statistics:rebuild -- --proyectos <id>`.
+
+| Escenario (p95) | Por hora (#55) | Con días (#56) | Meta |
+|---|---|---|---|
+| 1 sede, 30 días, una a la vez | 0.36 s | **0.21 s** | 0.3 s |
+| 120 sedes, 30 días, una a la vez | 3 – 6 s | **1.6 s** | 1.5 s |
+| 12 meses por día, una a la vez | 3.7 – 11 s | **0.44 s** | 3 s |
+| 1 sede, 10 simultáneas | 1.8 s | 0.55 s | 0.3 s |
+| 120 sedes, 10 simultáneas | 15 – 27 s | 4.6 s | 1.5 s |
+| 12 meses, 10 simultáneas | 11 – 22 s | **1.1 s** | 3 s |
+
+Con 10 simultáneas no falla ningún evento de la ingestión ni ninguna respuesta sale parcial.
+
+Una petición sola ya cumple o casi cumple. Con 10 simultáneas el tiempo crece unas 3 veces, porque comparten la máquina (esta laptop, con los sistemas de desarrollo) y el pool de 10 conexiones: cada dashboard hace unas 13 consultas seguidas. Falta confirmarlo en el servidor real, con PostgreSQL ajustado (`shared_buffers`, `work_mem`) y `DATABASE_POOL_MAX` a la medida de las instancias.
 
 ## 6. Cómo repetir la medición
 

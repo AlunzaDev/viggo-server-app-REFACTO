@@ -1,18 +1,31 @@
 import { Prisma } from "../../../generated/prisma/client";
 import { BUCKET_COUNT, STAY_RANGES, rangeIncome, stayBucket, ticketEntryRows, ticketExitRows } from "../hourly-sql";
-import { countOutput, groupKey, hourlyScope, type MetricContext, type MetricQuery } from "../statistics-sql";
+import { countOutput, fromTotals, groupKey, hourlyScope, type MetricContext, type MetricQuery } from "../statistics-sql";
 
 // Tickets come from OPERATIVO's copy (docs/estadisticas.md §2): whole past hours from
 // statistics_hourly_tickets, the rest of the range live with the same rules.
 
 /** The totals of each parking's whole past hours. */
-const fromTotals = Prisma.sql`parts p JOIN statistics_hourly_tickets h ON h.proyecto_id = p.proyecto_id AND h.hora >= p.a AND h.hora < p.b`;
+/** Ticket totals of the range's whole days and past hours, with the columns `select` names. */
+const totals = (select: (t: Prisma.Sql) => Prisma.Sql) =>
+  fromTotals("statistics_hourly_tickets", "statistics_daily_tickets", (t, ts) => Prisma.sql`SELECT ${ts} AS ts, ${select(t)}`);
 
 const count = async (ctx: MetricContext, column: "entradas" | "salidas") => {
+  // By hour, a day row is spread over its local hours (its per-hour array): each one at that
+  // hour of the day, so the grouping key reads it as that hour.
+  const byHour = ctx.query.agrupar === "hora";
+  const dayRows = Prisma.sql`
+    SELECT p.proyecto_id, (d.dia + make_interval(hours => h.hora))::timestamp AT TIME ZONE p.zone AS ts, d.${Prisma.raw(column)}_hora[h.hora + 1] AS n
+    FROM parts p JOIN statistics_daily_tickets d ON p.ds < p.de AND d.proyecto_id = p.proyecto_id AND d.dia >= p.day_a AND d.dia < p.day_b
+    CROSS JOIN generate_series(0, 23) AS h(hora)`;
   const rows = await ctx.db.$queryRaw<Array<{ clave: string; valor: number }>>(Prisma.sql`
-    WITH ${hourlyScope(ctx.query, ctx.now)},
+    WITH ${hourlyScope(ctx.query, ctx.now, { daily: true })},
     tickets AS (
-      SELECT h.proyecto_id, h.hora AS ts, h.${Prisma.raw(column)} AS n FROM ${fromTotals} WHERE h.${Prisma.raw(column)} > 0
+      ${byHour
+        ? Prisma.sql`SELECT x.proyecto_id, x.ts, x.n FROM (${totals((t) => Prisma.sql`${t}.${Prisma.raw(column)} AS n`)}) x
+          WHERE x.n > 0 AND NOT (x.ts >= x.ds AND x.ts < x.de)
+          UNION ALL SELECT proyecto_id, ts, n FROM (${dayRows}) days WHERE n > 0`
+        : Prisma.sql`SELECT x.proyecto_id, x.ts, x.n FROM (${totals((t) => Prisma.sql`${t}.${Prisma.raw(column)} AS n`)}) x WHERE x.n > 0`}
       UNION ALL
       SELECT proyecto_id, ts, 1 FROM (${column === "entradas" ? ticketEntryRows : ticketExitRows}) live
     ),
@@ -46,7 +59,7 @@ export const ticketMetrics: Record<string, MetricQuery> = {
     const rows = await ctx.db.$queryRaw<Array<{ clave: string; monto: string; tickets: number }>>(Prisma.sql`
       WITH ${hourlyScope(ctx.query, ctx.now)},
       paid AS (
-        SELECT h.proyecto_id, h.hora AS ts, h.pagados AS n, h.monto_pagado AS monto FROM ${fromTotals} WHERE h.pagados > 0
+        SELECT x.proyecto_id, x.ts, x.n, x.monto FROM (${totals((t) => Prisma.sql`${t}.pagados AS n, ${t}.monto_pagado AS monto`)}) x WHERE x.n > 0
         UNION ALL
         SELECT proyecto_id, ts, 1, monto FROM (${ticketExitRows}) live WHERE pagado
       )
@@ -66,8 +79,9 @@ export const ticketMetrics: Record<string, MetricQuery> = {
     const rows = await ctx.db.$queryRaw<Array<{ clave: string; tickets: number; minutos: number; buckets: number[]; bucket_minutos: number[]; ingresos: string[] }>>(Prisma.sql`
       WITH ${hourlyScope(ctx.query, ctx.now)},
       stays AS (
-        SELECT h.proyecto_id, h.hora AS ts, h.estancias AS n, h.estancia_minutos AS minutos, h.estancia_buckets AS buckets, h.estancia_bucket_minutos AS bucket_minutos, h.estancia_ingresos AS ingresos
-        FROM ${fromTotals} WHERE h.estancias > 0
+        SELECT x.proyecto_id, x.ts, x.n, x.minutos, x.buckets, x.bucket_minutos, x.ingresos
+        FROM (${totals((t) => Prisma.sql`${t}.estancias AS n, ${t}.estancia_minutos AS minutos, ${t}.estancia_buckets AS buckets,
+          ${t}.estancia_bucket_minutos AS bucket_minutos, ${t}.estancia_ingresos AS ingresos`)}) x WHERE x.n > 0
         UNION ALL
         SELECT proyecto_id, ts, 1, minutos,
           ARRAY[${Prisma.join(bucketIndexes.map((index) => Prisma.sql`(${stayBucket(Prisma.sql`minutos`)} = ${index})::int`))}],

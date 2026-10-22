@@ -67,23 +67,47 @@ const insideNowStays = Prisma.sql`stays AS (
   ) x
 )`;
 
-/** Cars inside each parking at `now`. */
-const insideNow = (ctx: MetricContext, key: Prisma.Sql) => ctx.db.$queryRaw<Array<{ clave: string; valor: number }>>(Prisma.sql`
-  WITH ${scope(ctx.query.proyectos, { kind: "instants", from: ctx.now, to: ctx.now })}, ${insideNowStays}
-  SELECT ${key} AS clave, count(*)::int AS valor
-  FROM stays st JOIN scope s ON s.proyecto_id = st.proyecto_id
-  GROUP BY 1 ORDER BY 1`);
+type Inside = Array<{ proyecto_id: string; tipo: string; valor: number }>;
+
+/**
+ * Who is inside at one instant is the same for every metric asked about it: a dashboard asks
+ * for the cars inside and for the occupancy with the same `now`, so the second one reuses the
+ * first's answer (a few seconds at most, never across instants).
+ */
+const recentInside = new Map<string, { at: number; rows: Promise<Inside> }>();
+const REUSE_MS = 10_000;
+
+/** Cars inside each parking at `now`, by type (ticket, pension). */
+const insideNow = (ctx: MetricContext): Promise<Inside> => {
+  const key = `${ctx.now}|${[...ctx.query.proyectos].sort().join(",")}`;
+  const reused = recentInside.get(key);
+  if (reused && Date.now() - reused.at < REUSE_MS) return reused.rows;
+  for (const [old, entry] of recentInside) if (Date.now() - entry.at >= REUSE_MS) recentInside.delete(old);
+  const rows = ctx.db.$queryRaw<Inside>(Prisma.sql`
+    WITH ${scope(ctx.query.proyectos, { kind: "instants", from: ctx.now, to: ctx.now })}, ${insideNowStays}
+    SELECT st.proyecto_id::text, st.tipo, count(*)::int AS valor FROM stays st GROUP BY 1, 2`);
+  recentInside.set(key, { at: Date.now(), rows });
+  // A failed read is not reused.
+  rows.catch(() => recentInside.delete(key));
+  return rows;
+};
 
 export const occupancyMetrics: Record<string, MetricQuery> = {
   async "operacion.autos_dentro"(ctx) {
-    const rows = await insideNow(ctx, groupKey(ctx.query.agrupar, Prisma.sql`s.start_at`, { tipo: Prisma.sql`st.tipo` }));
+    const groups = new Map<string, number>();
+    for (const row of await insideNow(ctx)) {
+      const clave = ctx.query.agrupar === "proyecto" ? row.proyecto_id : ctx.query.agrupar === "tipo" ? row.tipo : "total";
+      groups.set(clave, (groups.get(clave) ?? 0) + row.valor);
+    }
+    const rows = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([clave, valor]) => ({ clave, valor }));
     return countOutput(rows, ctx.query.agrupar !== null);
   },
 
   async "operacion.ocupacion"(ctx) {
     const capacity = await capacities(ctx);
     if (!capacity.size) return NOT_AVAILABLE;
-    const inside = new Map((await insideNow(ctx, Prisma.sql`s.proyecto_id::text`)).map((row) => [row.clave, row.valor]));
+    const inside = new Map<string, number>();
+    for (const row of await insideNow(ctx)) inside.set(row.proyecto_id, (inside.get(row.proyecto_id) ?? 0) + row.valor);
     // Consolidated: cars over spaces of the parkings that have a capacity.
     let cars = 0, spaces = 0;
     for (const [id, places] of capacity) { cars += inside.get(id) ?? 0; spaces += places; }

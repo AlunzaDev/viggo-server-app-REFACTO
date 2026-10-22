@@ -1,11 +1,12 @@
 import { Prisma } from "../../../generated/prisma/client";
 import { paymentRows } from "../hourly-sql";
-import { groupKey, hourlyScope, moneyOutput, type MetricContext, type MetricQuery } from "../statistics-sql";
+import { fromTotals, groupKey, hourlyScope, moneyOutput, type MetricContext, type MetricQuery } from "../statistics-sql";
 
 /**
  * Money of one real charge each (docs/estadisticas.md §4.1): charges at their payment date
- * and refunds at the date they were made (§4.3), in MXN. Whole past hours come from
- * statistics_hourly_payments; the rest of the range is read live with the same rules.
+ * and refunds at the date they were made (§4.3), in MXN. Whole days come from
+ * statistics_daily_payments, whole past hours from statistics_hourly_payments, and the rest of
+ * the range is read live with the same rules.
  */
 const sum = async (ctx: MetricContext, amount: Prisma.Sql, filter: Prisma.Sql) => {
   // Method and type are kept per hour only when they are the grouping.
@@ -15,8 +16,9 @@ const sum = async (ctx: MetricContext, amount: Prisma.Sql, filter: Prisma.Sql) =
   const rows = await ctx.db.$queryRaw<Array<{ clave: string; valor: string }>>(Prisma.sql`
     WITH ${hourlyScope(ctx.query, ctx.now)},
     movements AS (
-      SELECT h.proyecto_id, h.hora AS ts, h.movimiento, NULLIF(h.metodo, '') AS metodo, NULLIF(h.tipo, '') AS tipo, h.monto
-      FROM parts p JOIN statistics_hourly_payments h ON h.proyecto_id = p.proyecto_id AND h.hora >= p.a AND h.hora < p.b
+      SELECT x.proyecto_id, x.ts, x.movimiento, NULLIF(x.metodo, '') AS metodo, NULLIF(x.tipo, '') AS tipo, x.monto
+      FROM (${fromTotals("statistics_hourly_payments", "statistics_daily_payments",
+        (t, ts) => Prisma.sql`SELECT ${ts} AS ts, ${t}.movimiento, ${t}.metodo, ${t}.tipo, ${t}.monto`)}) x
       UNION ALL
       SELECT proyecto_id, ts, movimiento, metodo, tipo, monto FROM (${paymentRows}) live
     ),

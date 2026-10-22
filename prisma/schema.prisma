@@ -333,6 +333,8 @@ model Proyecto {
   operationalPayments      OperationalPayment[]
   statisticsHourlyPayments StatisticsHourlyPayment[]
   statisticsHourlyTickets  StatisticsHourlyTicket[]
+  statisticsDailyPayments  StatisticsDailyPayment[]
+  statisticsDailyTickets   StatisticsDailyTicket[]
   operationalCashSessions  OperationalCashSession[]
   operationalCashShifts    OperationalCashShift[]
   operationalCashMovements OperationalCashMovement[]
@@ -1064,6 +1066,43 @@ model StatisticsHourlyTicket {
 
   @@id([proyectoId, hora])
   @@map("statistics_hourly_tickets")
+}
+
+/// The same totals per parking and local day (#56): the sum of the day's hours, recomputed with
+/// them. A range of whole days reads these instead of 24 rows per day.
+model StatisticsDailyPayment {
+  proyectoId String   @map("proyecto_id") @db.Uuid
+  dia        DateTime @db.Date
+  movimiento String
+  metodo     String
+  tipo       String
+  monto      Decimal  @db.Decimal(14, 2)
+  pagos      Int
+  proyecto   Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([proyectoId, dia, movimiento, metodo, tipo])
+  @@map("statistics_daily_payments")
+}
+
+model StatisticsDailyTicket {
+  proyectoId            String    @map("proyecto_id") @db.Uuid
+  dia                   DateTime  @db.Date
+  entradas              Int
+  salidas               Int
+  /// Entries and exits per local hour (0-23): the busiest hours of a range of days.
+  entradasHora          Int[]     @map("entradas_hora")
+  salidasHora           Int[]     @map("salidas_hora")
+  pagados               Int
+  montoPagado           Decimal   @map("monto_pagado") @db.Decimal(14, 2)
+  estancias             Int
+  estanciaMinutos       Float     @map("estancia_minutos")
+  estanciaBuckets       Int[]     @map("estancia_buckets")
+  estanciaBucketMinutos Float[]   @map("estancia_bucket_minutos")
+  estanciaIngresos      Decimal[] @map("estancia_ingresos") @db.Decimal(14, 2)
+  proyecto              Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([proyectoId, dia])
+  @@map("statistics_daily_tickets")
 }
 
 /// Hours whose totals must be recomputed (their source rows changed).

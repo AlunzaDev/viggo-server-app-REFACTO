@@ -29,6 +29,8 @@ export const toProyectoDocument = (row: ProyectoRow) => ({
   img: row.img,
   descripcion: row.descripcion,
   zonaHoraria: row.zonaHoraria,
+  /** Parking spaces (null while not captured): OPERATIVO's occupancy screen. */
+  capacidad: row.capacidad,
   estado: row.estado,
 });
 

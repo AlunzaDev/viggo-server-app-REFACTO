@@ -278,6 +278,16 @@ describe("SyncPostgresDatasource", () => {
     expect(after.proyecto.zonaHoraria).toBe("America/Tijuana");
     expect(after.version).not.toBe(before);
     await db.proyecto.update({ where: { id: proyectoId }, data: { zonaHoraria: "America/Mexico_City" } });
+
+    // So does its capacity: captured, changed and cleared.
+    expect(configuration.proyecto.capacidad).toBeNull();
+    const withoutCapacity = (await sync.getConfiguration(proyectoId))!.version;
+    await db.proyecto.update({ where: { id: proyectoId }, data: { capacidad: 120 } });
+    const captured = (await sync.getConfiguration(proyectoId))!;
+    expect(captured.proyecto.capacidad).toBe(120);
+    expect(captured.version).not.toBe(withoutCapacity);
+    await db.proyecto.update({ where: { id: proyectoId }, data: { capacidad: null } });
+    expect((await sync.getConfiguration(proyectoId))!.proyecto.capacidad).toBeNull();
     expect(await sync.getConfiguration(randomUUID())).toBeNull();
   });
 

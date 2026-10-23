@@ -3,6 +3,7 @@ import { HeartbeatOverviewController } from "../routes/heartbeat/heartbeat-overv
 import { ConnectionHistoryController } from "../routes/heartbeat/connection-history.controller";
 import { OccupancyOverviewController } from "../routes/occupancy/occupancy-overview.controller";
 import { PushController } from "../routes/push/push.controller";
+import { DataRetentionJob, retentionPlan } from "../services/system/data-retention.job";
 import { PushNoticeService } from "../services/push/push-notice.service";
 import { WebPushSender } from "../../infrastructure/push/web-push.sender";
 import { envs } from "../../config";
@@ -12,6 +13,7 @@ import { HeartbeatOverviewService } from "../services/heartbeat/heartbeat-overvi
 import { OperationalIncidentController } from "../routes/incidents/operational-incident.controller";
 import { InstallationPresenceMonitor } from "../services/installations/installation-presence.monitor";
 import {
+  buildDataRetentionRepository,
   buildPushRepository,
   buildConnectionHistoryRepository,
   buildOccupancyOverviewRepository,
@@ -56,3 +58,14 @@ export const buildConnectionHistoryController = (): ConnectionHistoryController 
 
 export const buildOccupancyOverviewController = (): OccupancyOverviewController =>
   new OccupancyOverviewController(new OccupancyOverviewService(buildOccupancyOverviewRepository()));
+
+export const buildDataRetentionJob = (): DataRetentionJob =>
+  new DataRetentionJob(buildDataRetentionRepository(), buildJobLockRepository(), retentionPlan({
+    financial: envs.RETENTION_FINANCIAL_DAYS,
+    operational: envs.RETENTION_OPERATIONAL_DAYS,
+    inbox: envs.RETENTION_INBOX_DAYS,
+    mobileOperations: envs.RETENTION_MOBILE_OPERATIONS_DAYS,
+    incidents: envs.RETENTION_INCIDENTS_DAYS,
+    connectionEvents: envs.RETENTION_CONNECTION_EVENTS_DAYS,
+    pushSubscriptions: envs.RETENTION_PUSH_SUBSCRIPTIONS_DAYS,
+  }));

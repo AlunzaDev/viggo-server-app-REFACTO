@@ -189,4 +189,12 @@ export const envs = {
   WEB_PUSH_SUBJECT: env.get("WEB_PUSH_SUBJECT").default(mailerEmail ? `mailto:${mailerEmail}` : "").asString().trim(),
   /** Least time between two notices of the same kind about the same parking. */
   WEB_PUSH_COOLDOWN_MS: parseBoundedInteger(env.get("WEB_PUSH_COOLDOWN_MS").asString(), 5 * 60 * 1000, 0, 24 * 60 * 60 * 1000),
+  // Data retention (docs/retencion.md, REFACTO#70): days each kind of data is kept; 0 never purges it.
+  RETENTION_FINANCIAL_DAYS: parseBoundedInteger(env.get("RETENTION_FINANCIAL_DAYS").asString(), 1825, 0, 36500),
+  RETENTION_OPERATIONAL_DAYS: parseBoundedInteger(env.get("RETENTION_OPERATIONAL_DAYS").asString(), 1825, 0, 36500),
+  RETENTION_INBOX_DAYS: parseBoundedInteger(env.get("RETENTION_INBOX_DAYS").asString(), 30, 0, 36500),
+  RETENTION_MOBILE_OPERATIONS_DAYS: parseBoundedInteger(env.get("RETENTION_MOBILE_OPERATIONS_DAYS").asString(), 90, 0, 36500),
+  RETENTION_INCIDENTS_DAYS: parseBoundedInteger(env.get("RETENTION_INCIDENTS_DAYS").asString(), 365, 0, 36500),
+  RETENTION_CONNECTION_EVENTS_DAYS: parseBoundedInteger(env.get("RETENTION_CONNECTION_EVENTS_DAYS").asString(), 365, 0, 36500),
+  RETENTION_PUSH_SUBSCRIPTIONS_DAYS: parseBoundedInteger(env.get("RETENTION_PUSH_SUBSCRIPTIONS_DAYS").asString(), 180, 0, 36500),
 };

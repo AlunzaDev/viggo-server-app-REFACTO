@@ -10,6 +10,7 @@ export class HealthRoutes {
     router.get("/db", controller.db);
     router.get("/sync", controller.sync);
     router.get("/financial-worker", controller.financialWorker);
+    router.get("/retention", controller.retention);
 
     return router;
   }

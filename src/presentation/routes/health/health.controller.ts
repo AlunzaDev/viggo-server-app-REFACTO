@@ -4,6 +4,7 @@ import { PostgresDatabase } from "../../../data/postgres";
 import type { InstallationsRepository } from "../../../domain/repositories/installations/installations.repository";
 import type { MobileOperationRepository } from "../../../domain/repositories/mobile/mobile-operation.repository";
 import { FinancialReconciliationService } from "../../services/payments/financial-reconciliation.service";
+import { DataRetentionJob } from "../../services/system/data-retention.job";
 
 // The same presence the heartbeat screen shows (OPERATIVO polls every 15 s; two misses are tolerated).
 const onlineThresholdMs = INSTALLATION_ONLINE_MS;
@@ -45,6 +46,12 @@ export class HealthController {
   sync = async (_req: Request, res: Response) => {
     const sync = await this.getSyncSnapshot();
     return res.status(sync.status === "down" ? 503 : 200).json(sync);
+  };
+
+  /** The last data purge (REFACTO#70): what it deleted, and whether it finished. */
+  retention = (_req: Request, res: Response) => {
+    const snapshot = DataRetentionJob.getHealthSnapshot();
+    return res.status(snapshot.status === "ok" ? 200 : 503).json(snapshot);
   };
 
   financialWorker = async (_req: Request, res: Response) => {

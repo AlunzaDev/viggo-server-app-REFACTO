@@ -1,6 +1,6 @@
 import { OperationalInboxScheduler } from "./services/sync/operational-inbox.scheduler";
 import { HourlyTotalsScheduler } from "./services/statistics/hourly-totals.scheduler";
-import { buildInstallationPresenceMonitor } from "./dependencies/system.dependencies";
+import { buildDataRetentionJob, buildInstallationPresenceMonitor } from "./dependencies/system.dependencies";
 import { buildHourlyTotalsStore } from "./dependencies/repositories.dependencies";
 import { ExternalPaymentWorker } from "./services/payments/external-payment.worker";
 import { buildExternalPaymentService } from "./dependencies/external-payments.dependencies";
@@ -46,6 +46,7 @@ export class Server {
   private readonly inbox = new OperationalInboxScheduler();
   private readonly statistics = new HourlyTotalsScheduler(buildHourlyTotalsStore());
   private readonly installationPresence = buildInstallationPresenceMonitor();
+  private readonly dataRetention = buildDataRetentionJob();
   private readonly externalPayments = new ExternalPaymentWorker(buildExternalPaymentService());
 
   constructor({ host = "0.0.0.0", port, publicPath = "public", routes }: ServerOptions) {
@@ -111,6 +112,7 @@ export class Server {
     this.inbox.start();
     this.statistics.start();
     this.installationPresence.start();
+    this.dataRetention.start();
 
     process.once("SIGTERM", () => void this.shutdown("SIGTERM"));
     process.once("SIGINT", () => void this.shutdown("SIGINT"));
@@ -137,6 +139,7 @@ export class Server {
       await this.inbox.stop();
       await this.statistics.stop();
       await this.installationPresence.stop();
+      await this.dataRetention.stop();
       await this.externalPayments.stop();
       await PostgresDatabase.disconnect();
       process.exit(0);

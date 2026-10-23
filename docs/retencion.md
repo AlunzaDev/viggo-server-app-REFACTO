@@ -31,6 +31,14 @@ Lo demás no crece con el uso (catálogos, usuarios, proyectos, configuración) 
 - `operational_incidents` abiertos.
 - Pagos con conciliación o reembolso pendiente: el plazo financiero se mide desde que se crearon y supera cualquier conciliación.
 
+## Cómo corre
+
+- `DataRetentionJob` (REFACTO#70) corre 5 min después de arrancar y luego cada 6 horas, con job-lock: con varias instancias del API solo una depura.
+- Borra en lotes de 2000 filas y se detiene a los 10 min; lo que falte sigue en la siguiente corrida.
+- Las tablas grandes (`operational_*`, `inbox_events`, `connection_events`, órdenes externas) se recorren estacionamiento por estacionamiento con su índice `(proyecto_id, ...)`; no hacen falta índices nuevos.
+- Una orden externa se borra junto con sus eventos.
+- `GET /api/health/retention` muestra la última corrida: cuánto borró de cada tabla, si terminó y si hubo error. También queda en el log `[ADMIN data retention]`.
+
 ## Notas
 
 - **5 años** para lo contable sigue el plazo del Código Fiscal de la Federación (art. 30); confirmarlo con contabilidad antes de producción.

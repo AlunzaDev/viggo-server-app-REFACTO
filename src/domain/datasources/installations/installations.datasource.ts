@@ -54,6 +54,8 @@ export abstract class InstallationsDatasource {
   /** Token to call the project's linked installation, or "" if it has none yet. */
   abstract findAdminCallToken(proyectoId: string): Promise<string>;
   abstract recordCommandPoll(installationId: string, now: number): Promise<void>;
+  /** Every approved installation with the last time it asked for commands. */
+  abstract listApprovedPresence(): Promise<Array<{ installationId: string; proyectoId: string; lastSeenAt: number | null }>>;
   /**
    * Approved installations grouped by last poll: online if polled at/after onlineSince,
    * degraded if between degradedSince and onlineSince, offline if before degradedSince.

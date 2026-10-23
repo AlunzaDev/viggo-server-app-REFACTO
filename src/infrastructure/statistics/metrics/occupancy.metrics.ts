@@ -1,12 +1,14 @@
+import { occupancyFigures, PENSION_MAX_STAY_MS, TICKET_MAX_STAY_MS } from "@alunzadev/viggo-contracts";
 import { Prisma } from "../../../generated/prisma/client";
-import { countOutput, groupKey, scope, type MetricContext, type MetricOutput, type MetricQuery } from "../statistics-sql";
+import { countOutput, groupKey, scope, type Db, type MetricContext, type MetricOutput, type MetricQuery } from "../statistics-sql";
 
 /**
  * Longest stay counted (docs/estadisticas.md §4.4): a ticket without exit after 7 days, or a
  * pensioner without a move after 30, is taken as gone so forgotten records do not fill a parking.
+ * The same rule as OPERATIVO, from @alunzadev/viggo-contracts (ticketIsInside, pensionerIsInside).
  */
-const TICKET_MAX_STAY = Prisma.sql`interval '7 days'`;
-const PENSION_MAX_STAY = Prisma.sql`interval '30 days'`;
+const TICKET_MAX_STAY = Prisma.sql`(${TICKET_MAX_STAY_MS} * interval '1 millisecond')`;
+const PENSION_MAX_STAY = Prisma.sql`(${PENSION_MAX_STAY_MS} * interval '1 millisecond')`;
 
 /**
  * `stays`: who was parked, as intervals [desde, hasta) of each parking in `scope`. Tickets go
@@ -36,7 +38,7 @@ const capacities = async (ctx: MetricContext) => {
   return new Map(rows.filter((row) => row.capacidad !== null && row.capacidad > 0).map((row) => [row.id, row.capacidad as number]));
 };
 
-const percent = (inside: number, capacity: number) => Math.round((inside / capacity) * 1000) / 10;
+const percent = (inside: number, capacity: number) => occupancyFigures(inside, capacity).porcentaje;
 const NOT_AVAILABLE: MetricOutput = { estado: "no_disponible", valor: null };
 
 /**
@@ -67,7 +69,7 @@ const insideNowStays = Prisma.sql`stays AS (
   ) x
 )`;
 
-type Inside = Array<{ proyecto_id: string; tipo: string; valor: number }>;
+export type Inside = Array<{ proyecto_id: string; tipo: string; valor: number }>;
 
 /**
  * Who is inside at one instant is the same for every metric asked about it: a dashboard asks
@@ -77,14 +79,18 @@ type Inside = Array<{ proyecto_id: string; tipo: string; valor: number }>;
 const recentInside = new Map<string, { at: number; rows: Promise<Inside> }>();
 const REUSE_MS = 10_000;
 
-/** Cars inside each parking at `now`, by type (ticket, pension). */
-const insideNow = (ctx: MetricContext): Promise<Inside> => {
-  const key = `${ctx.now}|${[...ctx.query.proyectos].sort().join(",")}`;
+/**
+ * Cars inside each parking at `now`, by type (ticket, pension). Also used by GET /api/ocupacion
+ * (REFACTO#61), so the occupancy screen and the statistics count the same cars.
+ */
+export const carsInsideNow = (db: Db, proyectos: string[], now: number): Promise<Inside> => {
+  if (!proyectos.length) return Promise.resolve([]);
+  const key = `${now}|${[...proyectos].sort().join(",")}`;
   const reused = recentInside.get(key);
   if (reused && Date.now() - reused.at < REUSE_MS) return reused.rows;
   for (const [old, entry] of recentInside) if (Date.now() - entry.at >= REUSE_MS) recentInside.delete(old);
-  const rows = ctx.db.$queryRaw<Inside>(Prisma.sql`
-    WITH ${scope(ctx.query.proyectos, { kind: "instants", from: ctx.now, to: ctx.now })}, ${insideNowStays}
+  const rows = db.$queryRaw<Inside>(Prisma.sql`
+    WITH ${scope(proyectos, { kind: "instants", from: now, to: now })}, ${insideNowStays}
     SELECT st.proyecto_id::text, st.tipo, count(*)::int AS valor FROM stays st GROUP BY 1, 2`);
   recentInside.set(key, { at: Date.now(), rows });
   // A failed read is not reused.
@@ -95,7 +101,7 @@ const insideNow = (ctx: MetricContext): Promise<Inside> => {
 export const occupancyMetrics: Record<string, MetricQuery> = {
   async "operacion.autos_dentro"(ctx) {
     const groups = new Map<string, number>();
-    for (const row of await insideNow(ctx)) {
+    for (const row of await carsInsideNow(ctx.db, ctx.query.proyectos, ctx.now)) {
       const clave = ctx.query.agrupar === "proyecto" ? row.proyecto_id : ctx.query.agrupar === "tipo" ? row.tipo : "total";
       groups.set(clave, (groups.get(clave) ?? 0) + row.valor);
     }
@@ -107,7 +113,7 @@ export const occupancyMetrics: Record<string, MetricQuery> = {
     const capacity = await capacities(ctx);
     if (!capacity.size) return NOT_AVAILABLE;
     const inside = new Map<string, number>();
-    for (const row of await insideNow(ctx)) inside.set(row.proyecto_id, (inside.get(row.proyecto_id) ?? 0) + row.valor);
+    for (const row of await carsInsideNow(ctx.db, ctx.query.proyectos, ctx.now)) inside.set(row.proyecto_id, (inside.get(row.proyecto_id) ?? 0) + row.valor);
     // Consolidated: cars over spaces of the parkings that have a capacity.
     let cars = 0, spaces = 0;
     for (const [id, places] of capacity) { cars += inside.get(id) ?? 0; spaces += places; }

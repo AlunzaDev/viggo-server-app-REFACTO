@@ -1,12 +1,13 @@
+import { INSTALLATION_OFFLINE_MS, INSTALLATION_ONLINE_MS } from "@alunzadev/viggo-contracts";
 import { Request, Response } from "express";
 import { PostgresDatabase } from "../../../data/postgres";
 import type { InstallationsRepository } from "../../../domain/repositories/installations/installations.repository";
 import type { MobileOperationRepository } from "../../../domain/repositories/mobile/mobile-operation.repository";
 import { FinancialReconciliationService } from "../../services/payments/financial-reconciliation.service";
-import { OperationalIncidentService } from "../../services/incidents/operational-incident.service";
 
-const onlineThresholdMs = 15_000;
-const degradedThresholdMs = 60_000;
+// The same presence the heartbeat screen shows (OPERATIVO polls every 15 s; two misses are tolerated).
+const onlineThresholdMs = INSTALLATION_ONLINE_MS;
+const degradedThresholdMs = INSTALLATION_OFFLINE_MS;
 
 export class HealthController {
   constructor(
@@ -64,21 +65,6 @@ export class HealthController {
       degraded: degradedInstallations,
       offline: offlineInstallations,
     } = connectivity;
-    await Promise.all(offlineInstallations.map((installation) =>
-      OperationalIncidentService.open({
-        incidentKey: `installation-offline:${installation.installationId}`,
-        type: "INSTALLATION_OFFLINE",
-        severity: "critical",
-        source: "admin-health",
-        projectId: String(installation.proyectoId ?? ""),
-        installationId: String(installation.installationId ?? ""),
-        message: "Instalacion operativa sin polling reciente",
-        metadata: {
-          lastCommandPollAt: installation.lastCommandPollAt,
-          degradedThresholdMs,
-        },
-      }),
-    ));
     return {
       service: "viggo-administrativo-sync",
       status:

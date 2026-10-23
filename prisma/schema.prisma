@@ -328,6 +328,7 @@ model Proyecto {
   mobileOperations         MobileOperation[]
   payments                 Payment[]
   incidents                OperationalIncident[]
+  connectionEvents         ConnectionEvent[]
   inboxEvents              InboxEvent[]
   operationalTickets       OperationalTicket[]
   operationalPayments      OperationalPayment[]
@@ -420,10 +421,11 @@ model Modulo {
   createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  proyecto      Proyecto             @relation(fields: [proyectoId], references: [id], onDelete: Restrict)
-  submodulos    Submodulo[]
-  remoteSupport ModuloRemoteSupport?
-  deviceState   ModuloDeviceState?
+  proyecto         Proyecto             @relation(fields: [proyectoId], references: [id], onDelete: Restrict)
+  submodulos       Submodulo[]
+  remoteSupport    ModuloRemoteSupport?
+  deviceState      ModuloDeviceState?
+  connectionEvents ConnectionEvent[]
 
   @@index([proyectoId, tipo, estado])
   @@map("modulos")
@@ -832,6 +834,29 @@ model ProjectHeartbeatSnapshot {
 
   @@index([receivedAt])
   @@map("project_heartbeat_snapshots")
+}
+
+/// Each change of connection state of an installation or of a module (REFACTO#63).
+/// Installations: online / offline (from the presence monitor). Modules: online / offline /
+/// pending, as OPERATIVO reported them in its heartbeat snapshot.
+model ConnectionEvent {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  proyectoId     String   @map("proyecto_id") @db.Uuid
+  installationId String   @default("") @map("installation_id")
+  /// Null: the event is about the installation itself.
+  moduloId       String?  @map("modulo_id") @db.Uuid
+  fromStatus     String   @map("from_status")
+  toStatus       String   @map("to_status")
+  /// When it changed: the snapshot's time for a module, the last contact for an installation going offline.
+  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  proyecto Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  modulo   Modulo?  @relation(fields: [moduloId], references: [id], onDelete: Cascade)
+
+  @@index([proyectoId, occurredAt(sort: Desc)])
+  @@index([moduloId, occurredAt(sort: Desc)])
+  @@map("connection_events")
 }
 
 model OperationalIncident {

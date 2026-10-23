@@ -58,6 +58,11 @@ export class OperationalIncidentPostgresDatasource extends OperationalIncidentDa
     };
 
     const proyectoId = isUuid(input.projectId) ? input.projectId : null;
+    // A resolved incident opening again is a new occurrence: it starts now.
+    await this.incidents.updateMany({
+      where: { incidentKey: input.incidentKey, status: "resolved" },
+      data: { openedAt: new Date(now) },
+    });
     try {
       return toRecord(await write(proyectoId));
     } catch (error) {

@@ -218,6 +218,14 @@ export class InstallationsPostgresDatasource implements InstallationsDatasource 
     });
   }
 
+  async listApprovedPresence() {
+    const rows = await this.installations.findMany({
+      where: { status: "approved" },
+      select: { installationId: true, proyectoId: true, lastCommandPollAt: true },
+    });
+    return rows.map((row) => ({ installationId: row.installationId, proyectoId: row.proyectoId, lastSeenAt: row.lastCommandPollAt?.getTime() ?? null }));
+  }
+
   async getConnectivitySummary(onlineSince: number, degradedSince: number): Promise<InstallationConnectivitySummary> {
     const online = new Date(onlineSince);
     const degraded = new Date(degradedSince);

@@ -36,6 +36,10 @@ export class InstallationsRepositoryImpl implements InstallationsRepository {
     return this.datasource.recordCommandPoll(installationId, now);
   }
 
+  listApprovedPresence() {
+    return this.datasource.listApprovedPresence();
+  }
+
   getConnectivitySummary(onlineSince: number, degradedSince: number) {
     return this.datasource.getConnectivitySummary(onlineSince, degradedSince);
   }

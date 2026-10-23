@@ -1,3 +1,4 @@
+import { isHeartbeatStatus } from "@alunzadev/viggo-contracts";
 // Database-independent helpers shared by the Mongo and Postgres sync datasources.
 import { createHash } from "node:crypto";
 import {
@@ -274,10 +275,7 @@ export const toDeviceRuntimeSnapshot = (
     connectionStatus: (["CONNECTED", "DISCONNECTED", "PENDING", "REJECTED", "MISMATCH"].includes(connectionStatus)
       ? connectionStatus
       : "PENDING") as "CONNECTED" | "DISCONNECTED" | "PENDING" | "REJECTED" | "MISMATCH",
-    heartbeatStatus: (["online", "offline", "pending"].includes(heartbeatStatus) ? heartbeatStatus : "pending") as
-      | "online"
-      | "offline"
-      | "pending",
+    heartbeatStatus: isHeartbeatStatus(heartbeatStatus) ? heartbeatStatus : "pending",
     isConnected: Boolean(source.isConnected),
     isAuthorized: Boolean(source.isAuthorized),
     connectedAt: toDateOrNull(source.connectedAt) ?? undefined,

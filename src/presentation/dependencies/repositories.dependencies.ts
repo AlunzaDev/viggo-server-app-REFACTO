@@ -5,6 +5,9 @@ import { AuthPostgresDatasource } from "../../infrastructure/datasources/auth/au
 import { PermissionProfilePostgresDatasource } from "../../infrastructure/datasources/auth/permission-profile.datasource.postgres";
 import { UsuarioPostgresDatasource } from "../../infrastructure/datasources/auth/usuario.datasource.postgres";
 import { OperationalIncidentPostgresDatasource } from "../../infrastructure/datasources/incidents/operational-incident.datasource.postgres";
+import { HeartbeatOverviewPostgresDatasource } from "../../infrastructure/datasources/heartbeat/heartbeat-overview.datasource.postgres";
+import { ConnectionHistoryPostgresDatasource } from "../../infrastructure/datasources/heartbeat/connection-history.datasource.postgres";
+import { OccupancyOverviewPostgresDatasource } from "../../infrastructure/datasources/occupancy/occupancy-overview.datasource.postgres";
 import { InstallationsPostgresDatasource } from "../../infrastructure/datasources/installations/installations.datasource.postgres";
 import { LocalProjectsPostgresDatasource } from "../../infrastructure/datasources/local-projects/local-projects.datasource.postgres";
 import { MobileOperationPostgresDatasource } from "../../infrastructure/datasources/mobile/mobile-operation.datasource.postgres";
@@ -21,6 +24,9 @@ import { AuthRepositoryImpl } from "../../infrastructure/repositories/auth/auth.
 import { PermissionProfileRepositoryImpl } from "../../infrastructure/repositories/auth/permission-profile.repository.impl";
 import { UsuarioRepositoryImpl } from "../../infrastructure/repositories/auth/usuario.repository.impl";
 import { OperationalIncidentRepositoryImpl } from "../../infrastructure/repositories/incidents/operational-incident.repository.impl";
+import { HeartbeatOverviewRepositoryImpl } from "../../infrastructure/repositories/heartbeat/heartbeat-overview.repository.impl";
+import { ConnectionHistoryRepositoryImpl } from "../../infrastructure/repositories/heartbeat/connection-history.repository.impl";
+import { OccupancyOverviewRepositoryImpl } from "../../infrastructure/repositories/occupancy/occupancy-overview.repository.impl";
 import { InstallationsRepositoryImpl } from "../../infrastructure/repositories/installations/installations.repository.impl";
 import { LocalProjectsRepositoryImpl } from "../../infrastructure/repositories/local-projects/local-projects.repository.impl";
 import { MobileOperationRepositoryImpl } from "../../infrastructure/repositories/mobile/mobile-operation.repository.impl";
@@ -82,6 +88,15 @@ export const buildMobileOperationRepository = () =>
 
 export const buildOperationalIncidentRepository = () =>
   new OperationalIncidentRepositoryImpl(new OperationalIncidentPostgresDatasource());
+
+export const buildHeartbeatOverviewRepository = () =>
+  new HeartbeatOverviewRepositoryImpl(new HeartbeatOverviewPostgresDatasource());
+
+export const buildConnectionHistoryRepository = () =>
+  new ConnectionHistoryRepositoryImpl(new ConnectionHistoryPostgresDatasource());
+
+export const buildOccupancyOverviewRepository = () =>
+  new OccupancyOverviewRepositoryImpl(new OccupancyOverviewPostgresDatasource());
 
 export const buildJobLockRepository = () =>
   new JobLockRepositoryImpl(new JobLockPostgresDatasource());

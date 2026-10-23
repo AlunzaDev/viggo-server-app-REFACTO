@@ -1,12 +1,12 @@
-export const MODULO_TIPOS = ["ENTRADA", "SALIDA", "POS"] as const;
+import { MODULE_TYPES, parseModuleType, type ModuleType } from "@alunzadev/viggo-contracts";
 
-export type ModuloTipo = (typeof MODULO_TIPOS)[number];
+// The module types and their rules live in @alunzadev/viggo-contracts, shared with OPERATIVO.
+export const MODULO_TIPOS = MODULE_TYPES;
+
+export type ModuloTipo = ModuleType;
+
+/** Accepts the type in any case and with spaces ("entrada "), as the requests send it. */
+export const parseModuloTipo = (value: unknown): ModuloTipo | null => parseModuleType(value);
 
 export const isModuloTipo = (value: unknown): value is ModuloTipo =>
-  typeof value === "string" &&
-  MODULO_TIPOS.includes(value.trim().toUpperCase() as ModuloTipo);
-
-export const parseModuloTipo = (value: unknown): ModuloTipo | null => {
-  if (!isModuloTipo(value)) return null;
-  return value.trim().toUpperCase() as ModuloTipo;
-};
+  typeof value === "string" && parseModuloTipo(value) !== null;

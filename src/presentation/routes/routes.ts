@@ -14,6 +14,8 @@ import { UsuarioRoutes } from "./auth/usuario.routes";
 
 import { InstallationsRoutes } from "./installations/installations.routes";
 import { LocalProjectsRoutes } from "./local-projects/local-projects.routes";
+import { HeartbeatOverviewRoutes } from "./heartbeat/heartbeat-overview.routes";
+import { OccupancyOverviewRoutes } from "./occupancy/occupancy-overview.routes";
 
 import { ModuloRoutes } from "./parking/modulo.routes";
 import { ProyectoRoutes } from "./parking/proyecto.routes";
@@ -146,6 +148,18 @@ export class AppRoutes {
       AuthMiddleware.requireAuth,
       requireAdminApp,
       LocalProjectsRoutes.routes,
+    );
+    router.use(
+      "/api/heartbeat",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      HeartbeatOverviewRoutes.routes,
+    );
+    router.use(
+      "/api/ocupacion",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      OccupancyOverviewRoutes.routes,
     );
     return router;
   }

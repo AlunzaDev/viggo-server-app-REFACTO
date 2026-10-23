@@ -1,6 +1,7 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
+import { pensionerIsInside, ticketIsInside, type PensionMove, type TicketPresence } from "@alunzadev/viggo-contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { JwtPlugin } from "../../src/config/plugins/jwt.plugin";
 import { PostgresDatabase } from "../../src/data/postgres";
@@ -123,16 +124,26 @@ describe("GET /api/estadisticas", () => {
   it("counts the cars inside now and the occupancy only where the capacity is known", async () => {
     const ago = (ms: number) => new Date(Date.now() - ms);
     const hour = 3_600_000, day = 24 * hour;
-    const ticket = (horaInicio: Date, horaSalida: Date | null, status = "ACTIVE") => db().operationalTicket.create({ data: {
-      proyectoId: projects.cdmx, installationId: tag, aggregateId: randomUUID(), occurredAt: new Date(), eventId: randomUUID(), payload: {},
-      horaInicio, horaSalida, monto: "0.00", pagado: false, status } });
-    const move = (pass: string, tipo: string, fecha: Date) => db().operationalPensionMove.create({ data: {
-      proyectoId: projects.cdmx, installationId: tag, aggregateId: randomUUID(), occurredAt: new Date(), eventId: randomUUID(),
-      payload: { tipo }, pensionPassId: pass, fecha } });
+    // Each fixture is also kept to count it with the shared rule that OPERATIVO uses.
+    const tickets: TicketPresence[] = [];
+    const moves = new Map<string, PensionMove[]>();
+    const ticket = (horaInicio: Date, horaSalida: Date | null, status = "ACTIVE") => {
+      tickets.push({ horaInicio, horaSalida, status });
+      return db().operationalTicket.create({ data: {
+        proyectoId: projects.cdmx, installationId: tag, aggregateId: randomUUID(), occurredAt: new Date(), eventId: randomUUID(), payload: {},
+        horaInicio, horaSalida, monto: "0.00", pagado: false, status } });
+    };
+    const move = (pass: string, tipo: string, fecha: Date) => {
+      moves.set(pass, [...(moves.get(pass) ?? []), { tipo, at: fecha }]);
+      return db().operationalPensionMove.create({ data: {
+        proyectoId: projects.cdmx, installationId: tag, aggregateId: randomUUID(), occurredAt: new Date(), eventId: randomUUID(),
+        payload: { tipo }, pensionPassId: pass, fecha } });
+    };
     await ticket(ago(hour), null); // inside
     await ticket(ago(2 * hour), ago(hour)); // already left
     await ticket(ago(8 * day), null); // forgotten: more than 7 days without exit
     await ticket(ago(30 * 60_000), null, "FRAUD"); // fraud without exit
+    await ticket(ago(10 * day), ago(-hour)); // more than 7 days ago, exit still ahead: taken as gone too
     const [inside, left, forgotten] = [randomUUID(), randomUUID(), randomUUID()];
     await move(inside, "ENTRADA", ago(3 * hour)); // inside
     await move(left, "ENTRADA", ago(5 * hour)); await move(left, "SALIDA", ago(4 * hour));
@@ -142,6 +153,9 @@ describe("GET /api/estadisticas", () => {
     const cars = await get(`metricas=operacion.autos_dentro&desde=2026-10-15&hasta=2026-10-15&agrupar=tipo&${both}`);
     expect(metric(cars.body, "operacion.autos_dentro")).toMatchObject({ estado: "ok", valor: 2,
       serie: [{ clave: "pension", valor: 1 }, { clave: "ticket", valor: 1 }] });
+    // The SQL agrees with the shared rule (@alunzadev/viggo-contracts) on the same records.
+    const byRule = tickets.filter((item) => ticketIsInside(item)).length + [...moves.values()].filter((passMoves) => pensionerIsInside(passMoves)).length;
+    expect(metric(cars.body, "operacion.autos_dentro").valor).toBe(byRule);
     // No capacity captured yet: never a percentage.
     expect(metric((await get(`metricas=operacion.ocupacion,operacion.ocupacion_horaria&desde=2026-10-15&hasta=2026-10-15&${both}`)).body, "operacion.ocupacion"))
       .toMatchObject({ estado: "no_disponible", valor: null });

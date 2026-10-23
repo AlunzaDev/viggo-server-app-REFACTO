@@ -1,3 +1,4 @@
+import { SUBMODULE_TYPES } from "@alunzadev/viggo-contracts";
 import { CustomError } from "../../errors/custom.error";
 import {
   parseRemoteSupportProvider,
@@ -9,17 +10,7 @@ import {
   ModuloTypeCapabilities,
 } from "./module-type-capabilities.entity";
 
-export const MODULO_SUBMODULO_TIPOS = [
-  "QR_SCANNER",
-  "PRINTER",
-  "BARRIER",
-  "CAMERA",
-  "CASH_DRAWER",
-  "CASH_ACCEPTOR",
-  "DISPLAY",
-  "KEYPAD",
-  "OTHER",
-] as const;
+export const MODULO_SUBMODULO_TIPOS = SUBMODULE_TYPES;
 
 export type ModuloSubmoduloTipo = (typeof MODULO_SUBMODULO_TIPOS)[number];
 

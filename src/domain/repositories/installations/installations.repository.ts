@@ -17,6 +17,7 @@ export abstract class InstallationsRepository {
   abstract requestSyncTokenRotation(requestId: string): Promise<LocalInstallationRecord | null>;
   abstract findAdminCallToken(proyectoId: string): Promise<string>;
   abstract recordCommandPoll(installationId: string, now: number): Promise<void>;
+  abstract listApprovedPresence(): Promise<Array<{ installationId: string; proyectoId: string; lastSeenAt: number | null }>>;
   abstract getConnectivitySummary(
     onlineSince: number,
     degradedSince: number,

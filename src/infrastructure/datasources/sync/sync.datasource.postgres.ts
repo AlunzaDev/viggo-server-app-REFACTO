@@ -264,6 +264,9 @@ export class SyncPostgresDatasource implements SyncDatasource {
       .map((item) => item as Record<string, unknown>)
       .filter((item) => isUuid(normalizeOptionalText(item.id)));
     if (!reported.length) return;
+    // A module's change of state is dated when OPERATIVO saw it (REFACTO#63).
+    const generatedAt = new Date(payload.generatedAt);
+    const changedAt = Number.isFinite(generatedAt.getTime()) ? generatedAt : new Date(receivedAt);
 
     const owned = new Set(
       (
@@ -294,7 +297,15 @@ export class SyncPostgresDatasource implements SyncDatasource {
       const remoteSupport = normalizeRemoteSupport(source.remoteSupport);
 
       await this.db.$transaction(async (tx) => {
+        const previous = await tx.moduloDeviceState.findUnique({ where: { moduloId }, select: { heartbeatStatus: true } });
         await tx.moduloDeviceState.upsert({ where: { moduloId }, create: { moduloId, ...data }, update: data });
+        // History of connection: only real changes; a module's first report is not one.
+        if (previous && previous.heartbeatStatus !== data.heartbeatStatus) {
+          await tx.connectionEvent.create({ data: {
+            proyectoId: payload.proyectoId, installationId: payload.installationId, moduloId,
+            fromStatus: previous.heartbeatStatus, toStatus: data.heartbeatStatus, occurredAt: changedAt,
+          } });
+        }
         if (remoteSupport) {
           const support = {
             provider: remoteSupport.provider,

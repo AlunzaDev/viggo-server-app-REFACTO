@@ -14,3 +14,6 @@ pnpm-debug.log*
 .env.*.local
 src/generated
 mongo
+
+# Local registry credentials; only passed as a BuildKit secret.
+.npmrc.auth*

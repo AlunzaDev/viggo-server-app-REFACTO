@@ -28,6 +28,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: migrate
+      secrets:
+        - npmrc
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,6 +45,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: runtime
+      secrets:
+        - npmrc
     restart: unless-stopped
     depends_on:
       postgres:
@@ -66,3 +70,7 @@ services:
 
 volumes:
   postgres-data:
+
+secrets:
+  npmrc:
+    file: ${NPMRC_FILE:-.npmrc.auth}

@@ -4,6 +4,8 @@ import { ConnectionHistoryController } from "../routes/heartbeat/connection-hist
 import { OccupancyOverviewController } from "../routes/occupancy/occupancy-overview.controller";
 import { PushController } from "../routes/push/push.controller";
 import { DataRetentionJob, retentionPlan } from "../services/system/data-retention.job";
+import { ReleasesController } from "../routes/releases/releases.controller";
+import { ReleasesService } from "../services/releases/releases.service";
 import { PushNoticeService } from "../services/push/push-notice.service";
 import { WebPushSender } from "../../infrastructure/push/web-push.sender";
 import { envs } from "../../config";
@@ -13,6 +15,7 @@ import { HeartbeatOverviewService } from "../services/heartbeat/heartbeat-overvi
 import { OperationalIncidentController } from "../routes/incidents/operational-incident.controller";
 import { InstallationPresenceMonitor } from "../services/installations/installation-presence.monitor";
 import {
+  buildReleasesRepository,
   buildDataRetentionRepository,
   buildPushRepository,
   buildConnectionHistoryRepository,
@@ -69,3 +72,6 @@ export const buildDataRetentionJob = (): DataRetentionJob =>
     connectionEvents: envs.RETENTION_CONNECTION_EVENTS_DAYS,
     pushSubscriptions: envs.RETENTION_PUSH_SUBSCRIPTIONS_DAYS,
   }));
+
+export const buildReleasesController = (): ReleasesController =>
+  new ReleasesController(new ReleasesService(buildReleasesRepository()));

@@ -1,3 +1,4 @@
+import { isReleasePlatform, isVersion } from "@alunzadev/viggo-contracts";
 import { OperationalInboxProcessor } from "./operational-inbox.processor";
 import { issueSyncToken } from "../../../config/plugins/installation-sync-token.plugin";
 import { randomBytes } from "node:crypto";
@@ -53,6 +54,13 @@ const findActiveProfileForApp: ActiveProfileLookup = async (permissionProfileId,
 };
 
 const asJson = (value: unknown) => value as Prisma.InputJsonValue;
+
+/** A `{ version, platform }` reported by OPERATIVO or a device; null when not well formed. */
+const reportedRelease = (value: unknown) => {
+  if (!value || typeof value !== "object") return null;
+  const { version, platform } = value as Record<string, unknown>;
+  return isVersion(version) && isReleasePlatform(platform) ? { version: version.trim(), platform } : null;
+};
 
 export class SyncPostgresDatasource implements SyncDatasource {
   private get db() {
@@ -239,6 +247,7 @@ export class SyncPostgresDatasource implements SyncDatasource {
       update: snapshot,
     });
     await this.applyDeviceStates(payload, receivedAt);
+    await this.recordReportedRelease(payload, receivedAt);
 
     return { accepted: true, proyectoId: payload.proyectoId, receivedAt };
   }
@@ -256,6 +265,16 @@ export class SyncPostgresDatasource implements SyncDatasource {
     }), { foreignKey: CustomError.badRequest("El proyecto del evento no existe") });
     await new OperationalInboxProcessor().processEvent(payload.eventId);
     return { accepted: true, duplicate: inserted.count === 0, eventId: payload.eventId };
+  }
+
+  /** OPERATIVO's own version and platform, in the snapshot's metadata.release (REFACTO#67). */
+  private async recordReportedRelease(payload: HeartbeatSnapshotPayload, receivedAt: number) {
+    const release = reportedRelease((payload.metadata ?? {}).release);
+    if (!release) return;
+    await this.db.localInstallation.updateMany({
+      where: { installationId: payload.installationId, proyectoId: payload.proyectoId, status: "approved" },
+      data: { reportedVersion: release.version, reportedPlatform: release.platform, versionReportedAt: new Date(receivedAt) },
+    });
   }
 
   /** Mirrors each reported module's binding and runtime state (modules of other projects are ignored). */
@@ -284,6 +303,7 @@ export class SyncPostgresDatasource implements SyncDatasource {
       const binding = normalizeDeviceBinding(source.deviceBinding);
       const audit = normalizeDeviceConnectionAudit(source.deviceConnectionAudit);
       const runtime = toDeviceRuntimeSnapshot(source, payload.installationId, receivedAt);
+      const release = reportedRelease(source.release);
       // The whole state is replaced on every heartbeat, as before.
       const data = {
         ...runtime,
@@ -293,6 +313,8 @@ export class SyncPostgresDatasource implements SyncDatasource {
         connectedAt: runtime.connectedAt ?? null,
         lastHeartbeatAt: runtime.lastHeartbeatAt ?? null,
         lastDisconnectAt: runtime.lastDisconnectAt ?? null,
+        // A module that reports no version keeps the last one it reported.
+        ...(release ? { reportedVersion: release.version, reportedPlatform: release.platform } : {}),
       };
       const remoteSupport = normalizeRemoteSupport(source.remoteSupport);
 

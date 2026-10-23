@@ -10,6 +10,7 @@ import { ConnectionHistoryPostgresDatasource } from "../../infrastructure/dataso
 import { OccupancyOverviewPostgresDatasource } from "../../infrastructure/datasources/occupancy/occupancy-overview.datasource.postgres";
 import { PushPostgresDatasource } from "../../infrastructure/datasources/push/push.datasource.postgres";
 import { DataRetentionPostgresDatasource } from "../../infrastructure/datasources/system/data-retention.datasource.postgres";
+import { ReleasesPostgresDatasource } from "../../infrastructure/datasources/releases/releases.datasource.postgres";
 import { InstallationsPostgresDatasource } from "../../infrastructure/datasources/installations/installations.datasource.postgres";
 import { LocalProjectsPostgresDatasource } from "../../infrastructure/datasources/local-projects/local-projects.datasource.postgres";
 import { MobileOperationPostgresDatasource } from "../../infrastructure/datasources/mobile/mobile-operation.datasource.postgres";
@@ -31,6 +32,7 @@ import { ConnectionHistoryRepositoryImpl } from "../../infrastructure/repositori
 import { OccupancyOverviewRepositoryImpl } from "../../infrastructure/repositories/occupancy/occupancy-overview.repository.impl";
 import { PushRepositoryImpl } from "../../infrastructure/repositories/push/push.repository.impl";
 import { DataRetentionRepositoryImpl } from "../../infrastructure/repositories/system/data-retention.repository.impl";
+import { ReleasesRepositoryImpl } from "../../infrastructure/repositories/releases/releases.repository.impl";
 import { InstallationsRepositoryImpl } from "../../infrastructure/repositories/installations/installations.repository.impl";
 import { LocalProjectsRepositoryImpl } from "../../infrastructure/repositories/local-projects/local-projects.repository.impl";
 import { MobileOperationRepositoryImpl } from "../../infrastructure/repositories/mobile/mobile-operation.repository.impl";
@@ -107,6 +109,9 @@ export const buildPushRepository = () =>
 
 export const buildDataRetentionRepository = () =>
   new DataRetentionRepositoryImpl(new DataRetentionPostgresDatasource());
+
+export const buildReleasesRepository = () =>
+  new ReleasesRepositoryImpl(new ReleasesPostgresDatasource());
 
 export const buildJobLockRepository = () =>
   new JobLockRepositoryImpl(new JobLockPostgresDatasource());

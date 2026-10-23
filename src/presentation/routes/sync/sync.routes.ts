@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { buildSyncController } from "../../dependencies";
+import { buildSyncController, buildReleasesController } from "../../dependencies";
 import { failedAuthLimiter, rateLimitMiddleware } from "../../middlewares/rate-limit.middleware";
 import { requireInstallationAuth, requireLinkTokenAuth } from "../../middlewares/sync-auth.middleware";
 
@@ -33,6 +33,8 @@ export class SyncRoutes {
     router.get("/access-user/by-correo/:correo", controller.getAccessUserByCorreo);
     router.get("/access-user/by-telefono/:telefono", controller.getAccessUserByTelefono);
     router.post("/heartbeat-snapshot", controller.receiveHeartbeatSnapshot);
+    // The versions this installation and its vending machines should run (REFACTO#67).
+    router.get("/releases", buildReleasesController().desiredForInstallation);
     router.post("/events", controller.receiveEvent);
 
     return router;

@@ -17,6 +17,7 @@ import { LocalProjectsRoutes } from "./local-projects/local-projects.routes";
 import { HeartbeatOverviewRoutes } from "./heartbeat/heartbeat-overview.routes";
 import { OccupancyOverviewRoutes } from "./occupancy/occupancy-overview.routes";
 import { PushRoutes } from "./push/push.routes";
+import { ReleasesRoutes } from "./releases/releases.routes";
 
 import { ModuloRoutes } from "./parking/modulo.routes";
 import { ProyectoRoutes } from "./parking/proyecto.routes";
@@ -167,6 +168,12 @@ export class AppRoutes {
       AuthMiddleware.requireAuth,
       requireAdminApp,
       PushRoutes.routes,
+    );
+    router.use(
+      "/api/releases",
+      AuthMiddleware.requireAuth,
+      requireAdminApp,
+      ReleasesRoutes.routes,
     );
     return router;
   }

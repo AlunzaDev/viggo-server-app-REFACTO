@@ -498,6 +498,9 @@ model ModuloDeviceState {
   lastDisconnectAt     DateTime?              @map("last_disconnect_at") @db.Timestamptz(3)
   message              String                 @default("")
   sourceInstallationId String                 @default("") @map("source_installation_id")
+  /// Version and platform the module's device reported through OPERATIVO (REFACTO#67).
+  reportedVersion      String                 @default("") @map("reported_version")
+  reportedPlatform     String                 @default("") @map("reported_platform")
   syncedAt             DateTime               @map("synced_at") @db.Timestamptz(3)
 
   modulo Modulo @relation(fields: [moduloId], references: [id], onDelete: Cascade)
@@ -747,6 +750,10 @@ model LocalInstallation {
   /// token (HMAC) and stored encrypted. It cannot be used to impersonate the installation.
   adminCallTokenEncrypted      String             @default("") @map("admin_call_token_encrypted")
   lastCommandPollAt            DateTime?          @map("last_command_poll_at") @db.Timestamptz(3)
+  /// Version and platform OPERATIVO last reported in its heartbeat snapshot (REFACTO#67).
+  reportedVersion              String             @default("") @map("reported_version")
+  reportedPlatform             String             @default("") @map("reported_platform")
+  versionReportedAt            DateTime?          @map("version_reported_at") @db.Timestamptz(3)
   createdAt                    DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                    DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -837,6 +844,38 @@ model ProjectHeartbeatSnapshot {
 
   @@index([receivedAt])
   @@map("project_heartbeat_snapshots")
+}
+
+/// One published build of a component for one platform, pinned by digest (REFACTO#67).
+model ReleasePackage {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  /// operativo | expendedora
+  component   String
+  version     String
+  /// linux/arm64 | linux/amd64
+  platform    String
+  /// Registry and name, without tag: the image is pulled by its digest.
+  image       String
+  digest      String
+  notas       String   @default("")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdById String?  @map("created_by") @db.Uuid
+
+  @@unique([component, version, platform])
+  @@map("release_packages")
+}
+
+/// Which version each parking should run, per component: the general one, or the pilot one
+/// for the listed parkings. A rollback points a channel back to an older version.
+model ReleaseChannel {
+  component      String   @id
+  generalVersion String?  @map("general_version")
+  pilotVersion   String?  @map("pilot_version")
+  pilotProjects  String[] @default([]) @map("pilot_projects") @db.Uuid
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedById    String?  @map("updated_by") @db.Uuid
+
+  @@map("release_channels")
 }
 
 /// A browser where a user receives push notices (REFACTO#65). One row per browser endpoint.

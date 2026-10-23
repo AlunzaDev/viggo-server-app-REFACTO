@@ -2,12 +2,17 @@ import { HealthController } from "../routes/health/health.controller";
 import { HeartbeatOverviewController } from "../routes/heartbeat/heartbeat-overview.controller";
 import { ConnectionHistoryController } from "../routes/heartbeat/connection-history.controller";
 import { OccupancyOverviewController } from "../routes/occupancy/occupancy-overview.controller";
+import { PushController } from "../routes/push/push.controller";
+import { PushNoticeService } from "../services/push/push-notice.service";
+import { WebPushSender } from "../../infrastructure/push/web-push.sender";
+import { envs } from "../../config";
 import { OccupancyOverviewService } from "../services/occupancy/occupancy-overview.service";
 import { ConnectionHistoryService } from "../services/heartbeat/connection-history.service";
 import { HeartbeatOverviewService } from "../services/heartbeat/heartbeat-overview.service";
 import { OperationalIncidentController } from "../routes/incidents/operational-incident.controller";
 import { InstallationPresenceMonitor } from "../services/installations/installation-presence.monitor";
 import {
+  buildPushRepository,
   buildConnectionHistoryRepository,
   buildOccupancyOverviewRepository,
   buildHeartbeatOverviewRepository,
@@ -26,12 +31,24 @@ export const buildOperationalIncidentController = (): OperationalIncidentControl
 export const buildHeartbeatOverviewController = (): HeartbeatOverviewController =>
   new HeartbeatOverviewController(new HeartbeatOverviewService(buildHeartbeatOverviewRepository()));
 
+// One instance: it remembers the last notice per parking to keep the cooldown.
+let pushNoticeService: PushNoticeService | undefined;
+export const buildPushNoticeService = (): PushNoticeService =>
+  (pushNoticeService ??= new PushNoticeService(
+    buildPushRepository(),
+    new WebPushSender(envs.WEB_PUSH_PUBLIC_KEY, envs.WEB_PUSH_PRIVATE_KEY, envs.WEB_PUSH_SUBJECT),
+    envs.WEB_PUSH_COOLDOWN_MS,
+  ));
+
+export const buildPushController = (): PushController => new PushController(buildPushNoticeService());
+
 export const buildInstallationPresenceMonitor = (): InstallationPresenceMonitor =>
   new InstallationPresenceMonitor(
     buildInstallationsRepository(),
     buildOperationalIncidentRepository(),
     buildJobLockRepository(),
     buildConnectionHistoryRepository(),
+    buildPushNoticeService(),
   );
 
 export const buildConnectionHistoryController = (): ConnectionHistoryController =>

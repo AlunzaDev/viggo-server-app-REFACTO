@@ -238,6 +238,8 @@ model Usuario {
   externalPaymentOrders  ExternalPaymentOrder[]
   mobileOperations       MobileOperation[]
   reviewedInstallations  LocalInstallation[]    @relation("InstallationReviewedBy")
+  pushSubscriptions      PushSubscription[]
+  pushMutedProjects      PushMutedProject[]
 
   @@index([rol])
   @@map("usuarios")
@@ -329,6 +331,7 @@ model Proyecto {
   payments                 Payment[]
   incidents                OperationalIncident[]
   connectionEvents         ConnectionEvent[]
+  pushMutedBy              PushMutedProject[]
   inboxEvents              InboxEvent[]
   operationalTickets       OperationalTicket[]
   operationalPayments      OperationalPayment[]
@@ -834,6 +837,38 @@ model ProjectHeartbeatSnapshot {
 
   @@index([receivedAt])
   @@map("project_heartbeat_snapshots")
+}
+
+/// A browser where a user receives push notices (REFACTO#65). One row per browser endpoint.
+model PushSubscription {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  usuarioId     String    @map("usuario_id") @db.Uuid
+  /// The push service URL of the browser; it identifies the subscription.
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  userAgent     String    @default("") @map("user_agent")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSuccessAt DateTime? @map("last_success_at") @db.Timestamptz(3)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("push_subscriptions")
+}
+
+/// Parkings a user does not want push notices about; by default every parking they can see notifies.
+model PushMutedProject {
+  usuarioId  String   @map("usuario_id") @db.Uuid
+  proyectoId String   @map("proyecto_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  proyecto Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+
+  @@id([usuarioId, proyectoId])
+  @@index([proyectoId])
+  @@map("push_muted_projects")
 }
 
 /// Each change of connection state of an installation or of a module (REFACTO#63).

@@ -6,6 +6,9 @@ import type { InstallationsRepository } from "../../../domain/repositories/insta
 import type { JobLockRepository } from "../../../domain/repositories/system/job-lock.repository";
 import { planInstallationIncidents } from "./installation-presence";
 
+/** Who hears about an installation going offline or coming back (push notices, REFACTO#65). */
+export type InstallationChangeNotifier = { installationChanged(change: { proyectoId: string; online: boolean; at: number }): Promise<number> };
+
 const INTERVAL_MS = 30_000;
 const LOCK_NAME = "installation-presence";
 const INSTANCE_ID = randomUUID();
@@ -25,6 +28,7 @@ export class InstallationPresenceMonitor {
     private readonly incidents: OperationalIncidentRepository,
     private readonly locks: JobLockRepository,
     private readonly history: ConnectionHistoryRepository,
+    private readonly notifier?: InstallationChangeNotifier,
   ) {}
 
   start() {
@@ -69,6 +73,7 @@ export class InstallationPresenceMonitor {
           fromStatus: "online", toStatus: "offline", occurredAt: installation.lastSeenAt,
         });
       }
+      this.notify({ proyectoId: installation.proyectoId, online: false, at: installation.lastSeenAt ?? now });
     }
     for (const incidentKey of toResolve) await this.incidents.resolve(incidentKey, now);
     for (const installation of backOnline) {
@@ -76,7 +81,13 @@ export class InstallationPresenceMonitor {
         proyectoId: installation.proyectoId, installationId: installation.installationId,
         fromStatus: "offline", toStatus: "online", occurredAt: installation.lastSeenAt ?? now,
       });
+      this.notify({ proyectoId: installation.proyectoId, online: true, at: installation.lastSeenAt ?? now });
     }
     return { opened: toOpen.length, resolved: toResolve.length };
+  }
+
+  /** Best effort, in the background: a failed notice never stops the monitor. */
+  private notify(change: { proyectoId: string; online: boolean; at: number }) {
+    void this.notifier?.installationChanged(change).catch((error) => console.error("[ADMIN push notices]", error));
   }
 }

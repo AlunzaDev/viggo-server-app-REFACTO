@@ -182,4 +182,11 @@ export const envs = {
     1,
     500,
   ),
+  // Push notices (REFACTO#65). Without both VAPID keys they are off; nothing else changes.
+  WEB_PUSH_PUBLIC_KEY: env.get("WEB_PUSH_PUBLIC_KEY").default("").asString().trim(),
+  WEB_PUSH_PRIVATE_KEY: env.get("WEB_PUSH_PRIVATE_KEY").default("").asString().trim(),
+  /** Who sends them, for the push services: "mailto:..." or an https URL. */
+  WEB_PUSH_SUBJECT: env.get("WEB_PUSH_SUBJECT").default(mailerEmail ? `mailto:${mailerEmail}` : "").asString().trim(),
+  /** Least time between two notices of the same kind about the same parking. */
+  WEB_PUSH_COOLDOWN_MS: parseBoundedInteger(env.get("WEB_PUSH_COOLDOWN_MS").asString(), 5 * 60 * 1000, 0, 24 * 60 * 60 * 1000),
 };
